@@ -1,0 +1,391 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <data>
+        <variable name="viewModel" type="com.motioncam.model.SettingsViewModel"/>
+    </data>
+
+    <ScrollView
+        android:id="@+id/settingsLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        tools:context=".ui.SettingsFragment">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/preview_settings_margin"
+                android:background="@color/headerColor"
+                android:padding="@dimen/preview_settings_padding"
+                android:text="@string/general"
+                android:textAlignment="center"
+                android:textAppearance="@style/MotionCam.TextAppearance.Medium" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="10dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="5dp"
+                    android:text="@string/memory_usage"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small.Bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/memory_use_description"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
+                    android:textColor="@color/silver" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/memoryUseText"
+                        android:layout_width="@dimen/preview_settings_value_width"
+                        android:layout_height="match_parent"
+                        android:gravity="end|center_vertical"
+                        android:textAppearance="@style/MotionCam.TextAppearance.Small" />
+
+                    <SeekBar
+                        android:id="@+id/memoryUseSeekBar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="1024"
+                        android:paddingTop="@dimen/seekBarPadding"
+                        android:paddingBottom="@dimen/seekBarPadding"
+                        android:progress="@={viewModel.memoryUseMb}" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="10dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="5dp"
+                    android:text="@string/jpeg_quality"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small.Bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/jpeg_quality_description"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
+                    android:textColor="@color/silver" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/jpegQualityText"
+                        android:layout_width="@dimen/preview_settings_value_width"
+                        android:layout_height="match_parent"
+                        android:gravity="end|center_vertical"
+                        android:textAppearance="@style/MotionCam.TextAppearance.Small" />
+
+                    <SeekBar
+                        android:id="@+id/jpegQualitySeekBar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="100"
+                        android:paddingTop="@dimen/seekBarPadding"
+                        android:paddingBottom="@dimen/seekBarPadding"
+                        android:progress="@={viewModel.jpegQuality}" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="5dp"
+                    android:text="@string/debug_mode"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small.Bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/debug_mode_help"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
+                    android:textColor="@color/silver" />
+
+                <CheckBox
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/enable_debug_mode"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
+                    android:textColor="@color/white"
+                    android:paddingTop="@dimen/seekBarPadding"
+                    android:paddingBottom="@dimen/seekBarPadding"
+                    android:checked="@={viewModel.debugMode}"/>
+
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/preview_settings_margin"
+                android:background="@color/headerColor"
+                android:padding="@dimen/preview_settings_padding"
+                android:text="@string/camera_profile"
+                android:textAlignment="center"
+                android:textAppearance="@style/MotionCam.TextAppearance.Medium" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginEnd="10dp"
+                android:layout_marginBottom="10dp"
+                android:text="@string/camera_profile_description"
+                android:textAppearance="@style/MotionCam.TextAppearance.Small"
+                android:textColor="@color/silver" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/contrast"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small.Bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/contrastText"
+                        android:layout_width="@dimen/preview_settings_value_width"
+                        android:layout_height="match_parent"
+                        android:gravity="end|center_vertical"
+                        android:textAppearance="@style/MotionCam.TextAppearance.Small" />
+
+                    <SeekBar
+                        android:id="@+id/contrastSeekBar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="100"
+                        android:paddingTop="@dimen/seekBarPadding"
+                        android:paddingBottom="@dimen/seekBarPadding"
+                        android:progress="@={viewModel.contrast}" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/preview_settings_margin"
+                android:layout_marginBottom="@dimen/preview_settings_margin"
+                android:background="@color/headerColor"
+                android:padding="@dimen/preview_settings_padding"
+                android:text="@string/color"
+                android:textAlignment="center"
+                android:textAppearance="@style/MotionCam.TextAppearance.Medium" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/saturation"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small.Bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/saturationText"
+                        android:layout_width="@dimen/preview_settings_value_width"
+                        android:layout_height="match_parent"
+                        android:gravity="end|center_vertical"
+                        android:textAppearance="@style/MotionCam.TextAppearance.Small" />
+
+                    <SeekBar
+                        android:id="@+id/saturationSeekBar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="100"
+                        android:paddingTop="@dimen/seekBarPadding"
+                        android:paddingBottom="@dimen/seekBarPadding"
+                        android:progress="@={viewModel.saturation}" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/greens"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small.Bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/greensSaturationText"
+                        android:layout_width="@dimen/preview_settings_value_width"
+                        android:layout_height="match_parent"
+                        android:gravity="end|center_vertical"
+                        android:textAppearance="@style/MotionCam.TextAppearance.Small" />
+
+                    <SeekBar
+                        android:id="@+id/greensSaturationSeekBar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="100"
+                        android:paddingTop="@dimen/seekBarPadding"
+                        android:paddingBottom="@dimen/seekBarPadding"
+                        android:progress="@={viewModel.greenSaturation}" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/blues"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small.Bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/bluesText"
+                        android:layout_width="@dimen/preview_settings_value_width"
+                        android:layout_height="match_parent"
+                        android:gravity="end|center_vertical"
+                        android:textAppearance="@style/MotionCam.TextAppearance.Small" />
+
+                    <SeekBar
+                        android:id="@+id/bluesSeekBar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="100"
+                        android:paddingTop="@dimen/seekBarPadding"
+                        android:paddingBottom="@dimen/seekBarPadding"
+                        android:progress="@={viewModel.blueSaturation}" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/preview_settings_margin"
+                android:layout_marginBottom="@dimen/preview_settings_margin"
+                android:background="@color/headerColor"
+                android:padding="@dimen/preview_settings_padding"
+                android:text="@string/detail"
+                android:textAlignment="center"
+                android:textAppearance="@style/MotionCam.TextAppearance.Medium" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/sharpness"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small.Bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/sharpnessText"
+                        android:layout_width="@dimen/preview_settings_value_width"
+                        android:layout_height="match_parent"
+                        android:gravity="end|center_vertical"
+                        android:textAppearance="@style/MotionCam.TextAppearance.Small" />
+
+                    <SeekBar
+                        android:id="@+id/sharpnessSeekBar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="100"
+                        android:paddingTop="@dimen/seekBarPadding"
+                        android:paddingBottom="@dimen/seekBarPadding"
+                        android:progress="@={viewModel.sharpness}" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/detail"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small.Bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/detailText"
+                        android:layout_width="@dimen/preview_settings_value_width"
+                        android:layout_height="match_parent"
+                        android:gravity="end|center_vertical"
+                        android:textAppearance="@style/MotionCam.TextAppearance.Small" />
+
+                    <SeekBar
+                        android:id="@+id/detailSeekBar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="100"
+                        android:paddingTop="@dimen/seekBarPadding"
+                        android:paddingBottom="@dimen/seekBarPadding"
+                        android:progress="@={viewModel.detail}" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+    </ScrollView>
+</layout>
+

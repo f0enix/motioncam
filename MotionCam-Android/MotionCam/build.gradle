@@ -1,0 +1,73 @@
+apply plugin: 'com.android.application'
+
+android {
+    signingConfigs {
+        garbage_key {
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+            storeFile file('../keystore/debug.keystore')
+            storePassword 'android'
+        }
+    }
+    compileSdkVersion 29
+    defaultConfig {
+        applicationId "com.motioncam"
+        minSdkVersion 24
+        targetSdkVersion 28
+        versionCode 15
+        versionName "1.5"
+        externalNativeBuild {
+            cmake {
+                version "3.10.2"
+                cppFlags "-frtti -fexceptions"
+                arguments "-DANDROID_STL=c++_shared"
+            }
+        }
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+        signingConfig signingConfigs.garbage_key
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            minifyEnabled false
+            shrinkResources false
+            jniDebuggable true
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path "CMakeLists.txt"
+        }
+    }
+    productFlavors {
+    }
+    compileOptions {
+        sourceCompatibility = 1.8
+        targetCompatibility = 1.8
+    }
+    buildFeatures {
+        dataBinding true
+        viewBinding true
+    }
+    buildToolsVersion '30.0.2'
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation 'androidx.appcompat:appcompat:1.2.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.0.4'
+    implementation 'androidx.recyclerview:recyclerview:1.1.0'
+    implementation "androidx.viewpager2:viewpager2:1.0.0"
+    implementation 'com.squareup.moshi:moshi:1.11.0'
+    implementation 'com.google.android.material:material:1.2.1'
+    implementation 'androidx.lifecycle:lifecycle-extensions:2.2.0'
+    implementation 'com.github.chrisbanes:PhotoView:2.3.0'
+    implementation 'commons-io:commons-io:20030203.000550'
+    implementation 'org.apache.commons:commons-math3:3.6.1'
+}

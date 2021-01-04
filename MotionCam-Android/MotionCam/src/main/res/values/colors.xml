@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#007ea7</color>
+    <color name="colorPrimaryDark">#003459</color>
+    <color name="colorAccent">#00a8e8</color>
+
+    <color name="background">#00171f</color>
+
+    <color name="textColorPrimary">#ffffff</color>
+    <color name="textColorSecondary">#bfc0c0</color>
+    <color name="textColor">#ffffff</color>
+
+    <color name="black">#000000</color>
+    <color name="white">#ffffff</color>
+    <color name="silver">#bfc0c0</color>
+    <color name="gray">#888888</color>
+
+    <color name="focus_circle">#40FFFFFF</color>
+
+    <color name="cancelAction">#ac0c0c</color>
+    <color name="acceptAction">#207561</color>
+
+    <color name="headerColor">#45565c</color>
+</resources>

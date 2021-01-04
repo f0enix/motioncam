@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="seekBarPadding">10dp</dimen>
+    <dimen name="gradient_height">5dp</dimen>
+    <dimen name="preview_settings_value_width">60dp</dimen>
+    <dimen name="preview_settings_padding">5dp</dimen>
+    <dimen name="preview_settings_margin">5dp</dimen>
+    <dimen name="fab_margin">16dp</dimen>
+</resources>
