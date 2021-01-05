@@ -124,7 +124,7 @@ build_exiv2() {
 	mkdir -p ${INSTALL_DIR}/lib
 	mkdir -p ${INSTALL_DIR}/include
 
-	cp -a ./${ANDROID_ABI}/include/ ${INSTALL_DIR}/include/.
+	cp -a ./${ANDROID_ABI}/include/. ${INSTALL_DIR}/include/.
 	cp -a ./${ANDROID_ABI}/lib/*.a ${INSTALL_DIR}/lib/.
 
 	popd # build

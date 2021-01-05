@@ -363,7 +363,7 @@ add_library( # Sets the name of the library.
         src/main/cpp/NativeRawPreviewListener.cpp
         src/main/cpp/camera/CaptureSessionManager.cpp
         src/main/cpp/camera/CameraSession.cpp
-        src/main/cpp/camera/CLHelper.cpp
+        src/main/cpp/camera/ClHelper.cpp
         src/main/cpp/camera/NativeClBuffer.cpp
         src/main/cpp/camera/RawImageConsumer.cpp
 )
@@ -442,7 +442,7 @@ target_link_libraries(native-camera
         android
         mediandk
         jnigraphics
-        egl
+        EGL
         ${log}
         ${z}
         )
