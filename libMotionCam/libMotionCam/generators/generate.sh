@@ -9,7 +9,11 @@ then
     exit 1
 fi
 
-export DYLD_LIBRARY_PATH=${HALIDE_PATH}/lib
+if [[ "$OSTYPE" == "darwin"* ]]; then
+	export DYLD_LIBRARY_PATH=${HALIDE_PATH}/lib
+else
+	export LD_LIBRARY_PATH=${HALIDE_PATH}/lib
+fi
 
 rm -rf tmp
 mkdir -p tmp
