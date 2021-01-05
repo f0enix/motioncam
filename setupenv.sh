@@ -11,7 +11,7 @@ if [[ -z "${LLVM_DIR-}" ]]; then
 	exit 1
 fi
 
-NUM_CORES="$(python -c 'import multiprocessing as mp; print(mp.cpu_count())')"
+NUM_CORES="$(python3 -c 'import multiprocessing as mp; print(mp.cpu_count())')"
 
 ANDROID_ABI="arm64-v8a"
 OPENCV_VERSION="4.5.0"
@@ -52,9 +52,9 @@ build_opencv() {
 	mkdir -p ${INSTALL_DIR}/include
 	mkdir -p ${INSTALL_DIR}/thirdparty
 
-	cp -a ./lib/ ${INSTALL_DIR}/libs
-	cp -a ./${ANDROID_ABI}/sdk/native/jni/include/ ${INSTALL_DIR}/include
-	cp -a ./${ANDROID_ABI}/sdk/native/3rdparty/ ${INSTALL_DIR}/thirdparty
+	cp -a ./lib/. ${INSTALL_DIR}/libs/.
+	cp -a ./${ANDROID_ABI}/sdk/native/jni/include/. ${INSTALL_DIR}/include/.
+	cp -a ./${ANDROID_ABI}/sdk/native/3rdparty/. ${INSTALL_DIR}/thirdparty/.
 
 	popd # build
 	popd # opencv-${OPENCV_VERSION}
@@ -88,7 +88,7 @@ build_expat() {
 	mkdir -p ${INSTALL_DIR}/lib
 	mkdir -p ${INSTALL_DIR}/include
 
-	cp -a ./${ANDROID_ABI}/include/ ${INSTALL_DIR}/include
+	cp -a ./${ANDROID_ABI}/include/. ${INSTALL_DIR}/include/.
 	cp -a ./${ANDROID_ABI}/lib/*.a ${INSTALL_DIR}/lib
 
 	popd # build
@@ -124,8 +124,8 @@ build_exiv2() {
 	mkdir -p ${INSTALL_DIR}/lib
 	mkdir -p ${INSTALL_DIR}/include
 
-	cp -a ./${ANDROID_ABI}/include/ ${INSTALL_DIR}/include
-	cp -a ./${ANDROID_ABI}/lib/*.a ${INSTALL_DIR}/lib	
+	cp -a ./${ANDROID_ABI}/include/ ${INSTALL_DIR}/include/.
+	cp -a ./${ANDROID_ABI}/lib/*.a ${INSTALL_DIR}/lib/.
 
 	popd # build
 	popd # exiv2-${LIBEXIV2_VERSION}-Source
@@ -134,9 +134,12 @@ build_exiv2() {
 }
 
 build_halide() {
-	git clone ${HALIDE_BRANCH}
+	if [ ! -d "halide-src" ]; then
+		git clone ${HALIDE_BRANCH} halide-src
+	fi
 
-	pushd Halide
+	pushd halide-src
+	git pull
 
 	mkdir -p build
 	pushd build
@@ -152,7 +155,7 @@ build_halide() {
 	make install
 
 	popd # build
-	popd # Halide
+	popd # halide-src
 
 	touch ".halide"
 }
@@ -186,4 +189,3 @@ fi
 halide_generate
 
 popd # tmp
-
