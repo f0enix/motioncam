@@ -6,9 +6,12 @@ You can install it from the [Play Store](https://play.google.com/store/apps/deta
 
 #### Dual exposure
 
+Dual exposure is similar to the feature found in the Google Camera. The two sliders control the exposure compensation and tonemapping.
+
+![output](https://user-images.githubusercontent.com/508688/104108822-d32b6600-52bf-11eb-8ebb-fb7966950462.gif)
+
 #### Zero shutter lag burst capture
 
-#### Manual controls
 
 ## Overview
 
@@ -28,7 +31,7 @@ Most modern cameras use a bayer filter. This means the RAW image is subsampled a
 
 ### Tonemapping
 
-Motion Cam uses the [exposure fusion algorithm](https://mericam.github.io/exposure_fusion/index.html) shared by Google’s HDR+. It produces pleasing and natural images. The algorithm blends multiple different exposures to produce an HDR image. Instead of capturing multiple exposures, it artificially generates the overexposed image and uses the original exposure as inputs to the algorithm. The shadows slider in the app controls the overexposed image.
+Motion Cam uses the algorithm [exposure fusion](https://mericam.github.io/exposure_fusion/index.html) for tonemapping. The algorithm blends multiple different exposures to produce an HDR image. Instead of capturing multiple exposures, it artificially generates the overexposed image and uses the original exposure as inputs to the algorithm. The shadows slider in the app controls the overexposed image.
 
 ### Sharpening and Detail Enhancement
 
@@ -75,4 +78,5 @@ Run the ```./setupenv``` script to compile the dependencies needed by the projec
 After setting up the environment, open the project MotionCam-Android with Android Studio. It should compile and run.
 
 ### Generating code
+
 MotionCam uses [Halide](https://github.com/halide/Halide) to generate the code for most of its algorithms. The generators can be found in ```libMotionCam/generators```. If you make any changes to the generator sources, use the script ```generate.sh``` to regenerate them.
