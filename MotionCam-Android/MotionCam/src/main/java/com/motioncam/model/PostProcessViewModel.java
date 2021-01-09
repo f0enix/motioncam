@@ -172,15 +172,6 @@ public class PostProcessViewModel extends ViewModel {
     public void load(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
 
-        contrast.setValue(prefs.getInt(SettingsViewModel.PREFS_KEY_CONTRAST, CameraProfile.DEFAULT_CONTRAST));
-
-        saturation.setValue(prefs.getInt(SettingsViewModel.PREFS_KEY_SATURATION, CameraProfile.DEFAULT_SATURATION));
-        greenSaturation.setValue(prefs.getInt(SettingsViewModel.PREFS_KEY_GREEN_SATURATION, CameraProfile.DEFAULT_GREEN_SATURATION));
-        blueSaturation.setValue(prefs.getInt(SettingsViewModel.PREFS_KEY_BLUE_SATURATION, CameraProfile.DEFAULT_BLUE_SATURATION));
-
-        sharpness.setValue(prefs.getInt(SettingsViewModel.PREFS_KEY_SHARPNESS, CameraProfile.DEFAULT_SHARPNESS));
-        detail.setValue(prefs.getInt(SettingsViewModel.PREFS_KEY_DETAIL, CameraProfile.DEFAULT_DETAIL));
-
         jpegQuality.setValue(prefs.getInt(SettingsViewModel.PREFS_KEY_JPEG_QUALITY, CameraProfile.DEFAULT_JPEG_QUALITY));
     }
 

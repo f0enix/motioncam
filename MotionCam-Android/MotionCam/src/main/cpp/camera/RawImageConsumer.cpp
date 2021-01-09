@@ -483,7 +483,7 @@ namespace motioncam {
         Halide::Runtime::Buffer<uint8_t> outputBuffer;
         std::shared_ptr<RawImageBuffer> buffer;
 
-        const int downscaleFactor = 3;
+        const int downscaleFactor = 2;
         std::chrono::steady_clock::time_point fpsTimestamp = std::chrono::steady_clock::now();
         int processedFrames = 0;
 
