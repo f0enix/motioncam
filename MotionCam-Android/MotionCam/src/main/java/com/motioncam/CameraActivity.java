@@ -1,8 +1,6 @@
 package com.motioncam;
 
 import android.Manifest;
-import android.animation.Animator;
-import android.animation.AnimatorListenerAdapter;
 import android.animation.ObjectAnimator;
 import android.content.Context;
 import android.content.Intent;
@@ -24,7 +22,6 @@ import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.view.animation.AccelerateDecelerateInterpolator;
 import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
 import android.widget.SeekBar;
@@ -93,9 +90,7 @@ public class CameraActivity extends AppCompatActivity implements
 
     private PostProcessSettings mPostProcessSettings;
     private AsyncNativeCameraOps mAsyncNativeCameraOps;
-    private ObjectAnimator mBurstAnimator;
     private ObjectAnimator mShadowsAnimator;
-    private boolean mBurstCapture;
 
     private boolean mManualControlsEnabled;
     private boolean mManualControlsSet;
@@ -188,24 +183,6 @@ public class CameraActivity extends AppCompatActivity implements
 
         mSensorEventManager = new SensorEventManager(this, this);
 
-        mBurstAnimator = ObjectAnimator.ofInt(mBinding.captureBurstProgress, "progress", 0, 100);
-        mBurstAnimator.setDuration(250);
-        mBurstAnimator.setStartDelay(250);
-        mBurstAnimator.setInterpolator(new AccelerateDecelerateInterpolator());
-        mBurstAnimator.setAutoCancel(true);
-
-        mBurstAnimator.addListener(new AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                super.onAnimationEnd(animation);
-
-                mBinding.captureBurstProgress.setProgress(0);
-
-                if(mBurstCapture)
-                    onCaptureClicked();
-            }
-        });
-
         requestPermissions();
     }
 
@@ -263,27 +240,18 @@ public class CameraActivity extends AppCompatActivity implements
 
         SharedPreferences prefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
 
-        float contrast = prefs.getInt(SettingsViewModel.PREFS_KEY_CONTRAST, CameraProfile.DEFAULT_CONTRAST);
-        float saturation = prefs.getInt(SettingsViewModel.PREFS_KEY_SATURATION, CameraProfile.DEFAULT_SATURATION);
-        float greenSaturation = prefs.getInt(SettingsViewModel.PREFS_KEY_GREEN_SATURATION, CameraProfile.DEFAULT_GREEN_SATURATION);
-        float blueSaturation = prefs.getInt(SettingsViewModel.PREFS_KEY_BLUE_SATURATION, CameraProfile.DEFAULT_BLUE_SATURATION);
-        float sharpness = prefs.getInt(SettingsViewModel.PREFS_KEY_SHARPNESS, CameraProfile.DEFAULT_SHARPNESS);
-        float detail = prefs.getInt(SettingsViewModel.PREFS_KEY_DETAIL, CameraProfile.DEFAULT_DETAIL);
-
         int jpegQuality = prefs.getInt(SettingsViewModel.PREFS_KEY_JPEG_QUALITY, CameraProfile.DEFAULT_JPEG_QUALITY);
 
         mPostProcessSettings.shadows = 1.0f;
-        mPostProcessSettings.contrast = contrast / 100.0f;
-        mPostProcessSettings.saturation = saturation / 100.0f * 2.0f;
-        mPostProcessSettings.greenSaturation = greenSaturation / 100.0f * 2.0f;
-        mPostProcessSettings.blueSaturation = blueSaturation / 100.0f * 2.0f;
-        mPostProcessSettings.sharpen0 = 1.0f + sharpness / 25.0f;
-        mPostProcessSettings.sharpen1 = 1.0f + detail / 50.0f;
+        mPostProcessSettings.contrast = 0.5f;
+        mPostProcessSettings.saturation = 1.0f;
+        mPostProcessSettings.greenSaturation = 1.0f;
+        mPostProcessSettings.blueSaturation = 1.0f;
+        mPostProcessSettings.sharpen0 = 3.5f;
+        mPostProcessSettings.sharpen1 = 1.4f;
         mPostProcessSettings.whitePoint = 1.0f;
         mPostProcessSettings.blacks = 0.0f;
         mPostProcessSettings.jpegQuality = jpegQuality;
-
-        mBurstCapture = false;
     }
 
     @Override
@@ -299,7 +267,6 @@ public class CameraActivity extends AppCompatActivity implements
 
         mBinding.focusLockPointFrame.setVisibility(View.INVISIBLE);
         mBinding.exposureLockPointFrame.setVisibility(View.INVISIBLE);
-        mBinding.captureBurstProgress.setProgress(0);
         mBinding.exposureSeekBar.setProgress(50);
         mBinding.shadowsSeekBar.setProgress(50);
 
@@ -382,27 +349,6 @@ public class CameraActivity extends AppCompatActivity implements
                 }));
     }
 
-    private boolean onCaptureTouched(MotionEvent event) {
-        switch(event.getAction()) {
-            case MotionEvent.ACTION_CANCEL:
-            case MotionEvent.ACTION_UP:
-                if(mBurstAnimator.isStarted()) {
-                    mBurstCapture = false;
-                }
-
-                mBurstAnimator.cancel();
-
-                break;
-
-            case MotionEvent.ACTION_DOWN:
-                mBurstCapture = true;
-                mBurstAnimator.start();
-                break;
-        }
-
-        return false;
-    }
-
     private void updateNumImagesToMerge() {
         if(mIso <= 200 && mExposureTime <= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_100.getExposureTime()) {
             mNumMergeImages = 0;
@@ -424,7 +370,7 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void onCaptureClicked() {
-        if(mBurstCapture) {
+        if(mBinding.burstModeSwitch.isChecked()) {
             // Pass native camera handle
             Intent intent = new Intent(this, PostProcessActivity.class);
 
@@ -467,8 +413,6 @@ public class CameraActivity extends AppCompatActivity implements
                     }
             );
         }
-
-        mBurstCapture = false;
     }
 
     @Override
@@ -597,7 +541,7 @@ public class CameraActivity extends AppCompatActivity implements
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 if(mPostProcessSettings != null) {
-                    mPostProcessSettings.contrast = progress * 25 / 100.0f;
+                    mPostProcessSettings.contrast = progress / 100.0f;
                     updatePreviewSettings();
                 }
             }
@@ -615,7 +559,7 @@ public class CameraActivity extends AppCompatActivity implements
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 if(mPostProcessSettings != null) {
-                    mPostProcessSettings.saturation = (50 * progress) / 100.0f;
+                    mPostProcessSettings.saturation = progress / 100.0f;
                     updatePreviewSettings();
                 }
             }
@@ -632,7 +576,6 @@ public class CameraActivity extends AppCompatActivity implements
         // Buttons
         mBinding.captureBtn.setOnClickListener(v -> onCaptureClicked());
         mBinding.switchCameraBtn.setOnClickListener(v -> onSwitchCameraClicked());
-        mBinding.captureBtn.setOnTouchListener((v, event) -> onCaptureTouched(event));
 
         // Set up camera manual controls
         mCameraMetadata = mNativeCamera.getMetadata(mSelectedCamera);

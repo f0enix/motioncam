@@ -34,16 +34,6 @@ public class SettingsFragment extends Fragment {
         });
 
         mViewModel.jpegQuality.observe(getViewLifecycleOwner(), (value) -> dataBinding.jpegQualityText.setText(String.format(Locale.US, "%d%%", value)));
-
-        // Camera profile
-        mViewModel.contrast.observe(getViewLifecycleOwner(), (value) -> dataBinding.contrastText.setText(String.format(Locale.US, "%d%%", value)));
-        mViewModel.sharpness.observe(getViewLifecycleOwner(), (value) -> dataBinding.sharpnessText.setText(String.format(Locale.US, "%d%%", value)));
-        mViewModel.detail.observe(getViewLifecycleOwner(), (value) -> dataBinding.detailText.setText(String.format(Locale.US, "%d%%", value)));
-
-        // Saturation
-        mViewModel.saturation.observe(getViewLifecycleOwner(), (value) -> dataBinding.saturationText.setText(String.format(Locale.US, "%d", value - 50)));
-        mViewModel.greenSaturation.observe(getViewLifecycleOwner(), (value) -> dataBinding.greensSaturationText.setText(String.format(Locale.US, "%d", value - 50)));
-        mViewModel.blueSaturation.observe(getViewLifecycleOwner(), (value) -> dataBinding.bluesText.setText(String.format(Locale.US, "%d", value - 50)));
     }
 
     @Nullable

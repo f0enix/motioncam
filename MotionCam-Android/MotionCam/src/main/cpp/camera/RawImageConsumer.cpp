@@ -477,15 +477,19 @@ namespace motioncam {
     void RawImageConsumer::doPreprocess() {
         ImageProcessor processor;
 
-        bool outputCreated = false;
-        cl_int errCode = -1;
-
         Halide::Runtime::Buffer<uint8_t> outputBuffer;
         std::shared_ptr<RawImageBuffer> buffer;
 
-        const int downscaleFactor = 3;
         std::chrono::steady_clock::time_point fpsTimestamp = std::chrono::steady_clock::now();
+        std::chrono::steady_clock::time_point previewTimestamp;
+
+        cl_int errCode = -1;
+
+        bool outputCreated = false;
+        int downscaleFactor = 4;
         int processedFrames = 0;
+        double totalPreviewTimeMs = 0;
+        bool previewSettled = false;
 
         while(mEnableRawPreview) {
             if(!mPreprocessQueue.try_pop(buffer))
@@ -501,6 +505,8 @@ namespace motioncam {
 
             Halide::Runtime::Buffer<uint8_t> inputBuffer = wrapCameraPreviewInputBuffer(*buffer);
 
+            previewTimestamp = std::chrono::steady_clock::now();
+
             motioncam::ImageProcessor::cameraPreview(
                     *buffer,
                     mCameraMetadata,
@@ -513,6 +519,9 @@ namespace motioncam {
                     0.25f,
                     inputBuffer,
                     outputBuffer);
+
+            totalPreviewTimeMs +=
+                    std::chrono::duration <double, std::milli>(std::chrono::steady_clock::now() - previewTimestamp).count();
 
             unwrapCameraPreviewInputBuffer(inputBuffer);
 
@@ -544,9 +553,34 @@ namespace motioncam {
 
             auto now = std::chrono::steady_clock::now();
             double durationMs = std::chrono::duration <double, std::milli>(now - fpsTimestamp).count();
-            if(durationMs > 1000.0f) {
-                LOGI("Camera FPS: %d", processedFrames);
+            if(durationMs > 3000.0f) {
+                // Vary camera preview quality dependening on GPU processing time
+                double avgProcessTimeMs = totalPreviewTimeMs / processedFrames;
+                int tmpDownscaleFactor = downscaleFactor;
+
+                // Set 20 fps as acceptable frame rate
+                if(avgProcessTimeMs < 50) {
+                    --tmpDownscaleFactor;
+                }
+                else {
+                    ++tmpDownscaleFactor;
+                }
+
+                tmpDownscaleFactor = std::max(3, std::min(4, tmpDownscaleFactor));
+                if(!previewSettled && tmpDownscaleFactor != downscaleFactor) {
+                    downscaleFactor = tmpDownscaleFactor;
+                    releaseCameraPreviewOutputBuffer(outputBuffer);
+                    outputCreated = false;
+
+                    if(tmpDownscaleFactor > downscaleFactor)
+                        previewSettled = true;
+                }
+
+                LOGI("Camera FPS: %d, cameraQuality=%d processTimeMs=%.2f", processedFrames / 3, downscaleFactor, avgProcessTimeMs);
+
                 processedFrames = 0;
+                totalPreviewTimeMs = 0;
+
                 fpsTimestamp = now;
             }
         }

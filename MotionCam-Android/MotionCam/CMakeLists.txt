@@ -124,6 +124,10 @@ add_library(camera_preview3 STATIC IMPORTED)
 set_target_properties(camera_preview3 PROPERTIES IMPORTED_LOCATION
         ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview3.a)
 
+add_library(camera_preview4 STATIC IMPORTED)
+set_target_properties(camera_preview4 PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview4.a)
+
 add_library(generate_edges STATIC IMPORTED)
 set_target_properties(generate_edges PROPERTIES IMPORTED_LOCATION
         ${libmotioncam-src}/halide/${ANDROID_ABI}/generate_edges.a)
@@ -393,6 +397,7 @@ target_link_libraries(native-camera
         # Halide libraries
         camera_preview2
         camera_preview3
+        camera_preview4
         generate_edges
         measure_image
         deinterleave_raw

@@ -8,61 +8,78 @@
     android:layout_height="match_parent">
 
     <LinearLayout
-        android:id="@+id/contrastLayout"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:layout_marginTop="30dp"
-        android:layout_marginStart="30dp"
+        android:orientation="horizontal"
+        android:layout_marginTop="20dp"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toStartOf="@+id/settingsBtn">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:text="CONTRAST"/>
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
 
-        <SeekBar
-            android:id="@+id/contrastSeekBar"
-            android:layout_width="100dp"
-            android:layout_height="wrap_content"
-            android:progress="2"
-            android:progressBackgroundTint="@color/white"
-            android:thumbTint="@color/white"
-            android:progressTint="@color/white"
-            android:max="4"
-            android:theme="@style/Widget.AppCompat.SeekBar.Discrete"
-            android:padding="10dp"/>
-    </LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:text="CONTRAST"/>
 
-    <LinearLayout
-        android:id="@+id/colourLayout"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:layout_marginTop="30dp"
-        android:layout_marginStart="10dp"
-        app:layout_constraintStart_toEndOf="@id/contrastLayout"
-        app:layout_constraintTop_toTopOf="parent">
+                <SeekBar
+                    android:id="@+id/contrastSeekBar"
+                    android:layout_width="110dp"
+                    android:layout_height="wrap_content"
+                    android:progress="50"
+                    android:progressBackgroundTint="@color/white"
+                    android:thumbTint="@color/white"
+                    android:progressTint="@color/white"
+                    android:max="100"
+                    android:padding="10dp"/>
+            </LinearLayout>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:text="COLOUR"/>
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
 
-        <SeekBar
-            android:id="@+id/colourSeekBar"
-            android:layout_width="100dp"
-            android:layout_height="wrap_content"
-            android:progress="2"
-            android:progressBackgroundTint="@color/white"
-            android:thumbTint="@color/white"
-            android:progressTint="@color/white"
-            android:max="4"
-            android:theme="@style/Widget.AppCompat.SeekBar.Discrete"
-            android:padding="10dp"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:text="COLOUR"/>
+
+                <SeekBar
+                    android:id="@+id/colourSeekBar"
+                    android:layout_width="110dp"
+                    android:layout_height="wrap_content"
+                    android:progress="75"
+                    android:progressBackgroundTint="@color/white"
+                    android:thumbTint="@color/white"
+                    android:progressTint="@color/white"
+                    android:max="150"
+                    android:padding="10dp"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="50dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:text="BURST"/>
+
+                <Switch
+                    android:id="@+id/burstModeSwitch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"/>
+
+            </LinearLayout>
+
     </LinearLayout>
 
     <ImageView
@@ -70,7 +87,7 @@
         android:layout_width="32dp"
         android:layout_height="32dp"
         android:layout_marginTop="30dp"
-        android:layout_marginEnd="30dp"
+        android:layout_marginEnd="20dp"
         android:background="@drawable/round_settings_24"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
@@ -212,21 +229,12 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/cameraFrame">
 
-        <ProgressBar
-            android:id="@+id/captureBurstProgress"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="120dp"
-            android:layout_height="120dp"
-            android:indeterminate="false"
-            android:progressDrawable="@drawable/progress_circular"
-            android:layout_centerInParent="true"/>
-
-        <ImageButton
+        <ImageView
             android:id="@+id/captureBtn"
             android:layout_width="80dp"
             android:layout_height="80dp"
             android:layout_centerInParent="true"
-            android:background="@drawable/capture_btn" />
+            android:src="@drawable/capture_btn" />
 
         <ImageButton
             android:id="@+id/switchCameraBtn"
