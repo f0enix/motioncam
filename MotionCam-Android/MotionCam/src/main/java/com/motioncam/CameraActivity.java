@@ -91,7 +91,6 @@ public class CameraActivity extends AppCompatActivity implements
     private PostProcessSettings mPostProcessSettings;
     private AsyncNativeCameraOps mAsyncNativeCameraOps;
     private ObjectAnimator mShadowsAnimator;
-    private boolean mBurstCapture;
 
     private boolean mManualControlsEnabled;
     private boolean mManualControlsSet;
@@ -149,7 +148,6 @@ public class CameraActivity extends AppCompatActivity implements
         mBinding.focusLockPointFrame.setOnClickListener(v -> onFixedFocusCancelled());
         mBinding.exposureLockPointFrame.setOnClickListener(v -> onFixedExposureCancelled());
         mBinding.settingsBtn.setOnClickListener(v -> onSettingsClicked());
-        mBinding.burstModeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> mBurstCapture = isChecked);
 
         mBinding.shadowsSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -254,8 +252,6 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.whitePoint = 1.0f;
         mPostProcessSettings.blacks = 0.0f;
         mPostProcessSettings.jpegQuality = jpegQuality;
-
-        mBurstCapture = false;
     }
 
     @Override
@@ -273,8 +269,6 @@ public class CameraActivity extends AppCompatActivity implements
         mBinding.exposureLockPointFrame.setVisibility(View.INVISIBLE);
         mBinding.exposureSeekBar.setProgress(50);
         mBinding.shadowsSeekBar.setProgress(50);
-
-        mBurstCapture = mBinding.burstModeSwitch.isChecked();
 
         mFocusState = FocusState.AUTO;
 
@@ -376,7 +370,7 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void onCaptureClicked() {
-        if(mBurstCapture) {
+        if(mBinding.burstModeSwitch.isChecked()) {
             // Pass native camera handle
             Intent intent = new Intent(this, PostProcessActivity.class);
 

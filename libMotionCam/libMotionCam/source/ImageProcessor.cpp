@@ -18,6 +18,7 @@
 #include "fuse_image.h"
 #include "camera_preview2.h"
 #include "camera_preview3.h"
+#include "camera_preview4.h"
 
 #include "preview_landscape2.h"
 #include "preview_portrait2.h"
@@ -589,7 +590,7 @@ namespace motioncam {
                                        Halide::Runtime::Buffer<uint8_t>& inputBuffer,
                                        Halide::Runtime::Buffer<uint8_t>& outputBuffer)
     {
-//        Measure measure("cameraPreview()");
+        ///Measure measure("cameraPreview()");
         
         cv::Mat cameraToSrgb;
         cv::Vec3f cameraWhite;
@@ -610,8 +611,11 @@ namespace motioncam {
         cameraToSrgbBuffer.set_host_dirty();
 
         auto camera_preview = &camera_preview2;
+        
         if(downscaleFactor == 3)
             camera_preview = &camera_preview3;
+        else if(downscaleFactor == 4)
+            camera_preview = &camera_preview4;
         
         camera_preview(inputBuffer,
                        rawBuffer.rowStride,

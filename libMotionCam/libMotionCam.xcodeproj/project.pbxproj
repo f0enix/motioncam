@@ -20,6 +20,7 @@
 		455EE73F20556B550090DFAC /* ImageOps.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 455EE73D20556B550090DFAC /* ImageOps.cpp */; };
 		4571F8282330211500B5E5E8 /* libexiv2.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 4571F8272330211500B5E5E8 /* libexiv2.dylib */; };
 		4571F82A2330211900B5E5E8 /* libexiv2-xmp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4571F8292330211900B5E5E8 /* libexiv2-xmp.a */; };
+		4579766425AA59A700A26E5E /* camera_preview4.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4579766325AA59A700A26E5E /* camera_preview4.a */; };
 		457B8F462218401F004E4E7A /* dng_tone_curve.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 457B8EB42218401F004E4E7A /* dng_tone_curve.cpp */; };
 		457B8F472218401F004E4E7A /* dng_stream.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 457B8EB52218401F004E4E7A /* dng_stream.cpp */; };
 		457B8F482218401F004E4E7A /* dng_simple_image.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 457B8EBA2218401F004E4E7A /* dng_simple_image.cpp */; };
@@ -274,6 +275,8 @@
 		4571F8272330211500B5E5E8 /* libexiv2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libexiv2.dylib; path = ../../../../../usr/local/lib/libexiv2.dylib; sourceTree = "<group>"; };
 		4571F8292330211900B5E5E8 /* libexiv2-xmp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "libexiv2-xmp.a"; path = "../../../../../usr/local/lib/libexiv2-xmp.a"; sourceTree = "<group>"; };
 		4575F7CB242BAD820065032A /* libzstd.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libzstd.a; path = ../../../../../usr/local/Cellar/zstd/1.4.4/lib/libzstd.a; sourceTree = "<group>"; };
+		4579766225AA59A700A26E5E /* camera_preview4.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = camera_preview4.h; sourceTree = "<group>"; };
+		4579766325AA59A700A26E5E /* camera_preview4.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = camera_preview4.a; sourceTree = "<group>"; };
 		457B8EB42218401F004E4E7A /* dng_tone_curve.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = dng_tone_curve.cpp; sourceTree = "<group>"; };
 		457B8EB52218401F004E4E7A /* dng_stream.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = dng_stream.cpp; sourceTree = "<group>"; };
 		457B8EB62218401F004E4E7A /* dng_negative.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = dng_negative.h; sourceTree = "<group>"; };
@@ -775,6 +778,7 @@
 				45FC3E0A21F4FDA5007415B2 /* libopencv_video.dylib in Frameworks */,
 				45FC3E0821F4FBFB007415B2 /* libopencv_imgproc.dylib in Frameworks */,
 				45FC3E0921F4FBFD007415B2 /* libopencv_ximgproc.dylib in Frameworks */,
+				4579766425AA59A700A26E5E /* camera_preview4.a in Frameworks */,
 				45AD8087230C6AF400D6AA04 /* libopencv_optflow.dylib in Frameworks */,
 				45FC3E0621F4FBA8007415B2 /* libopencv_photo.dylib in Frameworks */,
 				4595245B251F7A40004C549E /* preview_reverse_portrait2.a in Frameworks */,
@@ -1037,6 +1041,8 @@
 				4595246D25227681004C549E /* camera_preview2.h */,
 				4595246E25227681004C549E /* camera_preview3.a */,
 				4595246F25227681004C549E /* camera_preview3.h */,
+				4579766325AA59A700A26E5E /* camera_preview4.a */,
+				4579766225AA59A700A26E5E /* camera_preview4.h */,
 				45E0587D2471BFAE00C05AE7 /* deinterleave_raw.a */,
 				45E058872471BFB000C05AE7 /* deinterleave_raw.h */,
 				45E0589D2471BFB200C05AE7 /* forward_transform.a */,
@@ -1533,7 +1539,7 @@
 			isa = PBXProject;
 			attributes = {
 				LastUpgradeCheck = 1200;
-				ORGANIZATIONNAME = "MotionCam";
+				ORGANIZATIONNAME = MotionCam;
 				TargetAttributes = {
 					45FA2E341FF7D56200BE34C3 = {
 						CreatedOnToolsVersion = 9.2;

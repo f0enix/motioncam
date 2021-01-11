@@ -102,6 +102,9 @@ function build_camera_preview() {
 	echo "[$ARCH] Building camera_preview_generator3"
 	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview3 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=6 downscaleFactor=3
 
+	echo "[$ARCH] Building camera_preview_generator4"
+	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview4 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=6 downscaleFactor=4
+
 	echo "[$ARCH] Building halide_runtime"
 	./tmp/camera_preview_generator -r halide_runtime -e static_library,h -o ../halide/${ARCH} target=${TARGET}
 }

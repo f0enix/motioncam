@@ -87,6 +87,13 @@ namespace motioncam {
         {
             LOGE("Invalid bitmap format format=%d, stride=%d, width=%d, height=%d, output.width=%d, output.height=%d",
                  bitmapInfo.format, bitmapInfo.stride, bitmapInfo.width, bitmapInfo.height, width, height);
+
+            // Reset bitmap
+            if(mBitmap)
+                env.getEnv()->DeleteGlobalRef(mBitmap);
+
+            mBitmap = nullptr;
+
             return;
         }
 
