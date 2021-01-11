@@ -8,10 +8,11 @@ You can install it from the [Play Store](https://play.google.com/store/apps/deta
 
 Dual exposure is similar to the feature found in the Google Camera. The two sliders control the exposure compensation and tonemapping.
 
-![output](https://user-images.githubusercontent.com/508688/104108822-d32b6600-52bf-11eb-8ebb-fb7966950462.gif)
+![GIF](https://user-images.githubusercontent.com/508688/104108822-d32b6600-52bf-11eb-8ebb-fb7966950462.gif)
 
 #### Zero shutter lag burst capture
 
+![GIF](https://user-images.githubusercontent.com/508688/104165122-dd00b680-53f0-11eb-95bf-edd1098910cc.gif)
 
 ## Overview
 
