@@ -2458,10 +2458,10 @@ Func PreviewGenerator::downscale(Func f, Func& downx, Expr factor) {
     Func in{"downscaleIn"}, downy{"downy"}, result{"downscaled"};
     RDom r(-factor/2, factor+1);
 
-    in(v_x, v_y, v_c) = cast<int32_t>(f(v_x, v_y, v_c));
+    in(v_x, v_y, v_c) = cast<float>(f(v_x, v_y, v_c));
 
-    downx(v_x, v_y, v_c) = fast_integer_divide(sum(in(v_x * factor + r.x, v_y, v_c)), cast<uint8_t>(factor + 1));
-    downy(v_x, v_y, v_c) = fast_integer_divide(sum(downx(v_x, v_y * factor + r.x, v_c)), cast<uint8_t>(factor + 1));
+    downx(v_x, v_y, v_c) = sum(in(v_x * factor + r.x, v_y, v_c)) / (factor + 1.0f);
+    downy(v_x, v_y, v_c) = sum(downx(v_x, v_y * factor + r.x, v_c)) / (factor + 1.0f);
     
     result(v_x, v_y, v_c) = cast<uint16_t>(downy(v_x, v_y, v_c));
 

@@ -66,7 +66,7 @@ public class CameraActivity extends AppCompatActivity implements
 
     private static final int PERMISSION_REQUEST_CODE = 1;
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
-    private static final float MAX_SHADOWS_VALUE = 20.0f;
+    private static final float MAX_SHADOWS_VALUE = 32.0f;
 
     private enum FocusState {
         AUTO,
@@ -101,6 +101,7 @@ public class CameraActivity extends AppCompatActivity implements
     private int mIso;
     private long mExposureTime;
     private int mNumMergeImages;
+    private long mShadowsChangedTimeMs;
 
     private final SeekBar.OnSeekBarChangeListener mManualControlsSeekBar = new SeekBar.OnSeekBarChangeListener() {
         @Override
@@ -903,6 +904,7 @@ public class CameraActivity extends AppCompatActivity implements
 
     private void onShadowsSeekBarChanged(int progress) {
         setShadowValue(progress / 100.0f * MAX_SHADOWS_VALUE);
+        mShadowsChangedTimeMs = System.currentTimeMillis();
     }
 
     private void setShadowValue(float value) {
@@ -924,6 +926,10 @@ public class CameraActivity extends AppCompatActivity implements
     private void setAutoExposureState(NativeCameraSessionBridge.CameraExposureState state) {
         // Update shadows based on new exposure
         if(state == NativeCameraSessionBridge.CameraExposureState.CONVERGED) {
+            // Don't auto estimate shadows if the user has changed the shadows slider recently
+            if(System.currentTimeMillis() - mShadowsChangedTimeMs < 5000)
+                return;
+
             mAsyncNativeCameraOps.estimateSettings(null, true, settings -> {
                 if(settings == null)
                     return;
