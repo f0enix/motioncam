@@ -1,6 +1,6 @@
 # About
 
-Motion Cam is a camera application for Android that replaces the entire camera pipeline. It consumes RAW images and uses computational photography to combine them to reduce noise.
+Motion Cam is a camera application for Android that replaces the entire camera pipeline. It consumes RAW images and uses computational photography to combine multiple images to reduce noise.
 
 You can install it from the [Play Store](https://play.google.com/store/apps/details?id=com.motioncam)
 
