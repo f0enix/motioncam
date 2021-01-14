@@ -453,7 +453,7 @@ public class CameraActivity extends AppCompatActivity implements
                         Intent intent = new Intent(this, ProcessorService.class);
 
                         intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath().getPath());
-                        intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, false);
+                        intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, true);
                         intent.putExtra(ProcessorService.RECEIVER_KEY, mProgressReceiver);
 
                         Objects.requireNonNull(startService(intent));
