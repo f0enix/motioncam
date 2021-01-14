@@ -15,9 +15,19 @@ public class NativeCameraBuffer implements Comparable<NativeCameraBuffer> {
             this.angle = angle;
         }
 
-        static ScreenOrientation FromInt(int screenOrientation) {
+        public static ScreenOrientation FromInt(int screenOrientation) {
             for(ScreenOrientation orientation : ScreenOrientation.values()) {
                 if(orientation.value == screenOrientation)
+                    return orientation;
+            }
+
+            // Default to landscape
+            return LANDSCAPE;
+        }
+
+        public static ScreenOrientation FromAngle(int angle) {
+            for(ScreenOrientation orientation : ScreenOrientation.values()) {
+                if(orientation.angle == angle)
                     return orientation;
             }
 

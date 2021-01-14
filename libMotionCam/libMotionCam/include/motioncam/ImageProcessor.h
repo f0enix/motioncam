@@ -43,6 +43,7 @@ namespace motioncam {
         static void cameraPreview(const RawImageBuffer& rawBuffer,
                            const RawCameraMetadata& cameraMetadata,
                            const int downscaleFactor,
+                           const bool flipped,
                            const float shadows,
                            const float contrast,
                            const float saturation,

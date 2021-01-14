@@ -334,6 +334,7 @@ namespace motioncam {
         // ACAMERA_SENSOR_ORIENTATION
         if(ACameraMetadata_getConstEntry(cameraChars.get(), ACAMERA_SENSOR_ORIENTATION, &entry) == ACAMERA_OK) {
             cameraDescription.sensorOrientation = entry.data.i32[0];
+            LOGD("Camera sensor orientation %d", entry.data.i32[0]);
         }
 
         // ACAMERA_TONEMAP_AVAILABLE_TONE_MAP_MODES
@@ -478,7 +479,7 @@ namespace motioncam {
 
         // Create image consumer if we have not done so
         if(!mImageConsumer || cameraId != mSelectedCameraId)
-            mImageConsumer = std::make_shared<RawImageConsumer>(cameraDesc->metadata, mMaxMemoryUsageBytes);
+            mImageConsumer = std::make_shared<RawImageConsumer>(cameraDesc, mMaxMemoryUsageBytes);
 
         // Create the camera session and open the camera
         mSelectedCameraId = cameraId;

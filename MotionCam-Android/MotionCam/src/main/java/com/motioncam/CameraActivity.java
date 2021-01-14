@@ -182,6 +182,52 @@ public class CameraActivity extends AppCompatActivity implements
             }
         });
 
+        // Preview settings
+        mBinding.contrastSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if(mPostProcessSettings != null) {
+                    mPostProcessSettings.contrast = progress / 100.0f;
+                    updatePreviewSettings();
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+
+        mBinding.colourSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if(mPostProcessSettings != null) {
+                    mPostProcessSettings.saturation = progress / 100.0f;
+                    updatePreviewSettings();
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+
+        // Buttons
+        mBinding.captureBtn.setOnClickListener(v -> onCaptureClicked());
+        mBinding.switchCameraBtn.setOnClickListener(v -> onSwitchCameraClicked());
+
+        ((SeekBar) findViewById(R.id.manualControlIsoSeekBar)).setOnSeekBarChangeListener(mManualControlsSeekBar);
+        ((SeekBar) findViewById(R.id.manualControlShutterSpeedSeekBar)).setOnSeekBarChangeListener(mManualControlsSeekBar);
+
+        ((Switch) findViewById(R.id.manualControlSwitch)).setOnCheckedChangeListener((buttonView, isChecked) -> onCameraManualControlEnabled(isChecked));
+
         mSensorEventManager = new SensorEventManager(this, this);
 
         requestPermissions();
@@ -537,47 +583,6 @@ public class CameraActivity extends AppCompatActivity implements
             findViewById(R.id.exposureCompFrame).setVisibility(View.GONE);
         }
 
-        // Preview settings
-        mBinding.contrastSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if(mPostProcessSettings != null) {
-                    mPostProcessSettings.contrast = progress / 100.0f;
-                    updatePreviewSettings();
-                }
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-            }
-        });
-
-        mBinding.colourSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if(mPostProcessSettings != null) {
-                    mPostProcessSettings.saturation = progress / 100.0f;
-                    updatePreviewSettings();
-                }
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-            }
-        });
-
-        // Buttons
-        mBinding.captureBtn.setOnClickListener(v -> onCaptureClicked());
-        mBinding.switchCameraBtn.setOnClickListener(v -> onSwitchCameraClicked());
-
         // Set up camera manual controls
         mCameraMetadata = mNativeCamera.getMetadata(mSelectedCamera);
 
@@ -585,16 +590,12 @@ public class CameraActivity extends AppCompatActivity implements
         mIsoValues = CameraManualControl.GetIsoValuesInRange(mCameraMetadata.isoMin, mCameraMetadata.isoMax);
 
         ((SeekBar) findViewById(R.id.manualControlIsoSeekBar)).setMax(mIsoValues.size() - 1);
-        ((SeekBar) findViewById(R.id.manualControlIsoSeekBar)).setOnSeekBarChangeListener(mManualControlsSeekBar);
 
         mExposureValues = CameraManualControl.GetExposureValuesInRange(
                 mCameraMetadata.exposureTimeMin,
                 Math.min(MAX_EXPOSURE_TIME.getExposureTime(), mCameraMetadata.exposureTimeMax));
 
         ((SeekBar) findViewById(R.id.manualControlShutterSpeedSeekBar)).setMax(mExposureValues.size() - 1);
-        ((SeekBar) findViewById(R.id.manualControlShutterSpeedSeekBar)).setOnSeekBarChangeListener(mManualControlsSeekBar);
-
-        ((Switch) findViewById(R.id.manualControlSwitch)).setOnCheckedChangeListener((buttonView, isChecked) -> onCameraManualControlEnabled(isChecked));
 
         if(mCameraInfos.size() < 2)
             mBinding.switchCameraBtn.setVisibility(View.GONE);
@@ -714,6 +715,11 @@ public class CameraActivity extends AppCompatActivity implements
 
         mNativeCamera.startCapture(mSelectedCamera, mSurface);
         mNativeCamera.enableRawPreview(this);
+
+        // Update orientation in case we've switched front/back cameras
+        NativeCameraBuffer.ScreenOrientation orientation = mSensorEventManager.getOrientation();
+        if(orientation != null)
+            onOrientationChanged(orientation);
     }
 
     @Override
@@ -882,7 +888,14 @@ public class CameraActivity extends AppCompatActivity implements
         Log.i(TAG, "Orientation is " + orientation);
 
         if(mNativeCamera != null) {
-            mNativeCamera.updateOrientation(orientation);
+            if(mSelectedCamera.isFrontFacing) {
+                if(orientation == NativeCameraBuffer.ScreenOrientation.PORTRAIT)
+                    mNativeCamera.updateOrientation(NativeCameraBuffer.ScreenOrientation.REVERSE_PORTRAIT);
+                else if(orientation == NativeCameraBuffer.ScreenOrientation.REVERSE_PORTRAIT)
+                    mNativeCamera.updateOrientation(NativeCameraBuffer.ScreenOrientation.PORTRAIT);
+            }
+            else
+                mNativeCamera.updateOrientation(orientation);
         }
 
         updateManualControlView(orientation);

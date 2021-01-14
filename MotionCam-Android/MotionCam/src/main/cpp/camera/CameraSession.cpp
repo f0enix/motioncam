@@ -239,9 +239,6 @@ namespace motioncam {
         mUserIso(100),
         mUserExposureTime(10000000)
     {
-        // TODO: Need a better way of handling sensor orientation
-        if(cameraDescription->lensFacing == ACAMERA_LENS_FACING_FRONT)
-            mScreenOrientation = ScreenOrientation::REVERSE_PORTRAIT;
     }
 
     CameraSession::~CameraSession() {
@@ -783,14 +780,6 @@ namespace motioncam {
     }
 
     void CameraSession::updateOrientation(ScreenOrientation orientation) {
-        // TODO: Need a better way of handling sensor orientation
-        if(mCameraDescription->lensFacing == ACAMERA_LENS_FACING_FRONT) {
-            if(orientation == ScreenOrientation::PORTRAIT)
-                orientation = ScreenOrientation::REVERSE_PORTRAIT;
-            else if(orientation == ScreenOrientation::REVERSE_PORTRAIT)
-                orientation = ScreenOrientation::PORTRAIT;
-        }
-
         mScreenOrientation = orientation;
     }
 

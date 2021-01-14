@@ -26,6 +26,7 @@ public:
     Input<int> stride{"stride"};
     Input<int> pixelFormat{"pixelFormat"};
     Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
+    Input<bool> flipped{"flipped", false};
 
     Input<int> width{"width"};
     Input<int> height{"height"};
@@ -488,6 +489,12 @@ void CameraPreviewGenerator::generate() {
 
     downscaled = downscale(demosaicInput, downscaledTemp);
 
+    Func flippedDownscaled;
+
+    flippedDownscaled(v_x, v_y, v_c) =
+        select(flipped, downscaled(width - v_x, v_y, v_c),
+                        downscaled(v_x, v_y, v_c));
+
     blackLevelFunc(v_c) = cast<float16_t>(
                             select( v_c == 0, blackLevel[0],
                                     v_c == 1, blackLevel[1],
@@ -504,7 +511,7 @@ void CameraPreviewGenerator::generate() {
     linearFunc.compute_root().unroll(v_c);
 
     linear(v_x, v_y, v_c) = cast<float16_t>(
-        (downscaled(v_x, v_y, v_c) - blackLevelFunc(v_c)) * shadingMapInput(v_x, v_y, v_c) * linearFunc(v_c));
+        (flippedDownscaled(v_x, v_y, v_c) - blackLevelFunc(v_c)) * shadingMapInput(v_x, v_y, v_c) * linearFunc(v_c));
 
     Func demosaiced;
 
@@ -602,7 +609,7 @@ void CameraPreviewGenerator::generate() {
         .compute_root()
         .reorder(v_c, v_x, v_y)
         .vectorize(v_c)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 4, 4);
+        .gpu_tile(v_x, v_y, v_xi, v_yi, 6, 6);
  
     yuvOutput
         .compute_root()

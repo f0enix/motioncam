@@ -1,5 +1,6 @@
 #include "RawImageConsumer.h"
 #include "RawPreviewListener.h"
+#include "CameraDescription.h"
 #include "Logger.h"
 #include "ClHelper.h"
 #include "NativeClBuffer.h"
@@ -21,8 +22,7 @@
 #include <camera/NdkCameraMetadata.h>
 
 namespace motioncam {
-    static const int COPY_THREADS           = 1;
-    static const int BUFFER_FREQUENCY_MS    = 2000;
+    static const int COPY_THREADS = 1; // More than one copy thread breaks RAW preview
 
     void VERIFY_RESULT(int32_t errCode, const std::string& errString)
     {
@@ -32,7 +32,7 @@ namespace motioncam {
 
     //
 
-    RawImageConsumer::RawImageConsumer(RawCameraMetadata metadata, const size_t maxMemoryUsageBytes) :
+    RawImageConsumer::RawImageConsumer(std::shared_ptr<CameraDescription> cameraDescription, const size_t maxMemoryUsageBytes) :
         mMaximumMemoryUsageBytes(maxMemoryUsageBytes),
         mBufferManager(new RawBufferManager()),
         mRunning(false),
@@ -42,7 +42,7 @@ namespace motioncam {
         mSaturation(1.0f),
         mBlacks(0.0f),
         mWhitePoint(1.0f),
-        mCameraMetadata(std::move(metadata))
+        mCameraDesc(cameraDescription)
     {
     }
 
@@ -228,7 +228,7 @@ namespace motioncam {
                 ++filenameIdx;
             }
 
-            RawContainer rawContainer(mCameraMetadata, settings, referenceTimestamp, writeDNG, frames, frameBuffers);
+            RawContainer rawContainer(mCameraDesc->metadata, settings, referenceTimestamp, writeDNG, frames, frameBuffers);
 
             rawContainer.saveContainer(outputPath);
         }
@@ -509,8 +509,9 @@ namespace motioncam {
 
             motioncam::ImageProcessor::cameraPreview(
                     *buffer,
-                    mCameraMetadata,
+                    mCameraDesc->metadata,
                     downscaleFactor,
+                    mCameraDesc->lensFacing == ACAMERA_LENS_FACING_FRONT,
                     mShadows,
                     mContrast,
                     mSaturation,

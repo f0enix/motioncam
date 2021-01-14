@@ -21,13 +21,14 @@ namespace motioncam {
     class RawBufferManager;
     class RawPreviewListener;
 
+    struct CameraDescription;
     struct RawImageMetadata;
     struct RawImageBuffer;
     struct PostProcessSettings;
 
     class RawImageConsumer {
     public:
-        RawImageConsumer(RawCameraMetadata  metadata, const size_t maxMemoryUsageBytes);
+        RawImageConsumer(std::shared_ptr<CameraDescription> cameraDescription, const size_t maxMemoryUsageBytes);
         ~RawImageConsumer();
 
         void start();
@@ -78,7 +79,7 @@ namespace motioncam {
         std::atomic<float> mBlacks;
         std::atomic<float> mWhitePoint;
 
-        RawCameraMetadata mCameraMetadata;
+        std::shared_ptr<CameraDescription> mCameraDesc;
 
         std::mutex mBufferMutex;
 
