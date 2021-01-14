@@ -609,7 +609,7 @@ void CameraPreviewGenerator::generate() {
         .compute_root()
         .reorder(v_c, v_x, v_y)
         .vectorize(v_c)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 6, 6);
+        .gpu_tile(v_x, v_y, v_xi, v_yi, 4, 4);
  
     yuvOutput
         .compute_root()
