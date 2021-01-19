@@ -37,6 +37,7 @@ namespace motioncam {
         ACTION_SET_EXPOSURE_COMP_VALUE,
         ACTION_SET_AUTO_FOCUS,
         ACTION_SET_FOCUS_POINT,
+        ACTION_CAPTURE_HDR,
 
         EVENT_CAMERA_ERROR,
         EVENT_CAMERA_DISCONNECTED,
@@ -327,6 +328,18 @@ namespace motioncam {
         pushEvent(EventAction::ACTION_SET_AUTO_FOCUS);
     }
 
+    void CameraSession::captureHdr(int numImages, int baseIso, int64_t baseExposure, int hdrIso, int64_t hdrExposure) {
+        json11::Json::object data = {
+                { "numImages", numImages },
+                { "baseIso", baseIso },
+                { "baseExposure", std::to_string(baseExposure) },
+                { "hdrIso", hdrIso },
+                { "hdrExposure", std::to_string(hdrExposure) }
+        };
+
+        pushEvent(EventAction::ACTION_CAPTURE_HDR, data);
+    }
+
     void CameraSession::setupPreviewCaptureOutput(CameraCaptureSessionContext& state) {
         ACaptureSessionOutput* sessionOutput = nullptr;
         ACameraOutputTarget* outputTarget = nullptr;
@@ -404,10 +417,10 @@ namespace motioncam {
     ACaptureRequest* CameraSession::createCaptureRequest() {
         ACaptureRequest* captureRequest = nullptr;
 
-        if(ACameraDevice_createCaptureRequest(mSessionContext->activeCamera.get(), TEMPLATE_ZERO_SHUTTER_LAG, &captureRequest) != ACAMERA_OK)
+        if(ACameraDevice_createCaptureRequest(mSessionContext->activeCamera.get(), TEMPLATE_PREVIEW, &captureRequest) != ACAMERA_OK)
             throw CameraSessionException("Failed to create capture request");
 
-        const uint8_t captureIntent         = ACAMERA_CONTROL_CAPTURE_INTENT_ZERO_SHUTTER_LAG;
+        const uint8_t captureIntent         = ACAMERA_CONTROL_CAPTURE_INTENT_PREVIEW;
         const uint8_t controlMode           = ACAMERA_CONTROL_MODE_AUTO;
         const uint8_t tonemapMode           = ACAMERA_TONEMAP_MODE_CONTRAST_CURVE;
         const uint8_t shadingMode           = ACAMERA_SHADING_MODE_HIGH_QUALITY;
@@ -424,17 +437,17 @@ namespace motioncam {
         ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AE_ANTIBANDING_MODE, 1, &antiBandingMode);
         ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_NOISE_REDUCTION_MODE, 1, &noiseReduction);
 
-        // Set linear contrast curve if supported
-        if(std::find(mCameraDescription->tonemapModes.begin(), mCameraDescription->tonemapModes.end(), ACAMERA_TONEMAP_MODE_CONTRAST_CURVE) != mCameraDescription->tonemapModes.end()) {
-            float gamma[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
-
-            ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_TONEMAP_MODE, 1, &tonemapMode);
-
-            ACaptureRequest_setEntry_float(captureRequest, ACAMERA_TONEMAP_CURVE_RED, 4, &gamma[0]);
-            ACaptureRequest_setEntry_float(captureRequest, ACAMERA_TONEMAP_CURVE_GREEN, 4, &gamma[0]);
-            ACaptureRequest_setEntry_float(captureRequest, ACAMERA_TONEMAP_CURVE_BLUE, 4, &gamma[0]);
-        }
-
+//        // Set linear contrast curve if supported
+//        if(std::find(mCameraDescription->tonemapModes.begin(), mCameraDescription->tonemapModes.end(), ACAMERA_TONEMAP_MODE_CONTRAST_CURVE) != mCameraDescription->tonemapModes.end()) {
+//            float gamma[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
+//
+//            ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_TONEMAP_MODE, 1, &tonemapMode);
+//
+//            ACaptureRequest_setEntry_float(captureRequest, ACAMERA_TONEMAP_CURVE_RED, 4, &gamma[0]);
+//            ACaptureRequest_setEntry_float(captureRequest, ACAMERA_TONEMAP_CURVE_GREEN, 4, &gamma[0]);
+//            ACaptureRequest_setEntry_float(captureRequest, ACAMERA_TONEMAP_CURVE_BLUE, 4, &gamma[0]);
+//        }
+//
         // Enable OIS
         uint8_t omode = ACAMERA_LENS_OPTICAL_STABILIZATION_MODE_ON;
 
@@ -687,7 +700,7 @@ namespace motioncam {
 
         int32_t afRegion[5] = { px - w / 2, py - h / 2,
                                 px + w / 2, py + h / 2,
-                                1000 };
+                                500 };
 
         afRegion[0] = std::max(mCameraDescription->sensorSize[0], afRegion[0]);
         afRegion[1] = std::max(mCameraDescription->sensorSize[1], afRegion[1]);
@@ -763,6 +776,21 @@ namespace motioncam {
         {
             throw CameraSessionException("Failed to cancel auto focus");
         }
+    }
+
+    void CameraSession::doCaptureHdr(int numImages, int baseIso, int64_t baseExposure, int hdrIso, int64_t hdrExposure) {
+        uint8_t aeMode  = ACAMERA_CONTROL_AE_MODE_OFF;
+
+        ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
+        ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_SENSITIVITY, 1, &baseIso);
+        ACaptureRequest_setEntry_i64(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_EXPOSURE_TIME, 1, &baseExposure);
+
+        ACameraCaptureSession_capture(
+            mSessionContext->captureSession.get(),
+            &mSessionContext->captureCallbacks[CaptureEvent::HDR_CAPTURE]->callbacks,
+            1,
+            &mSessionContext->repeatCaptureRequest->captureRequest,
+            &mSessionContext->captureCallbacks[CaptureEvent::HDR_CAPTURE]->sequenceId);
     }
 
     void CameraSession::doSetExposureCompensation(float value) {
@@ -1108,6 +1136,16 @@ namespace motioncam {
             case EventAction::ACTION_SET_AUTO_FOCUS: {
                 doSetAutoFocus();
                 break;
+            }
+
+            case EventAction::ACTION_CAPTURE_HDR: {
+                int numImages = eventLoopData->data["numImages"].int_value();
+                int baseIso = eventLoopData->data["baseIso"].int_value();
+                int64_t baseExposure = std::stol(eventLoopData->data["baseExposure"].string_value());
+                int hdrIso = eventLoopData->data["hdrIso"].int_value();
+                int64_t hdrExposure = std::stol(eventLoopData->data["hdrExposure"].string_value());
+
+                doCaptureHdr(numImages, baseIso, baseExposure, hdrIso, hdrExposure);
             }
 
             case EventAction::ACTION_SET_FOCUS_POINT: {

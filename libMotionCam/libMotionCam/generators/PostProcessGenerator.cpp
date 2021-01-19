@@ -1742,6 +1742,10 @@ public:
     Input<Buffer<uint16_t>> in2{"in2", 2 };
     Input<Buffer<uint16_t>> in3{"in3", 2 };
 
+    Input<Buffer<uint16_t>> hdrInput{"hdrInput", 3 };
+    Input<Buffer<uint8_t>> hdrMask{"hdrMask", 2 };
+    Input<float> hdrScale{"hdrScale"};
+
     Input<Buffer<float>> inshadingMap0{"inshadingMap0", 2 };
     Input<Buffer<float>> inshadingMap1{"inshadingMap1", 2 };
     Input<Buffer<float>> inshadingMap2{"inshadingMap2", 2 };
@@ -1782,6 +1786,7 @@ public:
     Func bayerInput{"bayerInput"};
     Func adjustExposure{"adjustExposure"};
     Func colorCorrected{"colorCorrected"};
+    Func hdrMerged{"hdrMerged"};
     Func colorCorrectedYuv{"colorCorrectedYuv"};
     Func Yfiltered{"Yfiltered"}, Udownsampled{"Udownsampled"}, Vdownsampled{"Vdownsampled"};
     Func uvDownsampled{"uvDownsampled"};
@@ -1969,8 +1974,16 @@ void PostProcessGenerator::generate()
 
     transform(colorCorrected, colorCorrectInput, cameraToSrgb);
 
+    // Blend in highlights
+    Func hdrMask32, hdrInput32;
+
+    hdrMask32(v_x, v_y) = BoundaryConditions::repeat_edge(hdrMask)(v_x, v_y) / 255.0f;
+    hdrInput32(v_x, v_y, v_c) = BoundaryConditions::repeat_edge(hdrInput)(v_x, v_y, v_c) / 65535.0f;
+
+    hdrMerged(v_x, v_y, v_c) = (1.0f - hdrMask32(v_x, v_y))*(hdrScale * colorCorrected(v_x, v_y, v_c)) + (hdrMask32(v_x, v_y)*hdrInput32(v_x, v_y, v_c));
+
     // Adjust exposure
-    adjustExposure(v_x, v_y, v_c) = clamp(exposureParam * colorCorrected(v_x, v_y, v_c), 0.0f, 1.0f);
+    adjustExposure(v_x, v_y, v_c) = clamp(exposureParam * hdrMerged(v_x, v_y, v_c), 0.0f, 1.0f);
 
     // Move to YUV space
     Func yuvResult("yuvResult");
@@ -2485,10 +2498,12 @@ void PreviewGenerator::generate() {
     Expr w = width;
     Expr h = height;
     
-    deinterleaved(v_x, v_y, v_c) =
-        mux(v_c, { in[0](v_x, v_y), in[1](v_x, v_y), in[2](v_x, v_y), in[3](v_x, v_y) });
-
-    downscaled = downscale(deinterleaved, downscaledTemp, downscaleFactor);
+    downscaled(v_x, v_y, v_c) =
+        mux(v_c,
+            {   in[0](v_x*downscaleFactor, v_y*downscaleFactor),
+                in[1](v_x*downscaleFactor, v_y*downscaleFactor),
+                in[2](v_x*downscaleFactor, v_y*downscaleFactor),
+                in[3](v_x*downscaleFactor, v_y*downscaleFactor) });
 
     // Shading map
     linearScale(shadingMap[0], inshadingMap0, inshadingMap0.width(), inshadingMap0.height(), w, h);
@@ -2702,13 +2717,6 @@ void PreviewGenerator::schedule_for_cpu() {
             .store_at(downscaledInput, v_yo)
             .vectorize(v_x, vector_size_u16);
     }
-
-    downscaledTemp
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .compute_at(downscaledInput, v_yi)
-        .store_at(downscaledInput, v_yo)
-        .vectorize(v_x, vector_size_u16);
 
     downscaled
         .reorder(v_c, v_x, v_y)
@@ -2982,9 +2990,241 @@ void GenerateEdgesGenerator::generate() {
         .parallel(v_yo);
 }
 
+//////////////
+
+class HdrMaskGenerator : public Halide::Generator<HdrMaskGenerator> {
+public:
+    Input<Buffer<uint8_t>> input0{"input0", 2};
+    Input<Buffer<uint8_t>> input1{"input1", 2};    
+
+    Input<float> scaleInput0{"scaleInput0"};
+    Input<float> scaleInput1{"scaleInput1"};
+    Input<float> c{"c"};
+
+    Output<Buffer<uint8_t>> outputGhost{"outputGhost", 2};
+    Output<Buffer<uint8_t>> outputMask{"outputMask", 2};
+
+    void generate();
+
+private:
+    Var v_x{"x"};
+    Var v_y{"y"};
+    Var v_yo{"yo"};
+    Var v_yi{"yi"};
+};
+
+void HdrMaskGenerator::generate() {
+    Func inputf0, inputf1;
+    Func mask0, mask1;
+    Func map0, map1;
+    Func ghostMap;
+
+    inputf0(v_x, v_y) = max(0.0f, min(1.0f, cast<float>(BoundaryConditions::repeat_edge(input0)(v_x, v_y)) / 255.0f * scaleInput0));
+    inputf1(v_x, v_y) = max(0.0f, min(1.0f, cast<float>(BoundaryConditions::repeat_edge(input1)(v_x, v_y)) / 255.0f * scaleInput1));
+
+    mask0(v_x, v_y) = exp(-c * (inputf0(v_x, v_y) - 1.0f) * (inputf0(v_x, v_y) - 1.0f));
+    mask1(v_x, v_y) = exp(-c * (inputf1(v_x, v_y) - 1.0f) * (inputf1(v_x, v_y) - 1.0f));
+
+    map0(v_x, v_y) = cast<uint8_t>(select(mask0(v_x, v_y) > 0.5f, 1, 0));
+    map1(v_x, v_y) = cast<uint8_t>(select(mask1(v_x, v_y) > 0.5f, 1, 0));
+
+    ghostMap(v_x, v_y) = map0(v_x, v_y) & (map0(v_x, v_y) ^ map1(v_x, v_y));
+
+    outputGhost(v_x, v_y) =
+        ghostMap(v_x - 1, v_y - 1)  & ghostMap(v_x, v_y - 1)    & ghostMap(v_x + 1, v_y - 1) &
+        ghostMap(v_x - 1, v_y)      & ghostMap(v_x, v_y)        & ghostMap(v_x + 1, v_y)     &
+        ghostMap(v_x - 1, v_y + 1)  & ghostMap(v_x, v_y + 1)    & ghostMap(v_x + 1, v_y + 1);
+
+    outputMask(v_x, v_y) = cast<uint8_t>(clamp(mask0(v_x, v_y) * mask1(v_x, v_y) * 255.0f + 0.5f, 0, 255));
+
+    outputGhost
+        .compute_root()
+        .reorder(v_x, v_y)
+        .split(v_y, v_yo, v_yi, 16)
+        .parallel(v_yo)
+        .vectorize(v_x, 8);
+
+    outputMask
+        .compute_root()
+        .reorder(v_x, v_y)
+        .split(v_y, v_yo, v_yi, 16)
+        .parallel(v_yo)
+        .vectorize(v_x, 8);
+}
+
+//////////////
+
+class HdrInputGenerator : public Halide::Generator<HdrInputGenerator>, public PostProcessBase {
+public:
+    Input<Buffer<uint16_t>> in0{"in0", 2 };
+    Input<Buffer<uint16_t>> in1{"in1", 2 };
+    Input<Buffer<uint16_t>> in2{"in2", 2 };
+    Input<Buffer<uint16_t>> in3{"in3", 2 };
+
+    Input<Buffer<float>> inshadingMap0{"inshadingMap0", 2 };
+    Input<Buffer<float>> inshadingMap1{"inshadingMap1", 2 };
+    Input<Buffer<float>> inshadingMap2{"inshadingMap2", 2 };
+    Input<Buffer<float>> inshadingMap3{"inshadingMap3", 2 };
+    
+    Input<float[3]> asShotVector{"asShotVector"};
+    Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
+
+    Input<int> sensorArrangement{"sensorArrangement"};
+    
+    Input<int16_t[4]> blackLevel{"blackLevel"};
+    Input<int16_t> whiteLevel{"whiteLevel"};
+
+    Output<Buffer<uint16_t>> output{"output", 3};
+
+    void generate();
+
+private:
+    void schedule_for_cpu();
+
+    std::unique_ptr<Demosaic> demosaic;
+    Func shadingMap[4];
+    Func shaded{"shaded"};
+    Func colorCorrected{"colorCorrected"};
+    Func combinedInput{"combinedInput"};
+    Func mirroredInput{"mirroredInput"};
+    Func bayerInput{"bayerInput"}; 
+};
+
+void HdrInputGenerator::generate() {
+    Func in[4];
+
+    in[0] = BoundaryConditions::repeat_edge(in0);
+    in[1] = BoundaryConditions::repeat_edge(in1);
+    in[2] = BoundaryConditions::repeat_edge(in2);
+    in[3] = BoundaryConditions::repeat_edge(in3);
+
+    // Shading map
+    linearScale(shadingMap[0], inshadingMap0, inshadingMap0.width(), inshadingMap0.height(), in0.width(), in0.height());
+    linearScale(shadingMap[1], inshadingMap1, inshadingMap1.width(), inshadingMap1.height(), in1.width(), in1.height());
+    linearScale(shadingMap[2], inshadingMap2, inshadingMap2.width(), inshadingMap2.height(), in2.width(), in2.height());
+    linearScale(shadingMap[3], inshadingMap3, inshadingMap3.width(), inshadingMap3.height(), in3.width(), in3.height());
+
+    Func shadingMapArranged{"shadingMapArranged"};
+
+    rearrange(shadingMapArranged, shadingMap[0], shadingMap[1], shadingMap[2], shadingMap[3], sensorArrangement);
+
+    shaded(v_x, v_y, v_c) = 
+        select( v_c == 0, cast<int16_t>( clamp( (in[0](v_x, v_y) - blackLevel[0]) / (cast<float>(whiteLevel - blackLevel[0])) * shadingMapArranged(v_x, v_y, 0) * 16384.0f, 0, 16384.0f) ),
+                v_c == 1, cast<int16_t>( clamp( (in[1](v_x, v_y) - blackLevel[1]) / (cast<float>(whiteLevel - blackLevel[1])) * shadingMapArranged(v_x, v_y, 1) * 16384.0f, 0, 16384.0f) ),
+                v_c == 2, cast<int16_t>( clamp( (in[2](v_x, v_y) - blackLevel[2]) / (cast<float>(whiteLevel - blackLevel[2])) * shadingMapArranged(v_x, v_y, 2) * 16384.0f, 0, 16384.0f) ),
+                          cast<int16_t>( clamp( (in[3](v_x, v_y) - blackLevel[3]) / (cast<float>(whiteLevel - blackLevel[3])) * shadingMapArranged(v_x, v_y, 3) * 16384.0f, 0, 16384.0f) ) );
+
+    // Demosaic image
+    combinedInput(v_x, v_y) =
+        select(v_y % 2 == 0,
+               select(v_x % 2 == 0, shaded(v_x/2, v_y/2, 0), shaded(v_x/2, v_y/2, 1)),
+               select(v_x % 2 == 0, shaded(v_x/2, v_y/2, 2), shaded(v_x/2, v_y/2, 3)));
+
+    mirroredInput = BoundaryConditions::mirror_image(combinedInput, { {0, in0.width()*2}, {0, in0.height()*2} } );
+
+    bayerInput(v_x, v_y) =
+        select(sensorArrangement == static_cast<int>(SensorArrangement::RGGB),
+                mirroredInput(v_x, v_y),
+
+            sensorArrangement == static_cast<int>(SensorArrangement::GRBG),
+                mirroredInput(v_x - 1, v_y),
+
+            sensorArrangement == static_cast<int>(SensorArrangement::GBRG),
+                mirroredInput(v_x, v_y - 1),
+
+                // BGGR
+                mirroredInput(v_x - 1, v_y - 1));
+
+    // Demosaic image
+    demosaic = create<Demosaic>();
+    demosaic->apply(bayerInput, in0.width(), in0.height(), sensorArrangement);
+    
+    // Transform to sRGB space
+    Func linear("linear"), colorCorrectInput("colorCorrectInput");
+
+    linear(v_x, v_y, v_c) = (demosaic->output(v_x, v_y, v_c) / 16384.0f);
+
+    colorCorrectInput(v_x, v_y, v_c) =
+        select( v_c == 0, clamp( linear(v_x, v_y, 0), 0.0f, asShotVector[0] ),
+                v_c == 1, clamp( linear(v_x, v_y, 1), 0.0f, asShotVector[1] ),
+                          clamp( linear(v_x, v_y, 2), 0.0f, asShotVector[2] ));
+
+    transform(colorCorrected, colorCorrectInput, cameraToSrgb);
+
+    output(v_x, v_y, v_c) = cast<uint16_t>(clamp(colorCorrected(v_x, v_y, v_c) * 65535 + 0.5f, 0, 65535));
+
+    if(!auto_schedule)
+        schedule_for_cpu();
+}
+
+void HdrInputGenerator::schedule_for_cpu() { 
+    int vector_size_u16 = natural_vector_size<uint16_t>();
+
+    for(int c = 0; c < 4; c++) {
+        shadingMap[c]
+            .reorder(v_x, v_y)
+            .compute_at(bayerInput, v_yi)
+            .store_at(bayerInput, v_yo)
+            .vectorize(v_x, vector_size_u16);
+    }
+
+    shaded
+        .reorder(v_c, v_x, v_y)
+        .unroll(v_c)
+        .compute_at(bayerInput, v_yi)
+        .store_at(bayerInput, v_yo)
+        .vectorize(v_x, vector_size_u16);
+
+    combinedInput
+        .compute_at(bayerInput, v_yi)
+        .store_at(bayerInput, v_yo)
+        .vectorize(v_x, vector_size_u16);
+
+    bayerInput
+        .compute_root()
+        .reorder(v_x, v_y)
+        .split(v_y, v_yo, v_yi, 64)
+        .parallel(v_yo)
+        .vectorize(v_x, vector_size_u16);
+
+    demosaic->green
+        .compute_root()
+        .parallel(v_y, 32)
+        .vectorize(v_x, vector_size_u16);
+
+    demosaic->redIntermediate
+        .compute_at(output, tile_idx)
+        .vectorize(v_x, vector_size_u16);
+
+    demosaic->red
+        .compute_at(output, tile_idx)
+        .vectorize(v_x, vector_size_u16);
+
+    demosaic->blueIntermediate
+        .compute_at(output, tile_idx)
+        .vectorize(v_x, vector_size_u16);
+
+    demosaic->blue
+        .compute_at(output, tile_idx)
+        .vectorize(v_x, vector_size_u16);
+     
+    output
+        .compute_root()
+        .reorder(v_c, v_x, v_y)
+        .tile(v_x, v_y, v_xo, v_yo, v_xi, v_yi, 64, 64)
+        .fuse(v_xo, v_yo, tile_idx)
+        .parallel(tile_idx)
+        .bound(v_c, 0, 3)
+        .unroll(v_c)
+        .vectorize(v_xi, 8);
+}
+
+//////////////
+
 HALIDE_REGISTER_GENERATOR(GenerateEdgesGenerator, generate_edges_generator)
 HALIDE_REGISTER_GENERATOR(MeasureImageGenerator, measure_image_generator)
 HALIDE_REGISTER_GENERATOR(DeinterleaveRawGenerator, deinterleave_raw_generator)
 HALIDE_REGISTER_GENERATOR(PostProcessGenerator, postprocess_generator)
 HALIDE_REGISTER_GENERATOR(PreviewGenerator, preview_generator)
-
+HALIDE_REGISTER_GENERATOR(HdrMaskGenerator, hdr_mask_generator)
+HALIDE_REGISTER_GENERATOR(HdrInputGenerator, hdr_input_generator)

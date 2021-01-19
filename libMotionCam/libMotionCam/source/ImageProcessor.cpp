@@ -20,6 +20,9 @@
 #include "camera_preview3.h"
 #include "camera_preview4.h"
 
+#include "hdr_input.h"
+#include "hdr_mask.h"
+
 #include "preview_landscape2.h"
 #include "preview_portrait2.h"
 #include "preview_reverse_portrait2.h"
@@ -155,11 +158,19 @@ extern "C" int extern_min_max(halide_buffer_t *in, int32_t width, int32_t height
 namespace motioncam {
     const int DENOISE_LEVELS    = 6;
     const int EXPANDED_RANGE    = 16384;
+    const float MAX_HDR_ERROR   = 0.03f;
 
     struct RawData {
         Halide::Runtime::Buffer<uint16_t> rawBuffer;
         Halide::Runtime::Buffer<uint8_t> previewBuffer;
         RawImageMetadata metadata;
+    };
+
+    struct HdrMetadata {
+        float exposureScale;
+        float error;
+        Halide::Runtime::Buffer<uint16_t> hdrInput;
+        Halide::Runtime::Buffer<uint8_t> mask;
     };
 
     template<typename T>
@@ -213,6 +224,7 @@ namespace motioncam {
     }
 
     cv::Mat ImageProcessor::postProcess(std::vector<Halide::Runtime::Buffer<uint16_t>>& inputBuffers,
+                                        const shared_ptr<HdrMetadata>& hdrMetadata,
                                         const int offsetX,
                                         const int offsetY ,
                                         const RawImageMetadata& metadata,
@@ -257,10 +269,38 @@ namespace motioncam {
 
         cameraToSrgbBuffer.set_host_dirty();
         
+        Halide::Runtime::Buffer<uint16_t> hdrInput;
+        Halide::Runtime::Buffer<uint8_t> hdrMask;
+        float hdrScale = 1.0f;
+        
+        if(hdrMetadata && hdrMetadata->error < MAX_HDR_ERROR) {
+            hdrInput = hdrMetadata->hdrInput;
+            hdrMask = hdrMetadata->mask;
+            hdrScale = hdrMetadata->exposureScale;
+            
+            hdrMask.translate(0, offsetX);
+            hdrMask.translate(1, offsetY);
+        }
+        else {
+            // Don't apply underexposed image when error is too high
+            if(hdrMetadata)
+                logger::log("Not using HDR image, error too high (" + std::to_string(hdrMetadata->error) + ")");
+            
+            cv::Mat blankMask(1, 1, CV_8U, cv::Scalar(0));
+            cv::Mat blankInput(1, 1, CV_16UC3, cv::Scalar(0));
+            
+            hdrMask = ToHalideBuffer<uint8_t>(blankMask);
+            hdrInput = Halide::Runtime::Buffer<uint16_t>((uint16_t*) blankInput.data, blankInput.cols, blankInput.rows, 3);
+            hdrScale = hdrMetadata == nullptr ? 1.0f : hdrMetadata->exposureScale;
+        }
+        
         postprocess(inputBuffers[0],
                     inputBuffers[1],
                     inputBuffers[2],
                     inputBuffers[3],
+                    hdrInput,
+                    hdrMask,
+                    hdrScale,
                     shadingMapBuffer[0],
                     shadingMapBuffer[1],
                     shadingMapBuffer[2],
@@ -988,7 +1028,7 @@ namespace motioncam {
         return histogram.clone();
     }
 
-    __unused float ImageProcessor::matchExposures(const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const RawImageBuffer& toMatch)
+    float ImageProcessor::matchExposures(const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const RawImageBuffer& toMatch)
     {
         auto refHistogram = calcHistogram(cameraMetadata, reference);
         auto toMatchHistogram = calcHistogram(cameraMetadata, toMatch);
@@ -1129,9 +1169,11 @@ namespace motioncam {
 #endif
 
         cv::Mat outputImage;
+        shared_ptr<HdrMetadata> hdrMetadata;
         
         outputImage = postProcess(
             denoiseOutput,
+            hdrMetadata,
             offsetX,
             offsetY,
             referenceRawBuffer->metadata,
@@ -1754,4 +1796,123 @@ namespace motioncam {
         dngWriter->WriteDNG(host, dngStream, *negative.Get(), nullptr, ccUncompressed);
     }
 #endif // DNG_SUPPORT
+
+    std::shared_ptr<HdrMetadata> ImageProcessor::prepareHdr(const RawCameraMetadata& cameraMetadata,
+                                                            const PostProcessSettings& settings,
+                                                            const RawImageBuffer& reference,
+                                                            const RawImageBuffer& underexposed)
+    {
+        Measure measure("prepareHdr()");
+        
+        // Match exposures
+        float exposureScale = matchExposures(cameraMetadata, reference, underexposed);
+        
+        //
+        // Register images
+        //
+        
+        const bool extendEdges = true;
+        
+        auto refImage = loadRawImage(reference, cameraMetadata, extendEdges, 1.0f);
+        auto underexposedImage = loadRawImage(underexposed, cameraMetadata, extendEdges, exposureScale);
+        
+        auto warpMatrix = registerImage(refImage->previewBuffer, underexposedImage->previewBuffer, 1);
+        
+        //
+        // Create mask
+        //
+
+        cv::Mat underExposedExposure(underexposedImage->previewBuffer.height(), underexposedImage->previewBuffer.width(), CV_8U, underexposedImage->previewBuffer.data());
+        cv::Mat alignedExposure;
+
+        cv::warpPerspective(underExposedExposure, alignedExposure, warpMatrix, underExposedExposure.size(), cv::INTER_LINEAR, cv::BORDER_REPLICATE);
+                
+        Halide::Runtime::Buffer<uint8_t> alignedBuffer = ToHalideBuffer<uint8_t>(alignedExposure);
+        Halide::Runtime::Buffer<uint8_t> ghostMapBuffer(alignedBuffer.width(), alignedBuffer.height());
+        Halide::Runtime::Buffer<uint8_t> maskBuffer(alignedBuffer.width(), alignedBuffer.height());
+        
+        hdr_mask(refImage->previewBuffer, alignedBuffer, 1.0f, 1.0f, 4.0f, ghostMapBuffer, maskBuffer);
+        
+        // Calculate error
+        cv::Mat ghostMap(ghostMapBuffer.height(), ghostMapBuffer.width(), CV_8U, ghostMapBuffer.data());
+        float error = cv::mean(ghostMap)[0] * 100;
+                
+        //
+        // Create input image for post processing
+        //
+        
+        cv::Mat cameraToSrgb;
+        cv::Vec3f cameraWhite;
+
+        if(settings.temperature > 0 || settings.tint > 0) {
+            Temperature t(settings.temperature, settings.tint);
+
+            createSrgbMatrix(cameraMetadata, t, cameraWhite, cameraToSrgb);
+        }
+        else {
+            createSrgbMatrix(cameraMetadata, underexposedImage->metadata.asShot, cameraWhite, cameraToSrgb);
+        }
+
+        Halide::Runtime::Buffer<float> shadingMapBuffer[4];
+        Halide::Runtime::Buffer<float> cameraToSrgbBuffer = ToHalideBuffer<float>(cameraToSrgb);
+
+        for(int i = 0; i < 4; i++) {
+            shadingMapBuffer[i] = ToHalideBuffer<float>(underexposedImage->metadata.lensShadingMap[i]);
+        }
+        
+        // Warp the underexposed image
+        cv::Mat alignedChannels[4];
+        Halide::Runtime::Buffer<uint16_t> outputBuffer;
+        Halide::Runtime::Buffer<uint16_t> inputBuffers[4];
+
+        for(int c = 0; c < 4; c++) {
+            int offset = c * underexposedImage->rawBuffer.stride(2);
+            cv::Mat channel(underexposedImage->rawBuffer.height(), underexposedImage->rawBuffer.width(), CV_16U, underexposedImage->rawBuffer.data() + offset);
+
+            cv::warpPerspective(channel, alignedChannels[c], warpMatrix, channel.size(), cv::INTER_LINEAR, cv::BORDER_REPLICATE);
+            
+            inputBuffers[c] = ToHalideBuffer<uint16_t>(alignedChannels[c]);
+        }
+        
+        cv::Mat mask(maskBuffer.height(), maskBuffer.width(), CV_8U, maskBuffer.data());
+        
+        outputBuffer = Halide::Runtime::Buffer<uint16_t>(underexposedImage->rawBuffer.width()*2, underexposedImage->rawBuffer.height()*2, 3);
+        
+        // Upscale and blur mask
+        cv::GaussianBlur(mask, mask, cv::Size(15, 15), -1);
+        cv::resize(mask, mask, cv::Size(mask.cols*2, mask.rows*2));
+
+        hdr_input(inputBuffers[0],
+                  inputBuffers[1],
+                  inputBuffers[2],
+                  inputBuffers[3],
+                  shadingMapBuffer[0],
+                  shadingMapBuffer[1],
+                  shadingMapBuffer[2],
+                  shadingMapBuffer[3],
+                  cameraWhite[0],
+                  cameraWhite[1],
+                  cameraWhite[2],
+                  cameraToSrgbBuffer,
+                  static_cast<int>(cameraMetadata.sensorArrangment),
+                  cameraMetadata.blackLevel[0],
+                  cameraMetadata.blackLevel[1],
+                  cameraMetadata.blackLevel[2],
+                  cameraMetadata.blackLevel[3],
+                  cameraMetadata.whiteLevel,
+                  outputBuffer);
+        
+        //
+        // Return HDR metadata
+        //
+        
+        auto hdrMetadata = std::make_shared<HdrMetadata>();
+        
+        hdrMetadata->exposureScale  = 1.0 / exposureScale;
+        hdrMetadata->hdrInput       = outputBuffer;
+        hdrMetadata->mask           = ToHalideBuffer<uint8_t>(mask).copy();
+        hdrMetadata->error          = error;
+        
+        return hdrMetadata;
+    }
 }

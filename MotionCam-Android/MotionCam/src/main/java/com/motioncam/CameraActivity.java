@@ -288,6 +288,9 @@ public class CameraActivity extends AppCompatActivity implements
         SharedPreferences prefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
 
         int jpegQuality = prefs.getInt(SettingsViewModel.PREFS_KEY_JPEG_QUALITY, CameraProfile.DEFAULT_JPEG_QUALITY);
+        int contrast = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, 50);
+        int colour = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, 50);
+        boolean burst = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_PREVIEW_BURST, false);
 
         mPostProcessSettings.shadows = 1.0f;
         mPostProcessSettings.contrast = 0.5f;
@@ -299,6 +302,11 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.whitePoint = 1.0f;
         mPostProcessSettings.blacks = 0.0f;
         mPostProcessSettings.jpegQuality = jpegQuality;
+
+        // Update UI
+        mBinding.contrastSeekBar.setProgress(contrast);
+        mBinding.colourSeekBar.setProgress(colour);
+        mBinding.burstModeSwitch.setChecked(burst);
     }
 
     @Override
@@ -318,8 +326,6 @@ public class CameraActivity extends AppCompatActivity implements
         mBinding.shadowsSeekBar.setProgress(50);
 
         mFocusState = FocusState.AUTO;
-
-        setPostProcessingDefaults();
 
         // Start camera when we have all the permissions
         if(mHavePermissions)
@@ -344,6 +350,15 @@ public class CameraActivity extends AppCompatActivity implements
 
         mBinding.cameraFrame.removeView(mTextureView);
         mTextureView = null;
+
+        // Save UI state (TODO: do this per camera id)
+        SharedPreferences prefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
+        prefs
+            .edit()
+            .putInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, mBinding.contrastSeekBar.getProgress())
+            .putInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, mBinding.colourSeekBar.getProgress())
+            .putBoolean(SettingsViewModel.PREFS_KEY_UI_PREVIEW_BURST, mBinding.burstModeSwitch.isChecked())
+            .apply();
     }
 
     @Override
@@ -790,7 +805,11 @@ public class CameraActivity extends AppCompatActivity implements
         Log.i(TAG, "Camera state changed " + cameraState.name());
 
         if(cameraState == NativeCameraSessionBridge.CameraState.ACTIVE) {
-            runOnUiThread(() -> mBinding.switchCameraBtn.setEnabled(true));
+            runOnUiThread(() ->
+            {
+                mBinding.switchCameraBtn.setEnabled(true);
+                setPostProcessingDefaults();
+            });
         }
     }
 

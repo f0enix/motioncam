@@ -110,6 +110,8 @@
 		4595247125227681004C549E /* camera_preview3.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4595246E25227681004C549E /* camera_preview3.a */; };
 		45AD8087230C6AF400D6AA04 /* libopencv_optflow.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 45FC3C8B21F4F3AF007415B2 /* libopencv_optflow.dylib */; };
 		45AD808A230DCFA800D6AA04 /* ImageProcessor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 45AD8088230DCFA800D6AA04 /* ImageProcessor.cpp */; };
+		45CA474325B7204800ACB36A /* hdr_mask.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 45CA473F25B7204800ACB36A /* hdr_mask.a */; };
+		45CA474425B7204800ACB36A /* hdr_input.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 45CA474125B7204800ACB36A /* hdr_input.a */; };
 		45E058A92471BFB300C05AE7 /* deinterleave_raw.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 45E0587D2471BFAE00C05AE7 /* deinterleave_raw.a */; };
 		45E058AB2471BFB300C05AE7 /* generate_edges.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 45E058802471BFAF00C05AE7 /* generate_edges.a */; };
 		45E058AC2471BFB300C05AE7 /* inverse_transform.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 45E058852471BFAF00C05AE7 /* inverse_transform.a */; };
@@ -480,6 +482,10 @@
 		45AF94452225D84100EE900D /* libHalide.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libHalide.a; path = thirdparty/halide/lib/macos/libHalide.a; sourceTree = "<group>"; };
 		45C3BBF42314206100EAABB8 /* blockingconcurrentqueue.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = blockingconcurrentqueue.h; sourceTree = "<group>"; };
 		45C3BBF52314206100EAABB8 /* concurrentqueue.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = concurrentqueue.h; sourceTree = "<group>"; };
+		45CA473F25B7204800ACB36A /* hdr_mask.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = hdr_mask.a; sourceTree = "<group>"; };
+		45CA474025B7204800ACB36A /* hdr_input.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hdr_input.h; sourceTree = "<group>"; };
+		45CA474125B7204800ACB36A /* hdr_input.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = hdr_input.a; sourceTree = "<group>"; };
+		45CA474225B7204800ACB36A /* hdr_mask.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hdr_mask.h; sourceTree = "<group>"; };
 		45CA972F231454A300698BBE /* libHalide.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libHalide.a; path = thirdparty/halide/lib/libHalide.a; sourceTree = "<group>"; };
 		45E0587D2471BFAE00C05AE7 /* deinterleave_raw.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = deinterleave_raw.a; sourceTree = "<group>"; };
 		45E058802471BFAF00C05AE7 /* generate_edges.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = generate_edges.a; sourceTree = "<group>"; };
@@ -764,6 +770,7 @@
 				4571F8282330211500B5E5E8 /* libexiv2.dylib in Frameworks */,
 				4595247125227681004C549E /* camera_preview3.a in Frameworks */,
 				45E058B12471BFB300C05AE7 /* halide_runtime.a in Frameworks */,
+				45CA474325B7204800ACB36A /* hdr_mask.a in Frameworks */,
 				45FC3DED21F4F6AE007415B2 /* libz.tbd in Frameworks */,
 				45FC3DE521F4F5D1007415B2 /* libtbb.a in Frameworks */,
 				45FC3DE821F4F5F6007415B2 /* libippiw.a in Frameworks */,
@@ -776,6 +783,7 @@
 				45952458251F7A40004C549E /* preview_landscape4.a in Frameworks */,
 				45FC3E0C21F4FDE0007415B2 /* libopencv_videoio.dylib in Frameworks */,
 				45FC3E0A21F4FDA5007415B2 /* libopencv_video.dylib in Frameworks */,
+				45CA474425B7204800ACB36A /* hdr_input.a in Frameworks */,
 				45FC3E0821F4FBFB007415B2 /* libopencv_imgproc.dylib in Frameworks */,
 				45FC3E0921F4FBFD007415B2 /* libopencv_ximgproc.dylib in Frameworks */,
 				4579766425AA59A700A26E5E /* camera_preview4.a in Frameworks */,
@@ -1037,6 +1045,10 @@
 		45CA974C2317214900698BBE /* host */ = {
 			isa = PBXGroup;
 			children = (
+				45CA474125B7204800ACB36A /* hdr_input.a */,
+				45CA474025B7204800ACB36A /* hdr_input.h */,
+				45CA473F25B7204800ACB36A /* hdr_mask.a */,
+				45CA474225B7204800ACB36A /* hdr_mask.h */,
 				4595246C25227680004C549E /* camera_preview2.a */,
 				4595246D25227681004C549E /* camera_preview2.h */,
 				4595246E25227681004C549E /* camera_preview3.a */,

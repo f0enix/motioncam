@@ -42,7 +42,8 @@ namespace motioncam {
     enum class CaptureEvent : int {
         REPEAT = 0,
         CANCEL_AF,
-        TRIGGER_AF
+        TRIGGER_AF,
+        HDR_CAPTURE
     };
 
     enum class CameraFocusState : int {
@@ -86,6 +87,7 @@ namespace motioncam {
         void setAutoExposure();
         void setManualExposure(int32_t iso, int64_t exposureTime);
         void setExposureCompensation(float value);
+        void captureHdr(int numImages, int baseIso, int64_t baseExposure, int hdrIso, int64_t hdrExposure);
 
         void updateOrientation(ScreenOrientation orientation);
 
@@ -139,6 +141,7 @@ namespace motioncam {
         void doSetFocusPoint(double focusX, double focusY, double exposureX, double exposureY);
         void doSetAutoFocus();
         void doSetExposureCompensation(float value);
+        void doCaptureHdr(int numImages, int baseIso, int64_t baseExposure, int hdrIso, int64_t hdrExposure);
 
         void setupCallbacks();
         std::shared_ptr<CaptureCallbackContext> createCaptureCallbacks(const CaptureEvent event);
