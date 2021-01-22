@@ -157,7 +157,8 @@ namespace motioncam {
     RawContainer::RawContainer(const string& inputPath) :
         mZipReader(new util::ZipReader(inputPath)),
         mReferenceTimestamp(-1),
-        mWriteDNG(false)
+        mWriteDNG(false),
+        mIsHdr(false)
     {
         initialise();
     }
@@ -165,12 +166,14 @@ namespace motioncam {
     RawContainer::RawContainer(RawCameraMetadata cameraMetadata,
                                const PostProcessSettings& postProcessSettings,
                                const int64_t referenceTimestamp,
+                               const bool isHdr,
                                const bool writeDNG,
                                std::vector<string> frames,
                                std::map<string, std::shared_ptr<RawImageBuffer>>  frameBuffers) :
         mCameraMetadata(std::move(cameraMetadata)),
         mPostProcessSettings(postProcessSettings),
         mReferenceTimestamp(referenceTimestamp),
+        mIsHdr(isHdr),
         mWriteDNG(writeDNG),
         mFrames(std::move(frames)),
         mFrameBuffers(std::move(frameBuffers))
@@ -181,10 +184,11 @@ namespace motioncam {
         auto it = mFrames.begin();
         
         json11::Json::object metadataJson;
-        
-        // Save reference timestamp
+
+        // Save misc stuff
         metadataJson["referenceTimestamp"]  = std::to_string(mReferenceTimestamp);
         metadataJson["writeDNG"]            = mWriteDNG;
+        metadataJson["isHdr"]               = mIsHdr;
         
         // Global camera metadata
         metadataJson["colorIlluminant1"]    = color::IlluminantToString(mCameraMetadata.colorIlluminant1);
@@ -307,7 +311,8 @@ namespace motioncam {
         
         mReferenceTimestamp = std::stol(getOptionalStringSetting(json, "referenceTimestamp", "0"));
         mWriteDNG = getOptionalSetting(json, "writeDNG", false);
-        
+        mIsHdr = getOptionalSetting(json, "isHdr", false);
+
         // Black/white levels
         vector<Json> blackLevelValues = json["blackLevel"].array_items();
         for(auto& blackLevelValue : blackLevelValues) {
@@ -503,8 +508,16 @@ namespace motioncam {
         return mWriteDNG;
     }
 
+    bool RawContainer::isHdr() const {
+        return mIsHdr;
+    }
+
     string RawContainer::getReferenceImage() const {
         return mReferenceImage;
+    }
+
+    void RawContainer::updateReferenceImage(const std::string& referenceName) {
+        mReferenceImage = referenceName;
     }
 
     const std::vector<string>& RawContainer::getFrames() const {
@@ -544,5 +557,12 @@ namespace motioncam {
         }
 
         buffer->second->data->release();
+    }
+
+    void RawContainer::ignoreFrame(const std::string& frame) {
+        auto it = std::find(mFrames.begin(), mFrames.end(), frame);
+        if(it != mFrames.end()) {
+            mFrames.erase(it);
+        }
     }
 }

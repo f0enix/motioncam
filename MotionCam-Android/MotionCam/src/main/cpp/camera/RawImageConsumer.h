@@ -35,15 +35,19 @@ namespace motioncam {
         void stop();
 
         void queueImage(AImage* image);
-        void queueMetadata(const ACameraMetadata* metadata, ScreenOrientation screenOrientation);
+        void queueMetadata(const ACameraMetadata* metadata, ScreenOrientation screenOrientation, RawType rawType);
 
         void save(int64_t referenceTimestamp, int numSaveBuffers, const bool writeDNG, const PostProcessSettings& settings, const std::string& outputPath);
+        void save(const RawType rawType, const PostProcessSettings& settings, const std::string& outputPath);
 
         void lockBuffers();
         std::vector<std::shared_ptr<RawImageBuffer>> getBuffers();
         std::shared_ptr<RawImageBuffer> getBuffer(int64_t timestamp);
         std::shared_ptr<RawImageBuffer> lockLatest();
         void unlockBuffers();
+
+        int getHdrBufferCount();
+        void cancelHdrBuffers();
 
         void enableRawPreview(std::shared_ptr<RawPreviewListener> listener);
         void updateRawPreviewSettings(float shadows, float contrast, float saturation, float blacks, float whitePoint);
@@ -90,6 +94,8 @@ namespace motioncam {
         std::map<int64_t, std::shared_ptr<RawImageBuffer>> mPendingBuffers;
 
         std::shared_ptr<RawPreviewListener> mPreviewListener;
+
+        std::vector<std::shared_ptr<RawImageBuffer>> mHdrBuffers;
     };
 }
 

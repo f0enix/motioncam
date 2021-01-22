@@ -903,3 +903,57 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_SetRawPrevi
 
     return JNI_TRUE;
 }
+
+extern "C" JNIEXPORT
+jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_CaptureHdrImage(
+    JNIEnv *env,
+    jobject thiz,
+    jlong handle,
+    jint numImages,
+    jint baseIso,
+    jlong baseExposure,
+    jint hdrIso,
+    jlong hdrExposure,
+    jstring postProcessSettings_,
+    jstring outputPath_)
+{
+    std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
+    if(!sessionManager) {
+        return JNI_FALSE;
+    }
+
+    const char *coutputPath = env->GetStringUTFChars(outputPath_, nullptr);
+    if(coutputPath == nullptr) {
+        LOGE("Failed to get output path");
+        return JNI_FALSE;
+    }
+
+    std::string outputPath(coutputPath);
+
+    env->ReleaseStringUTFChars(outputPath_, coutputPath);
+
+    const char* cjsonString = env->GetStringUTFChars(postProcessSettings_, nullptr);
+    if(cjsonString == nullptr) {
+        LOGE("Failed to get settings");
+        return JNI_FALSE;
+    }
+
+    std::string settingsJson(cjsonString);
+
+    env->ReleaseStringUTFChars(outputPath_, cjsonString);
+
+    // Parse post process settings
+    std::string err;
+    json11::Json json = json11::Json::parse(settingsJson, err);
+
+    // Can't parse the settings
+    if(!err.empty()) {
+        return JNI_FALSE;
+    }
+
+    motioncam::PostProcessSettings settings(json);
+
+    sessionManager->captureHdrImage(numImages, baseIso, baseExposure, hdrIso, hdrExposure, settings, outputPath);
+
+    return JNI_TRUE;
+}

@@ -91,7 +91,7 @@ namespace motioncam {
         mImageQueue.enqueue(std::shared_ptr<AImage>(image, AImage_delete));
     }
 
-    void RawImageConsumer::queueMetadata(const ACameraMetadata* cameraMetadata, ScreenOrientation screenOrientation) {
+    void RawImageConsumer::queueMetadata(const ACameraMetadata* cameraMetadata, ScreenOrientation screenOrientation, RawType rawType) {
         RawImageMetadata metadata;
 
         if(!copyMetadata(metadata, cameraMetadata)) {
@@ -99,8 +99,9 @@ namespace motioncam {
             return;
         }
 
-        // Keep screen orientation at time of capture
+        // Keep screen orientation and RAW type at time of capture
         metadata.screenOrientation = screenOrientation;
+        metadata.rawType = rawType;
 
         {
             std::lock_guard<std::mutex> lock(mBufferMutex);
@@ -113,8 +114,11 @@ namespace motioncam {
     void RawImageConsumer::lockBuffers() {
         std::lock_guard<std::mutex> guard(mBufferMutex);
 
-        if(mBufferManager)
+        if(mBufferManager) {
+            cancelHdrBuffers();
+
             mBufferManager->lock();
+        }
     }
 
     void RawImageConsumer::unlockBuffers() {
@@ -122,6 +126,17 @@ namespace motioncam {
 
         if(mBufferManager)
             mBufferManager->unlock();
+    }
+
+    int RawImageConsumer::getHdrBufferCount() {
+        int hdrBufferCount = 0;
+
+        {
+            std::lock_guard<std::mutex> guard(mBufferMutex);
+            hdrBufferCount = mHdrBuffers.size();
+        }
+
+        return hdrBufferCount;
     }
 
     std::vector<std::shared_ptr<RawImageBuffer>> RawImageConsumer::getBuffers() {
@@ -151,6 +166,50 @@ namespace motioncam {
         return std::shared_ptr<RawImageBuffer>();
     }
 
+    void RawImageConsumer::cancelHdrBuffers() {
+        for(auto buffer : mHdrBuffers)
+            mBufferManager->discardBuffer(buffer);
+
+        mHdrBuffers.clear();
+    }
+
+    void RawImageConsumer::save(
+            const RawType rawType,
+            const PostProcessSettings& settings,
+            const std::string& outputPath)
+    {
+        std::lock_guard<std::mutex> guard(mBufferMutex);
+
+        if(mHdrBuffers.empty()) {
+            LOGI("Failed to save, no buffers available");
+            return;
+        }
+
+        std::vector<std::string> frames;
+        std::map<std::string, std::shared_ptr<RawImageBuffer>> frameBuffers;
+
+        auto it = mHdrBuffers.begin();
+        int filenameIdx = 0;
+
+        while(it != mHdrBuffers.end()) {
+            std::string filename = "frame" + std::to_string(filenameIdx) + ".raw";
+
+            frames.push_back(filename);
+            frameBuffers[filename] = *it;
+
+            ++it;
+            ++filenameIdx;
+        }
+
+        // Save all images. Use first buffer as reference timestamp
+        RawContainer rawContainer(mCameraDesc->metadata, settings, mHdrBuffers[0]->metadata.timestampNs, true, false, frames, frameBuffers);
+
+        rawContainer.saveContainer(outputPath);
+
+        // Return HDR buffers
+        cancelHdrBuffers();
+    }
+
     void RawImageConsumer::save(
             int64_t referenceTimestamp,
             int numSaveBuffers,
@@ -171,7 +230,6 @@ namespace motioncam {
         // Find reference frame
         int referenceIdx = static_cast<int>(buffers.size()) - 1;
 
-        // Find reference index
         for(int i = 0; i < buffers.size(); i++) {
             if(buffers[i]->metadata.timestampNs == referenceTimestamp) {
                 referenceIdx = i;
@@ -228,7 +286,7 @@ namespace motioncam {
                 ++filenameIdx;
             }
 
-            RawContainer rawContainer(mCameraDesc->metadata, settings, referenceTimestamp, writeDNG, frames, frameBuffers);
+            RawContainer rawContainer(mCameraDesc->metadata, settings, referenceTimestamp, false, writeDNG, frames, frameBuffers);
 
             rawContainer.saveContainer(outputPath);
         }
@@ -318,7 +376,10 @@ namespace motioncam {
     }
 
     void RawImageConsumer::onBufferReady(const std::shared_ptr<RawImageBuffer>& buffer) {
-        mBufferManager->returnBuffer(buffer);
+        if(buffer->metadata.rawType == RawType::HDR)
+            mHdrBuffers.push_back(buffer);
+        else
+            mBufferManager->returnBuffer(buffer);
     }
 
     void RawImageConsumer::doMatchMetadata() {
@@ -333,7 +394,7 @@ namespace motioncam {
                 pendingBufferIt->second->metadata = *it;
 
                 // Return buffer once ready
-                if(mEnableRawPreview) {
+                if(mEnableRawPreview && pendingBufferIt->second->metadata.rawType == RawType::ZSL) {
                     if(!mPreprocessQueue.try_push(pendingBufferIt->second)) {
                         onBufferReady(pendingBufferIt->second);
                     }

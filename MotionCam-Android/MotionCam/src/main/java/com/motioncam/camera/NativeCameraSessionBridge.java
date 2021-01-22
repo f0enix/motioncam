@@ -99,6 +99,8 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         void onCameraExposureStatus(int iso, long exposureTime);
         void onCameraAutoFocusStateChanged(CameraFocusState state);
         void onCameraAutoExposureStateChanged(CameraExposureState state);
+        void onCameraHdrImageCaptureProgress();
+        void onCameraHdrImageCaptureCompleted();
     }
 
     public interface CameraRawPreviewListener {
@@ -238,6 +240,16 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         CaptureImage(mNativeCameraHandle, bufferHandle, numSaveImages, writeDNG, json, outputPath);
     }
 
+    public void captureHdrImage(int numSaveImages, int baseIso, long baseExposure, int hdrIso, long hdrExposure, PostProcessSettings settings, String outputPath) {
+        ensureValidHandle();
+
+        // Serialize settings to json and pass to native code
+        JsonAdapter<PostProcessSettings> jsonAdapter = mJson.adapter(PostProcessSettings.class);
+        String json = jsonAdapter.toJson(settings);
+
+        CaptureHdrImage(mNativeCameraHandle, numSaveImages, baseIso, baseExposure, hdrIso, hdrExposure, json, outputPath);
+    }
+
     public Size getPreviewSize(int downscaleFactor) {
         ensureValidHandle();
 
@@ -361,6 +373,16 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
     }
 
     @Override
+    public void onCameraHdrImageCaptureProgress() {
+        mListener.onCameraHdrImageCaptureProgress();
+    }
+
+    @Override
+    public void onCameraHdrImageCaptureCompleted() {
+        mListener.onCameraHdrImageCaptureCompleted();
+    }
+
+    @Override
     public Bitmap onRawPreviewBitmapNeeded(int width, int height) {
         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
 
@@ -417,6 +439,7 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
     private native Size GetRawOutputSize(long handle, String cameraId);
     private native Size GetPreviewOutputSize(long handle, String cameraId, Size captureSize, Size displaySize);
     private native boolean CaptureImage(long handle, long bufferHandle, int numSaveImages, boolean writeDNG, String settings, String outputPath);
+    private native boolean CaptureHdrImage(long handle, int numImages, int baseIso, long baseExposure, int hdrIso, long hdrExposure, String settings, String outputPath);
 
     private native NativeCameraBuffer[] GetAvailableImages(long handle);
     private native Size GetPreviewSize(long handle, int downscaleFactor);

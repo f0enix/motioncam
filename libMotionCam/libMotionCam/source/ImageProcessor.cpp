@@ -312,7 +312,7 @@ namespace motioncam {
                     EXPANDED_RANGE,
                     static_cast<int>(cameraMetadata.sensorArrangment),
                     settings.gamma,
-                    settings.shadows,
+                    settings.shadows * (1.0/hdrScale),
                     settings.tonemapVariance,
                     settings.blacks,
                     settings.exposure,
@@ -470,7 +470,7 @@ namespace motioncam {
         
         settings.temperature    = static_cast<float>(temperature.temperature());
         settings.tint           = static_cast<float>(temperature.tint());
-        settings.exposure       = estimateExposureCompensation(rawBuffer, cameraMetadata);
+//        settings.exposure       = estimateExposureCompensation(rawBuffer, cameraMetadata);
         settings.shadows        = estimateShadows(rawBuffer, cameraMetadata, settings);
         
         // Calculate blacks
@@ -1093,7 +1093,63 @@ namespace motioncam {
         
         const int offsetX = static_cast<int>(T * ceil(rawWidth / (double) T) - rawWidth);
         const int offsetY = static_cast<int>(T * ceil(rawHeight / (double) T) - rawHeight);
+                
+        // If this is a HDR capture then find the underexposed images.
+        std::vector<std::string> underexposedImages;
         
+        if(rawContainer.isHdr()) {
+            double maxEv = -1e10;
+            double minEv = 1e10;
+            
+            // Figure out where the base & underexposed images are
+            for(auto frameName : rawContainer.getFrames()) {
+                auto frame = rawContainer.getFrame(frameName);
+                auto ev = log2(1.0 / (frame->metadata.exposureTime / (1000.0*1000.0*1000.0))) - log2(frame->metadata.iso / 100.0);
+                
+                if(ev > maxEv)
+                    maxEv = ev;
+                
+                if(ev < minEv)
+                    minEv = ev;
+            }
+            
+            // Make sure there's enough of a difference between the base and underexposed images
+            if(abs(maxEv - minEv) > 0.99) {
+                for(auto frameName : rawContainer.getFrames()) {
+                    auto frame = rawContainer.getFrame(frameName);
+                    auto ev = log2(1.0 / (frame->metadata.exposureTime / (1000.0*1000.0*1000.0))) - log2(frame->metadata.iso / 100.0);
+                
+                    if(abs(ev - maxEv) < abs(ev - minEv)) {
+                        underexposedImages.push_back(frameName);
+                    }
+                }
+            }
+
+            // Ignore all underexposed images before denoising
+            for(auto frame : underexposedImages)
+                rawContainer.ignoreFrame(frame);
+            
+            // Find the sharpest reference image
+            if(!rawContainer.getFrames().empty()) {
+                double bestSharpness = 1e-10;
+                std::string sharpestBuffer = *(rawContainer.getFrames().begin());
+
+                for(auto frameName : rawContainer.getFrames()) {
+                    auto frame = rawContainer.loadFrame(frameName);
+                    double sharpness = measureSharpness(*frame);
+                    
+                    if(sharpness > bestSharpness) {
+                        bestSharpness = sharpness;
+                        sharpestBuffer = frameName;
+                    }
+                    
+                    rawContainer.releaseFrame(frameName);
+                }
+                
+                rawContainer.updateReferenceImage(sharpestBuffer);
+            }
+        }
+                
         //
         // Denoise
         //
@@ -1170,6 +1226,17 @@ namespace motioncam {
 
         cv::Mat outputImage;
         shared_ptr<HdrMetadata> hdrMetadata;
+
+        if(!underexposedImages.empty()) {
+            auto underexposedFrame = rawContainer.loadFrame(*underexposedImages.begin());
+            auto referenceFrame = rawContainer.loadFrame(rawContainer.getReferenceImage());
+
+            hdrMetadata =
+                prepareHdr(rawContainer.getCameraMetadata(),
+                           rawContainer.getPostProcessSettings(),
+                           *referenceFrame,
+                           *underexposedFrame);
+        }
         
         outputImage = postProcess(
             denoiseOutput,
@@ -1304,8 +1371,7 @@ namespace motioncam {
         // Read the reference
         //
         
-        std::shared_ptr<RawImageBuffer> referenceRawBuffer =
-            rawContainer.loadFrame(rawContainer.getReferenceImage());
+        std::shared_ptr<RawImageBuffer> referenceRawBuffer = rawContainer.loadFrame(rawContainer.getReferenceImage());
 
         auto reference = loadRawImage(*referenceRawBuffer, rawContainer.getCameraMetadata());
 
@@ -1365,20 +1431,7 @@ namespace motioncam {
         // Fuse with other images
         //
         
-        auto containerFrames = rawContainer.getFrames();
-        std::vector<string> processFrames;
-
-        // Get all frames we want to merge
-        auto framesIt = containerFrames.begin();
-        while(framesIt != containerFrames.end()) {
-            // Add frames where exposure compensation is the same
-            if(rawContainer.getFrame(*framesIt)->metadata.exposureCompensation == referenceRawBuffer->metadata.exposureCompensation) {
-                processFrames.push_back(*framesIt);
-            }
-
-            ++framesIt;
-        }
-        
+        auto processFrames = rawContainer.getFrames();
         auto it = processFrames.begin();
         bool resetOutput = true;
         

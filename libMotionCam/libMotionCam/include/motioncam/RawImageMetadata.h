@@ -42,6 +42,11 @@ namespace motioncam {
         REVERSE_LANDSCAPE
     };
 
+    enum class RawType : int {
+        ZSL,
+        HDR
+    };
+
     struct RawImageMetadata
     {
         RawImageMetadata() :
@@ -49,7 +54,8 @@ namespace motioncam {
             iso(0),
             timestampNs(0),
             exposureCompensation(0),
-            screenOrientation(ScreenOrientation::PORTRAIT)
+            screenOrientation(ScreenOrientation::PORTRAIT),
+            rawType(RawType::ZSL)
         {
         }
 
@@ -61,7 +67,8 @@ namespace motioncam {
             exposureCompensation(other.exposureCompensation),
             lensShadingMap(other.lensShadingMap),
             timestampNs(other.timestampNs),
-            screenOrientation(other.screenOrientation)
+            screenOrientation(other.screenOrientation),
+            rawType(other.rawType)
         {
         }
 
@@ -73,7 +80,8 @@ namespace motioncam {
             iso(other.iso),
             exposureCompensation(other.exposureCompensation),
             timestampNs(other.timestampNs),
-            screenOrientation(other.screenOrientation)
+            screenOrientation(other.screenOrientation),
+            rawType(other.rawType)
         {
         }
 
@@ -86,6 +94,7 @@ namespace motioncam {
             lensShadingMap = obj.lensShadingMap;
             timestampNs = obj.timestampNs;
             screenOrientation = obj.screenOrientation;
+            rawType = obj.rawType;
 
             return *this;
         }
@@ -98,6 +107,7 @@ namespace motioncam {
         std::vector<cv::Mat> lensShadingMap;
         int64_t timestampNs;
         ScreenOrientation screenOrientation;
+        RawType rawType;
     };
 
     class NativeBuffer {

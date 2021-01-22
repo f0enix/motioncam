@@ -46,6 +46,7 @@
     <string name="debug_mode_help">Turn this option on to leave unprocessed files on the filesystem</string>
     <string name="error">Error</string>
     <string name="not_supported_error">Your device does not support RAW capture.</string>
+    <string name="camera_error">The camera encountered an error.</string>
     <string name="ok">Ok</string>
     <string name="hdr">HDR</string>
 </resources>

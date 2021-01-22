@@ -61,6 +61,14 @@ namespace motioncam {
         void lockBuffers();
         void unlockBuffers();
         void captureImage(const long handle, const int numSaveImages, const bool writeDNG, const motioncam::PostProcessSettings& settings, const std::string& outputPath);
+        void captureHdrImage(
+            const int numImages,
+            const int baseIso,
+            const int64_t baseExposure,
+            const int hdrIso,
+            const int64_t hdrExposure,
+            const motioncam::PostProcessSettings& settings,
+            const std::string& outputPath);
 
     private:
         static bool isCameraSupported(const CameraDescription& cameraDescription);

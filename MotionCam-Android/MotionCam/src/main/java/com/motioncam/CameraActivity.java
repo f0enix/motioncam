@@ -49,10 +49,8 @@ import com.motioncam.ui.BitmapDrawView;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 public class CameraActivity extends AppCompatActivity implements
@@ -455,25 +453,50 @@ public class CameraActivity extends AppCompatActivity implements
             // Capture latest image
             PostProcessSettings settings = mPostProcessSettings.clone();
 
-            mAsyncNativeCameraOps.captureImage(
-                    Long.MIN_VALUE,
-                    mNumMergeImages,
-                    false,
-                    settings,
-                    CameraProfile.generateCaptureFile().getPath(),
-                    handle -> {
-                        mBinding.captureBtn.setEnabled(true);
-
-                        // Start service to process the image
-                        Intent intent = new Intent(this, ProcessorService.class);
-
-                        intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath().getPath());
-                        intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, true);
-                        intent.putExtra(ProcessorService.RECEIVER_KEY, mProgressReceiver);
-
-                        Objects.requireNonNull(startService(intent));
-                    }
+            // Map camera exposure to our own
+            CameraManualControl.Exposure baseExposure = CameraManualControl.Exposure.Create(
+                CameraManualControl.GetClosestShutterSpeed(mExposureTime),
+                CameraManualControl.GetClosestIso(mIsoValues, mIso)
             );
+
+            CameraManualControl.Exposure hdrExposure = CameraManualControl.Exposure.Create(
+                    CameraManualControl.GetClosestShutterSpeed(mExposureTime / 4),
+                    CameraManualControl.GetClosestIso(mIsoValues, mIso)
+            );
+
+            baseExposure = CameraManualControl.MapToExposureLine(1.0, baseExposure);
+            hdrExposure = CameraManualControl.MapToExposureLine(1.0, hdrExposure);
+
+            Log.i(TAG, "Requested HDR capture (numImages=" + mNumMergeImages + ")");
+
+            mNativeCamera.captureHdrImage(
+                    mNumMergeImages,
+                    baseExposure.iso.getIso(),
+                    baseExposure.shutterSpeed.getExposureTime(),
+                    hdrExposure.iso.getIso(),
+                    hdrExposure.shutterSpeed.getExposureTime(),
+                    settings,
+                    CameraProfile.generateCaptureFile().getPath());
+
+//            mAsyncNativeCameraOps.captureImage(
+//                    Long.MIN_VALUE,
+//                    mNumMergeImages,
+//                    false,
+//                    settings,
+//                    CameraProfile.generateCaptureFile().getPath(),
+//                    handle -> {
+//                        mBinding.captureBtn.setEnabled(true);
+//
+//                        // Start service to process the image
+//                        Intent intent = new Intent(this, ProcessorService.class);
+//
+//                        intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath().getPath());
+//                        intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, true);
+//                        intent.putExtra(ProcessorService.RECEIVER_KEY, mProgressReceiver);
+//
+//                        Objects.requireNonNull(startService(intent));
+//                    }
+//            );
         }
     }
 
@@ -558,14 +581,14 @@ public class CameraActivity extends AppCompatActivity implements
 
             // Get supported cameras and filter out ignored ones
             NativeCameraInfo[] cameraInfos = mNativeCamera.getSupportedCameras();
-            Set<String> ignoreCameraIds = sharedPrefs.getStringSet(SettingsViewModel.PREFS_KEY_IGNORE_CAMERA_IDS, new HashSet<>());
-            if(ignoreCameraIds == null)
-                ignoreCameraIds = new HashSet<>();
+//            Set<String> ignoreCameraIds = sharedPrefs.getStringSet(SettingsViewModel.PREFS_KEY_IGNORE_CAMERA_IDS, new HashSet<>());
+//            if(ignoreCameraIds == null)
+//                ignoreCameraIds = new HashSet<>();
 
             mCameraInfos = new ArrayList<>();
             for(NativeCameraInfo cameraInfo : cameraInfos) {
-                if(ignoreCameraIds.contains(cameraInfo.cameraId))
-                    continue;
+//                if(ignoreCameraIds.contains(cameraInfo.cameraId))
+//                    continue;
 
                 mCameraInfos.add(cameraInfo);
             }
@@ -770,24 +793,24 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void displayUnsupportedCameraError() {
-        // Add camera id to ignore list
-        SharedPreferences sharedPrefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
-        Set<String> ignoreCameraIds = sharedPrefs.getStringSet(SettingsViewModel.PREFS_KEY_IGNORE_CAMERA_IDS, new HashSet<>());
-        if(ignoreCameraIds == null)
-            ignoreCameraIds = new HashSet<>();
-
-        HashSet<String> updatedIgnoreCameraIds = new HashSet<>(ignoreCameraIds);
-
-        updatedIgnoreCameraIds.add(mSelectedCamera.cameraId);
-
-        sharedPrefs.edit()
-                .putStringSet(SettingsViewModel.PREFS_KEY_IGNORE_CAMERA_IDS, updatedIgnoreCameraIds)
-                .apply();
+//        // Add camera id to ignore list
+//        SharedPreferences sharedPrefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
+//        Set<String> ignoreCameraIds = sharedPrefs.getStringSet(SettingsViewModel.PREFS_KEY_IGNORE_CAMERA_IDS, new HashSet<>());
+//        if(ignoreCameraIds == null)
+//            ignoreCameraIds = new HashSet<>();
+//
+//        HashSet<String> updatedIgnoreCameraIds = new HashSet<>(ignoreCameraIds);
+//
+//        updatedIgnoreCameraIds.add(mSelectedCamera.cameraId);
+//
+//        sharedPrefs.edit()
+//                .putStringSet(SettingsViewModel.PREFS_KEY_IGNORE_CAMERA_IDS, updatedIgnoreCameraIds)
+//                .apply();
 
         AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(this, R.style.BasicDialog)
                 .setCancelable(false)
                 .setTitle(R.string.error)
-                .setMessage(R.string.not_supported_error)
+                .setMessage(R.string.camera_error)
                 .setPositiveButton(R.string.ok, (dialog, which) -> finish());
 
         dialogBuilder.show();
@@ -848,6 +871,30 @@ public class CameraActivity extends AppCompatActivity implements
     public void onCameraAutoExposureStateChanged(NativeCameraSessionBridge.CameraExposureState state) {
         Log.i(TAG, "Exposure state: " + state.name());
         runOnUiThread(() -> setAutoExposureState(state));
+    }
+
+    @Override
+    public void onCameraHdrImageCaptureProgress() {
+        Log.i(TAG, "HDR capture progress");
+    }
+
+    @Override
+    public void onCameraHdrImageCaptureCompleted() {
+        Log.i(TAG, "HDR capture completed");
+
+        runOnUiThread( () ->
+        {
+            mBinding.captureBtn.setEnabled(true);
+
+            // Start service to process the image
+            Intent intent = new Intent(this, ProcessorService.class);
+
+            intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath().getPath());
+            intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, true);
+            intent.putExtra(ProcessorService.RECEIVER_KEY, mProgressReceiver);
+
+            Objects.requireNonNull(startService(intent));
+        });
     }
 
     @Override

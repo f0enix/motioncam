@@ -4,6 +4,7 @@
 #include "CameraDescription.h"
 
 #include <motioncam/RawImageMetadata.h>
+#include <motioncam/Settings.h>
 
 #include <vector>
 #include <string>
@@ -20,7 +21,6 @@ namespace motioncam {
     class CameraSessionListener;
 
     struct RawImageBuffer;
-    struct PostProcessSettings;
     struct CameraCaptureSessionContext;
     struct CaptureCallbackContext;
     struct EventLoopData;
@@ -87,7 +87,14 @@ namespace motioncam {
         void setAutoExposure();
         void setManualExposure(int32_t iso, int64_t exposureTime);
         void setExposureCompensation(float value);
-        void captureHdr(int numImages, int baseIso, int64_t baseExposure, int hdrIso, int64_t hdrExposure);
+        void captureHdr(
+                int numImages,
+                int baseIso,
+                int64_t baseExposure,
+                int hdrIso,
+                int64_t hdrExposure,
+                const PostProcessSettings& postprocessSettings,
+                const std::string& outputPath);
 
         void updateOrientation(ScreenOrientation orientation);
 
@@ -141,6 +148,7 @@ namespace motioncam {
         void doSetFocusPoint(double focusX, double focusY, double exposureX, double exposureY);
         void doSetAutoFocus();
         void doSetExposureCompensation(float value);
+        void doAttemptSaveHdrData(int attempt);
         void doCaptureHdr(int numImages, int baseIso, int64_t baseExposure, int hdrIso, int64_t hdrExposure);
 
         void setupCallbacks();
@@ -160,6 +168,10 @@ namespace motioncam {
         CameraFocusState mLastFocusState;
         CameraExposureState mLastExposureState;
         std::atomic<ScreenOrientation> mScreenOrientation;
+        std::atomic<bool> mHdrCaptureInProgress;
+        PostProcessSettings mHdrCaptureSettings;
+        std::string mHdrCaptureOutputPath;
+        int mRequestedHdrCaptures;
         int32_t mExposureCompensation;
         int32_t mUserIso;
         int64_t mUserExposureTime;
