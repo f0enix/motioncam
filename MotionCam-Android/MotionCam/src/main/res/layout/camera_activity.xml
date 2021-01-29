@@ -58,7 +58,7 @@
                     android:progressBackgroundTint="@color/white"
                     android:thumbTint="@color/white"
                     android:progressTint="@color/white"
-                    android:max="150"
+                    android:max="200"
                     android:padding="10dp"/>
             </LinearLayout>
 
@@ -235,6 +235,17 @@
             android:layout_height="80dp"
             android:layout_centerInParent="true"
             android:src="@drawable/capture_btn" />
+
+        <ProgressBar
+            android:id="@+id/hdrProgressBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="105dp"
+            android:layout_height="105dp"
+            android:indeterminate="false"
+            android:progress="0"
+            android:visibility="invisible"
+            android:progressDrawable="@drawable/progress_circular"
+            android:layout_centerInParent="true"/>
 
         <ImageButton
             android:id="@+id/switchCameraBtn"

@@ -61,11 +61,10 @@ namespace motioncam {
 
         RawImageMetadata(const RawImageMetadata& other) :
             asShot(other.asShot),
-            colorCorrection(other.colorCorrection),
+            lensShadingMap(other.lensShadingMap),
             exposureTime(other.exposureTime),
             iso(other.iso),
             exposureCompensation(other.exposureCompensation),
-            lensShadingMap(other.lensShadingMap),
             timestampNs(other.timestampNs),
             screenOrientation(other.screenOrientation),
             rawType(other.rawType)
@@ -74,7 +73,6 @@ namespace motioncam {
 
         RawImageMetadata(const RawImageMetadata&& other) noexcept :
             asShot(std::move(other.asShot)),
-            colorCorrection(std::move(other.colorCorrection)),
             lensShadingMap(std::move(other.lensShadingMap)),
             exposureTime(other.exposureTime),
             iso(other.iso),
@@ -87,11 +85,10 @@ namespace motioncam {
 
         RawImageMetadata& operator=(const RawImageMetadata &obj) {
             asShot = obj.asShot;
-            colorCorrection = obj.colorCorrection;
+            lensShadingMap = obj.lensShadingMap;
             exposureTime = obj.exposureTime;
             iso = obj.iso;
             exposureCompensation = obj.exposureCompensation;
-            lensShadingMap = obj.lensShadingMap;
             timestampNs = obj.timestampNs;
             screenOrientation = obj.screenOrientation;
             rawType = obj.rawType;
@@ -100,11 +97,10 @@ namespace motioncam {
         }
 
         cv::Vec3f asShot;
-        cv::Vec4f colorCorrection;
+        std::vector<cv::Mat> lensShadingMap;
         int64_t exposureTime;
         int32_t iso;
         int32_t exposureCompensation;
-        std::vector<cv::Mat> lensShadingMap;
         int64_t timestampNs;
         ScreenOrientation screenOrientation;
         RawType rawType;

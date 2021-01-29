@@ -63,6 +63,11 @@ namespace motioncam {
         static void estimateSettings(const RawImageBuffer& rawBuffer, const RawCameraMetadata& cameraMetadata, PostProcessSettings& outSettings);
         static float estimateShadows(const RawImageBuffer& buffer, const RawCameraMetadata& cameraMetadata, PostProcessSettings settings);
         static float estimateExposureCompensation(const RawImageBuffer& buffer, const RawCameraMetadata& cameraMetadata);
+        static void estimateWhiteBalance(const RawImageBuffer& rawBuffer,
+                                         const RawCameraMetadata& cameraMetadata,
+                                         float& outR,
+                                         float& outG,
+                                         float& outB);
 
         static double measureSharpness(const RawImageBuffer& rawBuffer);
 

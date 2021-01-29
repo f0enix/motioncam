@@ -493,9 +493,6 @@ public class PostProcessFragment extends Fragment implements
         if(v != null) {
             v.findViewById(R.id.saveProgressBar).setVisibility(View.INVISIBLE);
         }
-
-        Uri uri = Uri.fromFile(file);
-        Objects.requireNonNull(getActivity()).sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, uri));
     }
 
     @Override

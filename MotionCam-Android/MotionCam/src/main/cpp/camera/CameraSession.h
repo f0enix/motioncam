@@ -148,7 +148,7 @@ namespace motioncam {
         void doSetFocusPoint(double focusX, double focusY, double exposureX, double exposureY);
         void doSetAutoFocus();
         void doSetExposureCompensation(float value);
-        void doAttemptSaveHdrData(int attempt);
+        void doAttemptSaveHdrData();
         void doCaptureHdr(int numImages, int baseIso, int64_t baseExposure, int hdrIso, int64_t hdrExposure);
 
         void setupCallbacks();
@@ -157,7 +157,7 @@ namespace motioncam {
         ACaptureRequest* createCaptureRequest();
 
         void setupRawCaptureOutput(CameraCaptureSessionContext& state);
-        static void setupPreviewCaptureOutput(CameraCaptureSessionContext& state);
+        void setupPreviewCaptureOutput(CameraCaptureSessionContext& state);
 
     private:
         CameraCaptureSessionState mState;

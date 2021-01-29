@@ -22,7 +22,7 @@ import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.view.animation.LinearInterpolator;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.SeekBar;
 import android.widget.Switch;
@@ -98,7 +98,6 @@ public class CameraActivity extends AppCompatActivity implements
     private PointF mAutoExposurePoint;
     private int mIso;
     private long mExposureTime;
-    private int mNumMergeImages;
     private long mShadowsChangedTimeMs;
 
     private final SeekBar.OnSeekBarChangeListener mManualControlsSeekBar = new SeekBar.OnSeekBarChangeListener() {
@@ -409,24 +408,34 @@ public class CameraActivity extends AppCompatActivity implements
                 }));
     }
 
-    private void updateNumImagesToMerge() {
-        if(mIso <= 200 && mExposureTime <= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_100.getExposureTime()) {
-            mNumMergeImages = 0;
-            mPostProcessSettings.chromaEps = 8.0f;
+    static private int getNumImagesToMerge(int iso, long exposureTime, float shadows) {
+        int numImages;
+
+        if(iso <= 200 && exposureTime <= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_100.getExposureTime()) {
+            numImages = 1;
         }
-        else if (mIso <= 800) {
-            mNumMergeImages = 3;
-            mPostProcessSettings.chromaEps = 16.0f;
+        else if (iso <= 800) {
+            numImages = 3;
         }
         else {
-            mNumMergeImages = 5;
-            mPostProcessSettings.chromaEps = 32.0f;
+            numImages = 5;
         }
 
         // If shadows are increased by a significant amount, use more images
-        if(mPostProcessSettings.shadows >= 7.99) {
-            mNumMergeImages += 2;
+        if(shadows >= 7.99) {
+            numImages += 2;
         }
+
+        return numImages;
+    }
+
+    static private float getChromaEps(int numImages) {
+        if(numImages <= 0)
+            return 8.0f;
+        else if(numImages <= 3)
+            return 16.0f;
+        else
+            return 32.0f;
     }
 
     private void onCaptureClicked() {
@@ -443,10 +452,9 @@ public class CameraActivity extends AppCompatActivity implements
         else {
             mBinding.captureBtn.setEnabled(false);
 
-            mBinding.cameraFrame.setAlpha(0.25f);
             mBinding.cameraFrame
                     .animate()
-                    .alpha(1.0f)
+                    .alpha(0.25f)
                     .setDuration(250)
                     .start();
 
@@ -455,7 +463,7 @@ public class CameraActivity extends AppCompatActivity implements
 
             // Map camera exposure to our own
             CameraManualControl.Exposure baseExposure = CameraManualControl.Exposure.Create(
-                CameraManualControl.GetClosestShutterSpeed(mExposureTime),
+                CameraManualControl.GetClosestShutterSpeed(Math.round(mExposureTime)),
                 CameraManualControl.GetClosestIso(mIsoValues, mIso)
             );
 
@@ -467,10 +475,16 @@ public class CameraActivity extends AppCompatActivity implements
             baseExposure = CameraManualControl.MapToExposureLine(1.0, baseExposure);
             hdrExposure = CameraManualControl.MapToExposureLine(1.0, hdrExposure);
 
-            Log.i(TAG, "Requested HDR capture (numImages=" + mNumMergeImages + ")");
+            int numMergeImages =
+                    getNumImagesToMerge(baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), mPostProcessSettings.shadows);
+
+            settings.chromaEps = getChromaEps(numMergeImages);
+            settings.shadows = settings.shadows;
+
+            Log.i(TAG, "Requested HDR capture (numImages=" + numMergeImages + ")");
 
             mNativeCamera.captureHdrImage(
-                    mNumMergeImages,
+                    numMergeImages,
                     baseExposure.iso.getIso(),
                     baseExposure.shutterSpeed.getExposureTime(),
                     hdrExposure.iso.getIso(),
@@ -614,12 +628,7 @@ public class CameraActivity extends AppCompatActivity implements
         }
 
         // Exposure compensation frame
-        if(mSelectedCamera.supportsLinearPreview) {
-            findViewById(R.id.exposureCompFrame).setVisibility(View.VISIBLE);
-        }
-        else {
-            findViewById(R.id.exposureCompFrame).setVisibility(View.GONE);
-        }
+        findViewById(R.id.exposureCompFrame).setVisibility(View.VISIBLE);
 
         // Set up camera manual controls
         mCameraMetadata = mNativeCamera.getMetadata(mSelectedCamera);
@@ -732,8 +741,9 @@ public class CameraActivity extends AppCompatActivity implements
         // Get display size
         Display display = getWindowManager().getDefaultDisplay();
 
-        int displayWidth = display.getMode().getPhysicalWidth();
-        int displayHeight = display.getMode().getPhysicalHeight();
+        // Use small preview window since we're not using the camera preview.
+        int displayWidth = 240;//display.getMode().getPhysicalWidth();
+        int displayHeight = 480;//display.getMode().getPhysicalHeight();
 
         // Get capture size so we can figure out the correct aspect ratio
         Size captureOutputSize = mNativeCamera.getRawConfigurationOutput(mSelectedCamera);
@@ -747,7 +757,7 @@ public class CameraActivity extends AppCompatActivity implements
         Size previewOutputSize = mNativeCamera.getPreviewConfigurationOutput(mSelectedCamera, captureOutputSize, new Size(displayWidth, displayHeight));
         surfaceTexture.setDefaultBufferSize(previewOutputSize.getWidth(), previewOutputSize.getHeight());
 
-        configureTransform(width, height, previewOutputSize);
+//        configureTransform(width, height, previewOutputSize);
 
         mSurface = new Surface(surfaceTexture);
 
@@ -857,8 +867,6 @@ public class CameraActivity extends AppCompatActivity implements
 
             mIso = iso;
             mExposureTime = exposureTime;
-
-            updateNumImagesToMerge();
         });
     }
 
@@ -874,8 +882,11 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     @Override
-    public void onCameraHdrImageCaptureProgress() {
-        Log.i(TAG, "HDR capture progress");
+    public void onCameraHdrImageCaptureProgress(int progress) {
+        runOnUiThread( () -> {
+            mBinding.hdrProgressBar.setVisibility(View.VISIBLE);
+            mBinding.hdrProgressBar.setProgress(progress);
+        });
     }
 
     @Override
@@ -885,12 +896,19 @@ public class CameraActivity extends AppCompatActivity implements
         runOnUiThread( () ->
         {
             mBinding.captureBtn.setEnabled(true);
+            mBinding.hdrProgressBar.setVisibility(View.INVISIBLE);
+
+            mBinding.cameraFrame
+                    .animate()
+                    .alpha(1.0f)
+                    .setDuration(250)
+                    .start();
 
             // Start service to process the image
             Intent intent = new Intent(this, ProcessorService.class);
 
             intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath().getPath());
-            intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, true);
+            intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, false);
             intent.putExtra(ProcessorService.RECEIVER_KEY, mProgressReceiver);
 
             Objects.requireNonNull(startService(intent));
@@ -982,7 +1000,9 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void onShadowsSeekBarChanged(int progress) {
-        setShadowValue(progress / 100.0f * MAX_SHADOWS_VALUE);
+        float shadows = 1.0f + (progress / 100.0f * MAX_SHADOWS_VALUE);
+
+        setShadowValue(shadows);
         mShadowsChangedTimeMs = System.currentTimeMillis();
     }
 
@@ -1019,8 +1039,8 @@ public class CameraActivity extends AppCompatActivity implements
                 mShadowsAnimator =
                         ObjectAnimator.ofFloat(CameraActivity.this, "shadowValue", mPostProcessSettings.shadows, settings.shadows);
 
-                mShadowsAnimator.setDuration(500);
-                mShadowsAnimator.setInterpolator(new LinearInterpolator());
+                mShadowsAnimator.setDuration(750);
+                mShadowsAnimator.setInterpolator(new DecelerateInterpolator());
                 mShadowsAnimator.setAutoCancel(true);
                 mShadowsAnimator.start();
 

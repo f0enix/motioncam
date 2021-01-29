@@ -14,7 +14,7 @@ namespace motioncam {
         virtual void onCameraExposureStatus(const int32_t iso, const int64_t exposureTime) = 0;
         virtual void onCameraAutoFocusStateChanged(const CameraFocusState state) = 0;
         virtual void onCameraAutoExposureStateChanged(const CameraExposureState state) = 0;
-        virtual void onCameraHdrImageCaptureProgress() = 0;
+        virtual void onCameraHdrImageCaptureProgress(int progress) = 0;
         virtual void onCameraHdrImageCaptureCompleted() = 0;
     };
 }

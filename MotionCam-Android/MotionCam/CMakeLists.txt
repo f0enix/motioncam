@@ -132,9 +132,9 @@ add_library(hdr_mask STATIC IMPORTED)
 set_target_properties(hdr_mask PROPERTIES IMPORTED_LOCATION
         ${libmotioncam-src}/halide/${ANDROID_ABI}/hdr_mask.a)
 
-add_library(hdr_input STATIC IMPORTED)
-set_target_properties(hdr_input PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/hdr_input.a)
+add_library(linear_image STATIC IMPORTED)
+set_target_properties(linear_image PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/linear_image.a)
 
 add_library(generate_edges STATIC IMPORTED)
 set_target_properties(generate_edges PROPERTIES IMPORTED_LOCATION
@@ -407,7 +407,7 @@ target_link_libraries(native-camera
         camera_preview3
         camera_preview4
         hdr_mask
-        hdr_input
+        linear_image
         generate_edges
         measure_image
         deinterleave_raw

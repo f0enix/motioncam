@@ -34,10 +34,7 @@ public:
     Input<int[4]> blackLevel{"blackLevel"};
     Input<int> whiteLevel{"whiteLevel"};
 
-    Input<float[4]> colorCorrectionGains{"colorCorrectionGains"};    
     Input<Buffer<float>[4]> shadingMap{"shadingMap", 2 };
-
-    Input<float[3]> asShotVector{"asShotVector"};
     Input<int> sensorArrangement{"sensorArrangement"};
 
     Input<float> tonemapVariance{"tonemapVariance"};
@@ -511,30 +508,32 @@ void CameraPreviewGenerator::generate() {
     linearFunc.compute_root().unroll(v_c);
 
     linear(v_x, v_y, v_c) = cast<float16_t>(
-        (flippedDownscaled(v_x, v_y, v_c) - blackLevelFunc(v_c)) * shadingMapInput(v_x, v_y, v_c) * linearFunc(v_c));
+        (flippedDownscaled(v_x, v_y, v_c) - blackLevelFunc(v_c)) * linearFunc(v_c) * shadingMapInput(v_x, v_y, v_c));
 
     Func demosaiced;
 
     demosaiced(v_x, v_y, v_c) =
         select(
-            v_c == 0, clamp(linear(v_x, v_y, 0), cast<float16_t>(0.0f), cast<float16_t>(asShotVector[0])),
-            v_c == 1, clamp((linear(v_x, v_y, 1) + linear(v_x, v_y, 2)) * cast<float16_t>(0.5f), cast<float16_t>(0.0f), cast<float16_t>(asShotVector[1])),
-                      clamp(linear(v_x, v_y, 3), cast<float16_t>(0.0f), cast<float16_t>(asShotVector[2])));
+            v_c == 0, clamp(linear(v_x, v_y, 0), cast<float16_t>(0.0f), cast<float16_t>(1.0f)),
+            v_c == 1, clamp((linear(v_x, v_y, 1) + linear(v_x, v_y, 2)) * cast<float16_t>(0.5f), cast<float16_t>(0.0f), cast<float16_t>(1.0f)),
+                      clamp(linear(v_x, v_y, 3), cast<float16_t>(0.0f), cast<float16_t>(1.0f)));
 
     transform(colorCorrected, demosaiced, cameraToSrgb);
 
-    // Move to YUV space
+    Expr HALF_0_0 = cast<float16_t>(0.0f);
     Expr HALF_0_5 = cast<float16_t>(0.5f);
     Expr HALF_1_0 = cast<float16_t>(1.0f);
     Expr HALF_2_0 = cast<float16_t>(2.0f);
+    Expr HALF_4_0 = cast<float16_t>(4.0f);
 
+    // Move to YUV space
     Expr R = colorCorrected(v_x, v_y, 0);
     Expr G = colorCorrected(v_x, v_y, 1);
     Expr B = colorCorrected(v_x, v_y, 2);
 
     Expr Y = HALF_YUV_R*R + HALF_YUV_G*G + HALF_YUV_B*B;
-    Expr U = HALF_0_5 * (B - Y) / (HALF_1_0 - HALF_YUV_B) * cast<float16_t>(saturation) + HALF_0_5;
-    Expr V = HALF_0_5 * (R - Y) / (HALF_1_0 - HALF_YUV_R) * cast<float16_t>(saturation) + HALF_0_5;
+    Expr U = HALF_0_5 * (B - Y) / (HALF_1_0 - HALF_YUV_B) + HALF_0_5;
+    Expr V = HALF_0_5 * (R - Y) / (HALF_1_0 - HALF_YUV_R) + HALF_0_5;
 
     yuvOutput(v_x, v_y, v_c) = cast<float16_t>(
         select(v_c == 0, Y,
@@ -554,12 +553,57 @@ void CameraPreviewGenerator::generate() {
     R = Y + HALF_2_0*(V - HALF_0_5) * (HALF_1_0 - HALF_YUV_R);
     G = Y - HALF_2_0*(U - HALF_0_5) * (HALF_1_0 - HALF_YUV_B) * HALF_YUV_B / HALF_YUV_G - HALF_2_0*(V - HALF_0_5) * (HALF_1_0 - HALF_YUV_R) * HALF_YUV_R / HALF_YUV_G;
     B = Y + HALF_2_0*(U - HALF_0_5) * (HALF_1_0 - HALF_YUV_B);
-
-    tonemapOutputRgb(v_x, v_y, v_c) =
-        select(v_c == 0, R,
-               v_c == 1, G,
-                         B);
     
+    // Apply saturation in HSL space
+    const float eps = std::numeric_limits<float>::epsilon();
+
+    Expr maxRgb = max(R, G, B);
+    Expr min0gb = min(R, G, B);
+
+    Expr delta = maxRgb - min0gb;
+    
+    Expr H = select(abs(delta) < eps, HALF_0_0,
+                    maxRgb == R, ((G - B) / delta) % 6,
+                    maxRgb == G, HALF_2_0 + (B - R) / delta,
+                                 HALF_4_0 + (R - G) / delta);
+
+    Expr S = select(abs(maxRgb) < eps, HALF_0_0, delta / maxRgb) * cast<float16_t>(saturation);
+    Expr L = maxRgb;
+
+    // HSV -> RGB
+    Expr i = cast<int>(H);
+    
+    Expr f = H - i;
+    Expr p = L * (HALF_1_0 - S);
+    Expr q = L * (HALF_1_0 - S * f);
+    Expr t = L * (HALF_1_0 - S * (HALF_1_0 - f));
+    
+    Expr outR = select( i == 0, L,
+                        i == 1, q,
+                        i == 2, p,
+                        i == 3, p,
+                        i == 4, t,
+                                L);
+    
+    Expr outG = select( i == 0, t,
+                        i == 1, L,
+                        i == 2, L,
+                        i == 3, q,
+                        i == 4, p,
+                            p);
+
+    Expr outB = select( i == 0, p,
+                        i == 1, p,
+                        i == 2, t,
+                        i == 3, L,
+                        i == 4, L,
+                                q);
+
+    tonemapOutputRgb(v_x, v_y, v_c) = cast<float16_t>(
+        select(v_c == 0, clamp(outR, HALF_0_0, HALF_1_0),
+               v_c == 1, clamp(outG, HALF_0_0, HALF_1_0),
+                         clamp(outB, HALF_0_0, HALF_1_0)));
+
     // Finalize
     Expr b = HALF_2_0 - pow(HALF_2_0, cast<float16_t>(contrast));
     Expr a = HALF_2_0 - HALF_2_0 * b;

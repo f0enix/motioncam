@@ -303,19 +303,42 @@ namespace motioncam {
             dst.timestampNs = metadataEntry.data.i64[0];
         }
         else {
+            LOGE("ACAMERA_SENSOR_TIMESTAMP error");
             return false;
         }
 
-        // Color correction gains
-        if(ACameraMetadata_getConstEntry(src, ACAMERA_COLOR_CORRECTION_GAINS, &metadataEntry) == ACAMERA_OK) {
-            dst.colorCorrection[0] = metadataEntry.data.f[0];
-            dst.colorCorrection[1] = metadataEntry.data.f[1];
-            dst.colorCorrection[2] = metadataEntry.data.f[2];
-            dst.colorCorrection[3] = metadataEntry.data.f[3];
-        }
-        else {
-            return false;
-        }
+//        // ACAMERA_COLOR_CORRECTION_TRANSFORM
+//        if(ACameraMetadata_getConstEntry(src, ACAMERA_COLOR_CORRECTION_TRANSFORM, &metadataEntry) == ACAMERA_OK) {
+//            cv::Mat m(3, 3, CV_32F);
+//
+//            for(int y = 0; y < 3; y++) {
+//                for(int x = 0; x < 3; x++) {
+//                    int i = y * 3 + x;
+//
+//                    m.at<float>(y, x) = (float) metadataEntry.data.r[i].numerator / (float) metadataEntry.data.r[i].denominator;
+//                }
+//            }
+//
+//            dst.colorTransform = m;
+//        }
+//        else {
+//            cv::Mat m(3, 3, CV_32F);
+//            cv::setIdentity(m);
+//
+//            dst.colorTransform = m;
+//        }
+//
+//        // Color correction gains
+//        if(ACameraMetadata_getConstEntry(src, ACAMERA_COLOR_CORRECTION_GAINS, &metadataEntry) == ACAMERA_OK) {
+//            for(int c = 0; c < 4; c++) {
+//                dst.colorCorrection[c] = metadataEntry.data.f[c];
+//            }
+//        }
+//        else {
+//            for(int c = 0; c < 4; c++) {
+//                dst.colorCorrection[c] = 1.0f;
+//            }
+//        }
 
         // Color balance
         if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_NEUTRAL_COLOR_POINT, &metadataEntry) == ACAMERA_OK) {
@@ -324,6 +347,7 @@ namespace motioncam {
             dst.asShot[2] = (float) metadataEntry.data.r[2].numerator / (float) metadataEntry.data.r[2].denominator;
         }
         else {
+            LOGE("ACAMERA_SENSOR_NEUTRAL_COLOR_POINT error");
             return false;
         }
 
@@ -353,6 +377,7 @@ namespace motioncam {
             }
         }
         else {
+            LOGE("ACAMERA_LENS_INFO_SHADING_MAP_SIZE error");
             return false;
         }
 
@@ -369,6 +394,7 @@ namespace motioncam {
             }
         }
         else {
+            LOGE("ACAMERA_STATISTICS_LENS_SHADING_MAP error");
             return false;
         }
 
@@ -438,7 +464,6 @@ namespace motioncam {
         while(mRunning && memoryUseBytes + bufferLength < mMaximumMemoryUsageBytes) {
             std::vector<std::shared_ptr<RawImageBuffer>> buffers;
 
-            // Create 2 buffers at a time
             std::shared_ptr<RawImageBuffer> buffer = std::make_shared<RawImageBuffer>(std::make_unique<NativeClBuffer>(bufferLength));
             buffers.push_back(buffer);
 
@@ -616,27 +641,28 @@ namespace motioncam {
             auto now = std::chrono::steady_clock::now();
             double durationMs = std::chrono::duration <double, std::milli>(now - fpsTimestamp).count();
             if(durationMs > 3000.0f) {
-                // Vary camera preview quality dependening on GPU processing time
                 double avgProcessTimeMs = totalPreviewTimeMs / processedFrames;
                 int tmpDownscaleFactor = downscaleFactor;
 
-                // Set 20 fps as acceptable frame rate
-                if(avgProcessTimeMs < 50) {
-                    --tmpDownscaleFactor;
-                }
-                else {
-                    ++tmpDownscaleFactor;
-                }
-
-                tmpDownscaleFactor = std::max(3, std::min(4, tmpDownscaleFactor));
-                if(!previewSettled && tmpDownscaleFactor != downscaleFactor) {
-                    downscaleFactor = tmpDownscaleFactor;
-                    releaseCameraPreviewOutputBuffer(outputBuffer);
-                    outputCreated = false;
-
-                    if(tmpDownscaleFactor > downscaleFactor)
-                        previewSettled = true;
-                }
+                // TODO: This should probably save the quality so it doesn't keep flip flopping
+//                // Vary camera preview quality dependening on GPU processing time
+//                // Set 20 fps as acceptable frame rate
+//                if(avgProcessTimeMs < 50) {
+//                    --tmpDownscaleFactor;
+//                }
+//                else {
+//                    ++tmpDownscaleFactor;
+//                }
+//
+//                tmpDownscaleFactor = std::max(3, std::min(4, tmpDownscaleFactor));
+//                if(!previewSettled && tmpDownscaleFactor != downscaleFactor) {
+//                    downscaleFactor = tmpDownscaleFactor;
+//                    releaseCameraPreviewOutputBuffer(outputBuffer);
+//                    outputCreated = false;
+//
+//                    if(tmpDownscaleFactor > downscaleFactor)
+//                        previewSettled = true;
+//                }
 
                 LOGI("Camera FPS: %d, cameraQuality=%d processTimeMs=%.2f", processedFrames / 3, downscaleFactor, avgProcessTimeMs);
 
@@ -689,6 +715,10 @@ namespace motioncam {
 
             // Wait for image
             if(!mImageQueue.wait_dequeue_timed(pendingImage, std::chrono::milliseconds(100))) {
+                // Try to match buffers even if no image has been added
+                std::lock_guard<std::mutex> lock(mBufferMutex);
+
+                doMatchMetadata();
                 continue;
             }
 
@@ -709,21 +739,23 @@ namespace motioncam {
                     else {
                         mSetupBuffersThread = std::make_shared<std::thread>(&RawImageConsumer::doSetupBuffers, this, static_cast<size_t>(length));
                     }
+
+                    // Give the buffers thread a chance to create some buffers before we try to get one below.
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 }
-                else {
-                    dst = mBufferManager->allocateBuffer();
 
-                    // If we aren't able to allocate a buffer something is probably broken. We aren't
-                    // matching metadata to buffers so we need to remove a pending buffer
-                    if (!dst) {
-                        if (!mPendingBuffers.empty()) {
-                            auto it = mPendingBuffers.begin();
-                            dst = it->second;
+                dst = mBufferManager->allocateBuffer();
 
-                            mPendingBuffers.erase(it);
+                // If we aren't able to allocate a buffer something is probably broken. We aren't
+                // matching metadata to buffers so we need to remove a pending buffer
+                if (!dst) {
+                    if (!mPendingBuffers.empty()) {
+                        auto it = mPendingBuffers.begin();
+                        dst = it->second;
 
-                            LOGW("Removing pending buffer");
-                        }
+                        mPendingBuffers.erase(it);
+
+                        LOGW("Removing pending buffer");
                     }
                 }
             }

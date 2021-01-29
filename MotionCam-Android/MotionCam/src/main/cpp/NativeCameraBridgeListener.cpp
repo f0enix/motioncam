@@ -111,16 +111,16 @@ namespace motioncam {
             env.getEnv()->CallVoidMethod(mListenerInstance, callbackMethod, (int) state);
     }
 
-    void NativeCameraBridgeListener::onCameraHdrImageCaptureProgress() {
+    void NativeCameraBridgeListener::onCameraHdrImageCaptureProgress(int progress) {
         JavaEnv env(mJavaVm);
         if (!env.getEnv()) {
             LOGE("Dropped onCameraHdrImageCaptureProgress()");
             return;
         }
 
-        jmethodID callbackMethod = env.getEnv()->GetMethodID(mListenerClass, "onCameraHdrImageCaptureProgress", "()V");
+        jmethodID callbackMethod = env.getEnv()->GetMethodID(mListenerClass, "onCameraHdrImageCaptureProgress", "(I)V");
         if(callbackMethod)
-            env.getEnv()->CallVoidMethod(mListenerInstance, callbackMethod);
+            env.getEnv()->CallVoidMethod(mListenerInstance, callbackMethod, progress);
     }
 
     void NativeCameraBridgeListener::onCameraHdrImageCaptureCompleted() {

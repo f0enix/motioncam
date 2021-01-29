@@ -230,15 +230,6 @@ namespace motioncam {
             imageMetadata["rowStride"]   = frame->rowStride;
             imageMetadata["pixelFormat"] = toString(frame->pixelFormat);
 
-            vector<float> colorCorrectionGains = {
-                frame->metadata.colorCorrection[0],
-                frame->metadata.colorCorrection[1],
-                frame->metadata.colorCorrection[2],
-                frame->metadata.colorCorrection[3]
-            };
-            
-            imageMetadata["colorCorrectionGains"] = colorCorrectionGains;
-
             vector<float> asShot = {
                 frame->metadata.asShot[0],
                 frame->metadata.asShot[1],
@@ -421,17 +412,6 @@ namespace motioncam {
             
             string timestamp                    = getRequiredSettingAsString(*it, "timestamp");
             buffer->metadata.timestampNs        = std::stol(timestamp);
-                
-            // Color correction
-            vector<Json> colorCorrectionItems = (*it)["colorCorrectionGains"].array_items();
-    
-            if(colorCorrectionItems.size() < 4)
-                throw InvalidState("Invalid metadata. Color correction gains are invalid");
-            
-            buffer->metadata.colorCorrection[0] = colorCorrectionItems[0].number_value();
-            buffer->metadata.colorCorrection[1] = colorCorrectionItems[1].number_value();
-            buffer->metadata.colorCorrection[2] = colorCorrectionItems[2].number_value();
-            buffer->metadata.colorCorrection[3] = colorCorrectionItems[3].number_value();
 
             // Lens shading maps
             int lenShadingMapWidth  = getRequiredSettingAsInt(*it, "lensShadingMapWidth");

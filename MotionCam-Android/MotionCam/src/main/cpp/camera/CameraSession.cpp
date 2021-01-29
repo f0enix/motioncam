@@ -380,9 +380,15 @@ namespace motioncam {
         if (ACaptureSessionOutputContainer_add(state.captureSessionContainer.get(), sessionOutput) != ACAMERA_OK)
             throw CameraSessionException("Failed to add preview output to session container");
 
-        //
-        // Don't add capture requests to preview since we're not using it.
-        //
+        if (ACaptureRequest_addTarget(mSessionContext->repeatCaptureRequest->captureRequest, outputTarget) != ACAMERA_OK)
+            throw CameraSessionException("Failed to add RAW output target");
+
+        if (ACaptureRequest_addTarget(mSessionContext->afCaptureRequest->captureRequest, outputTarget) != ACAMERA_OK)
+            throw CameraSessionException("Failed to add AF RAW output target");
+
+        for(int i = 0; i < 2; i++)
+            if (ACaptureRequest_addTarget(mSessionContext->hdrCaptureRequests[i]->captureRequest, outputTarget) != ACAMERA_OK)
+                throw CameraSessionException("Failed to add HDR RAW output target");
     }
 
     void CameraSession::setupRawCaptureOutput(CameraCaptureSessionContext& state) {
@@ -449,11 +455,12 @@ namespace motioncam {
         const uint8_t captureIntent         = ACAMERA_CONTROL_CAPTURE_INTENT_PREVIEW;
         const uint8_t controlMode           = ACAMERA_CONTROL_MODE_AUTO;
         const uint8_t tonemapMode           = ACAMERA_TONEMAP_MODE_FAST;
-        const uint8_t shadingMode           = ACAMERA_SHADING_MODE_OFF;
+        const uint8_t shadingMode           = ACAMERA_SHADING_MODE_FAST;
+        const uint8_t colorCorrectionMode   = ACAMERA_COLOR_CORRECTION_MODE_HIGH_QUALITY;
         const uint8_t lensShadingMapStats   = ACAMERA_STATISTICS_LENS_SHADING_MAP_MODE_ON;
         const uint8_t lensShadingMapApplied = ACAMERA_SENSOR_INFO_LENS_SHADING_APPLIED_FALSE;
         const uint8_t antiBandingMode       = ACAMERA_CONTROL_AE_ANTIBANDING_MODE_AUTO;
-        const uint8_t noiseReduction        = ACAMERA_NOISE_REDUCTION_MODE_OFF;
+        const uint8_t noiseReduction        = ACAMERA_NOISE_REDUCTION_MODE_FAST;
 
         ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_CAPTURE_INTENT, 1, &captureIntent);
         ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_MODE, 1, &controlMode);
@@ -462,6 +469,7 @@ namespace motioncam {
         ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_SENSOR_INFO_LENS_SHADING_APPLIED, 1, &lensShadingMapApplied);
         ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AE_ANTIBANDING_MODE, 1, &antiBandingMode);
         ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_NOISE_REDUCTION_MODE, 1, &noiseReduction);
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_COLOR_CORRECTION_MODE, 1, &colorCorrectionMode);
 
         // Enable OIS
         uint8_t omode = ACAMERA_LENS_OPTICAL_STABILIZATION_MODE_ON;
@@ -838,15 +846,17 @@ namespace motioncam {
             &mSessionContext->captureCallbacks[CaptureEvent::HDR_CAPTURE]->sequenceId);
     }
 
-    void CameraSession::doAttemptSaveHdrData(int attempt) {
-
+    void CameraSession::doAttemptSaveHdrData() {
         int numHdrImages = mImageConsumer->getHdrBufferCount();
 
         // If we don't have the right number of images
-        if(mImageConsumer->getHdrBufferCount() < mRequestedHdrCaptures) {
-            LOGI("%d. Expected %d but got %d HDR images. Trying again.", attempt, mRequestedHdrCaptures, numHdrImages);
+        int hdrBufferCount = mImageConsumer->getHdrBufferCount();
+        if(hdrBufferCount < mRequestedHdrCaptures) {
+            mSessionListener->onCameraHdrImageCaptureProgress(hdrBufferCount / (float) mRequestedHdrCaptures * 100.0f);
             return;
         }
+
+        mSessionListener->onCameraHdrImageCaptureProgress(100);
 
         // Save HDR capture
         mHdrCaptureInProgress = false;
@@ -1033,12 +1043,6 @@ namespace motioncam {
     void CameraSession::onCameraCaptureSequenceCompleted(const CaptureCallbackContext& context, const int sequenceId) {
         if(context.event == CaptureEvent::HDR_CAPTURE) {
             LOGI("HDR capture sequence completed");
-
-            json11::Json::object data = {
-                    { "attempt", 0 }
-            };
-
-            pushEvent(EventAction::EVENT_SAVE_HDR_DATA, data);
         }
     }
 
@@ -1238,7 +1242,7 @@ namespace motioncam {
             //
 
             case EventAction::EVENT_SAVE_HDR_DATA: {
-                doAttemptSaveHdrData(0);
+                doAttemptSaveHdrData();
                 break;
             }
 

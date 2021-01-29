@@ -10,14 +10,13 @@ import java.util.Random;
 
 public class CameraProfile {
     private static final String CAPTURE_OUTPUT_PATH_NAME = "motionCam";
-    private static final SimpleDateFormat OUTPUT_DATE_FORMAT = new SimpleDateFormat("yyyyMMdd_Hms", Locale.forLanguageTag("en-US"));
-    private static final Random RANDOM = new Random();
+    private static final SimpleDateFormat OUTPUT_DATE_FORMAT = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.forLanguageTag("en-US"));
 
     static private String generateFilename() {
         return String.format(
                 Locale.getDefault(),
-                "IMG_%s%d.zip",
-                OUTPUT_DATE_FORMAT.format(new Date()), RANDOM.nextInt(Short.MAX_VALUE));
+                "IMG_%s.zip",
+                OUTPUT_DATE_FORMAT.format(new Date()));
     }
 
     static public File getRootOutputPath() {
