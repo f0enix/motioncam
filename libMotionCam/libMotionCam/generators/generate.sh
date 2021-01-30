@@ -42,6 +42,12 @@ function build_postprocess() {
 	ARCH=$2
 	FLAGS="no_runtime"
 
+	echo "[$ARCH] Building hdr_mask_generator"
+	./tmp/postprocess_generator -g hdr_mask_generator -f hdr_mask -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS}
+
+	echo "[$ARCH] Building linear_image_generator"
+	./tmp/postprocess_generator -g linear_image_generator -f linear_image -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS}
+
 	echo "[$ARCH] Building measure_image_generator"
 	./tmp/postprocess_generator -g measure_image_generator -f measure_image -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS}
 
@@ -100,7 +106,7 @@ function build_camera_preview() {
 	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview2 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=7 downscaleFactor=2
 
 	echo "[$ARCH] Building camera_preview_generator3"
-	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview3 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=6 downscaleFactor=3
+	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview3 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=7 downscaleFactor=3
 
 	echo "[$ARCH] Building camera_preview_generator4"
 	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview4 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=6 downscaleFactor=4

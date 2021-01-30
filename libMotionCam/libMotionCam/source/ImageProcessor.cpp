@@ -373,36 +373,27 @@ namespace motioncam {
         return static_cast<float>(cv::log(m) / cv::log(2.0));
     }
 
-    void ImageProcessor::estimateBasicSettings(const RawImageBuffer& rawBuffer,
-                                               const RawCameraMetadata& cameraMetadata,
-                                               PostProcessSettings& outSettings)
-    {
-//        Measure measure("estimateBasicSettings()");
-        
-        // Start with basic initial values
+    void ImageProcessor::estimateWhitePoint(const RawImageBuffer& rawBuffer,
+                                            const RawCameraMetadata& cameraMetadata,
+                                            float shadows,
+                                            float& outBlacks,
+                                            float& outWhitePoint) {
         PostProcessSettings settings;
         
-        // Calculate white balance from metadata
-        CameraProfile cameraProfile(cameraMetadata);
-        Temperature temperature;
+        settings.shadows = shadows;
         
-        cameraProfile.temperatureFromVector(rawBuffer.metadata.asShot, temperature);
-        
-        settings.temperature    = static_cast<float>(temperature.temperature());
-        settings.tint           = static_cast<float>(temperature.tint());
-        settings.shadows        = estimateShadows(rawBuffer, cameraMetadata, settings);
-        
-        // Calculate blacks
-        auto previewBuffer = createPreview(rawBuffer, 8, cameraMetadata, settings);
+        auto previewBuffer = createPreview(rawBuffer, 4, cameraMetadata, settings);
 
         cv::Mat preview(previewBuffer.height(), previewBuffer.width(), CV_8UC4, previewBuffer.data());
         cv::Mat histogram;
-                
+
+        cv::cvtColor(preview, preview, cv::COLOR_RGBA2GRAY);
+
         vector<cv::Mat> inputImages     = { preview };
         const vector<int> channels      = { 0 };
         const vector<int> histBins      = { 255 };
         const vector<float> histRange   = { 0, 256 };
-        
+
         cv::calcHist(inputImages, channels, cv::Mat(), histogram, histBins, histRange);
         
         // Estimate blacks
@@ -412,33 +403,45 @@ namespace motioncam {
         int allowPixels = static_cast<int>(maxDehazePercent * static_cast<float>(preview.cols * preview.rows));
         int pixels = 0;
         int endBin = 0;
-        
+
         for(endBin = 0; endBin < maxEndBin; endBin++) {
             int binPx = histogram.at<float>(endBin);
-            
+
             if(binPx + pixels > allowPixels)
                 break;
-            
+
             pixels += binPx;
         }
 
-        settings.blacks = std::max(0.02f, static_cast<float>(endBin) / static_cast<float>(histogram.rows - 1));
+        outBlacks = std::max(0.02f, static_cast<float>(endBin) / static_cast<float>(histogram.rows - 1));
 
         // Estimate white point
         allowPixels = static_cast<int>(0.005f * static_cast<float>(preview.cols * preview.rows));
         pixels = 0;
-        
+
         for(endBin = histogram.rows - 1; endBin >= 192; endBin--) {
             int binPx = histogram.at<float>(endBin);
-            
+
             if(binPx + pixels > allowPixels)
                 break;
-            
+
             pixels += binPx;
         }
+
+        outWhitePoint = static_cast<float>(endBin) / ((float) histogram.rows - 1);
+    }
+
+    void ImageProcessor::estimateBasicSettings(const RawImageBuffer& rawBuffer,
+                                               const RawCameraMetadata& cameraMetadata,
+                                               PostProcessSettings& outSettings)
+    {
+//        Measure measure("estimateBasicSettings()");
         
-        settings.whitePoint = static_cast<float>(endBin) / ((float) histogram.rows - 1);
+        // Start with basic initial values
+        PostProcessSettings settings;
         
+        settings.shadows = estimateShadows(rawBuffer, cameraMetadata, settings);
+                
         // Update estimated settings
         outSettings = settings;
     }
@@ -466,17 +469,9 @@ namespace motioncam {
         mean[1] /= sum[1];
         mean[2] /= sum[2];
         
-        float maxMean = std::max(std::max(mean[0], mean[1]), mean[2]);
-
-        outR = maxMean / mean[0];
-        outG = maxMean / mean[1];
-        outB = maxMean / mean[2];
-
-        float max = std::max(std::max(outR, outG), outB);
-
-        outR /= max;
-        outG /= max;
-        outB /= max;
+        outR = mean[1] / mean[0];
+        outG = 1.0f;
+        outB = mean[1] / mean[2];
     }
 
     void ImageProcessor::estimateSettings(const RawImageBuffer& rawBuffer,
@@ -685,7 +680,7 @@ namespace motioncam {
             camera_preview = &camera_preview3;
         else if(downscaleFactor == 4)
             camera_preview = &camera_preview4;
-        
+                
         camera_preview(inputBuffer,
                        rawBuffer.rowStride,
                        static_cast<int>(rawBuffer.pixelFormat),
@@ -1097,15 +1092,7 @@ namespace motioncam {
         }
         
         auto referenceRawBuffer = rawContainer.getFrame(rawContainer.getReferenceImage());
-        
-        const int rawWidth  = referenceRawBuffer->width / 2;
-        const int rawHeight = referenceRawBuffer->height / 2;
-
-        const int T = pow(2, DENOISE_LEVELS);
-        
-        const int offsetX = static_cast<int>(T * ceil(rawWidth / (double) T) - rawWidth);
-        const int offsetY = static_cast<int>(T * ceil(rawHeight / (double) T) - rawHeight);
-                
+                        
         // If this is a HDR capture then find the underexposed images.
         std::vector<std::string> underexposedImages;
         
@@ -1161,7 +1148,7 @@ namespace motioncam {
                 rawContainer.updateReferenceImage(sharpestBuffer);
             }
         }
-                
+
         //
         // Denoise
         //
@@ -1176,7 +1163,15 @@ namespace motioncam {
         //
         // Post process
         //
-                
+        
+        const int rawWidth  = referenceRawBuffer->width / 2;
+        const int rawHeight = referenceRawBuffer->height / 2;
+
+        const int T = pow(2, DENOISE_LEVELS);
+        
+        const int offsetX = static_cast<int>(T * ceil(rawWidth / (double) T) - rawWidth);
+        const int offsetY = static_cast<int>(T * ceil(rawHeight / (double) T) - rawHeight);
+
         // Check if we should write a DNG file
 #ifdef DNG_SUPPORT
         if(rawContainer.getWriteDNG()) {
@@ -1238,18 +1233,26 @@ namespace motioncam {
 
         cv::Mat outputImage;
         shared_ptr<HdrMetadata> hdrMetadata;
+        PostProcessSettings settings = rawContainer.getPostProcessSettings();
 
         if(!underexposedImages.empty()) {
+            auto referenceRawBuffer = rawContainer.loadFrame(rawContainer.getReferenceImage());
             auto underexposedFrame = rawContainer.loadFrame(*underexposedImages.begin());
-            auto referenceFrame = rawContainer.loadFrame(rawContainer.getReferenceImage());
 
             hdrMetadata =
                 prepareHdr(rawContainer.getCameraMetadata(),
-                           rawContainer.getPostProcessSettings(),
-                           *referenceFrame,
+                           settings,
+                           *referenceRawBuffer,
                            *underexposedFrame);
+            
+            // Adjust white point since the base exposure is scaled to the underexposed image
+            estimateWhitePoint(*underexposedFrame,
+                               rawContainer.getCameraMetadata(),
+                               settings.shadows * (1.0/hdrMetadata->exposureScale),
+                               settings.blacks,
+                               settings.whitePoint);
         }
-        
+
         outputImage = postProcess(
             denoiseOutput,
             hdrMetadata,
@@ -1257,7 +1260,7 @@ namespace motioncam {
             offsetY,
             referenceRawBuffer->metadata,
             rawContainer.getCameraMetadata(),
-            rawContainer.getPostProcessSettings());
+            settings);
 
         progressHelper.postProcessCompleted();
 

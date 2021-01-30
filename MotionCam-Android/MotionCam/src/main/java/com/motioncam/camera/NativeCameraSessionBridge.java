@@ -304,12 +304,12 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         return GetMetadata(mNativeCameraHandle, cameraInfo.cameraId);
     }
 
-    public void enableRawPreview(CameraRawPreviewListener listener) {
+    public void enableRawPreview(CameraRawPreviewListener listener, boolean overrideWb) {
         ensureValidHandle();
 
         mRawPreviewListener = listener;
 
-        EnableRawPreview(mNativeCameraHandle, this);
+        EnableRawPreview(mNativeCameraHandle, this, overrideWb);
     }
 
     public void setRawPreviewSettings(float shadows, float contrast, float saturation, float blacks, float whitePoint) {
@@ -424,7 +424,7 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
     private native boolean SetAutoExposure(long handle);
     private native boolean SetExposureCompensation(long handle, float value);
 
-    private native boolean EnableRawPreview(long handle, NativeCameraRawPreviewListener listener);
+    private native boolean EnableRawPreview(long handle, NativeCameraRawPreviewListener listener, boolean overrideWb);
     private native boolean SetRawPreviewSettings(long handle, float shadows, float contrast, float saturation, float blacks, float whitePoint);
     private native boolean DisableRawPreview(long handle);
 

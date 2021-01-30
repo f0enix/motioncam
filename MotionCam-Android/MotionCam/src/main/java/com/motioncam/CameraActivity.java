@@ -65,6 +65,7 @@ public class CameraActivity extends AppCompatActivity implements
     private static final int PERMISSION_REQUEST_CODE = 1;
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
     private static final float MAX_SHADOWS_VALUE = 32.0f;
+    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 6;
 
     private enum FocusState {
         AUTO,
@@ -227,6 +228,9 @@ public class CameraActivity extends AppCompatActivity implements
 
         mSensorEventManager = new SensorEventManager(this, this);
 
+        // Kick off image processor in case there are images we have not processed
+        startImageProcessor();
+
         requestPermissions();
     }
 
@@ -290,14 +294,15 @@ public class CameraActivity extends AppCompatActivity implements
         boolean burst = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_PREVIEW_BURST, false);
 
         mPostProcessSettings.shadows = 1.0f;
-        mPostProcessSettings.contrast = 0.5f;
-        mPostProcessSettings.saturation = 1.0f;
+        mPostProcessSettings.contrast = contrast / 100.0f;
+        mPostProcessSettings.saturation = colour / 100.0f;
         mPostProcessSettings.greenSaturation = 1.0f;
         mPostProcessSettings.blueSaturation = 1.0f;
         mPostProcessSettings.sharpen0 = 3.5f;
         mPostProcessSettings.sharpen1 = 1.4f;
         mPostProcessSettings.whitePoint = 1.0f;
         mPostProcessSettings.blacks = 0.0f;
+        mPostProcessSettings.tonemapVariance = 0.30f;
         mPostProcessSettings.jpegQuality = jpegQuality;
 
         // Update UI
@@ -468,7 +473,7 @@ public class CameraActivity extends AppCompatActivity implements
             );
 
             CameraManualControl.Exposure hdrExposure = CameraManualControl.Exposure.Create(
-                    CameraManualControl.GetClosestShutterSpeed(mExposureTime / 4),
+                    CameraManualControl.GetClosestShutterSpeed(mExposureTime / HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV),
                     CameraManualControl.GetClosestIso(mIsoValues, mIso)
             );
 
@@ -491,26 +496,6 @@ public class CameraActivity extends AppCompatActivity implements
                     hdrExposure.shutterSpeed.getExposureTime(),
                     settings,
                     CameraProfile.generateCaptureFile().getPath());
-
-//            mAsyncNativeCameraOps.captureImage(
-//                    Long.MIN_VALUE,
-//                    mNumMergeImages,
-//                    false,
-//                    settings,
-//                    CameraProfile.generateCaptureFile().getPath(),
-//                    handle -> {
-//                        mBinding.captureBtn.setEnabled(true);
-//
-//                        // Start service to process the image
-//                        Intent intent = new Intent(this, ProcessorService.class);
-//
-//                        intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath().getPath());
-//                        intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, true);
-//                        intent.putExtra(ProcessorService.RECEIVER_KEY, mProgressReceiver);
-//
-//                        Objects.requireNonNull(startService(intent));
-//                    }
-//            );
         }
     }
 
@@ -762,7 +747,7 @@ public class CameraActivity extends AppCompatActivity implements
         mSurface = new Surface(surfaceTexture);
 
         mNativeCamera.startCapture(mSelectedCamera, mSurface);
-        mNativeCamera.enableRawPreview(this);
+        mNativeCamera.enableRawPreview(this, false);
 
         // Update orientation in case we've switched front/back cameras
         NativeCameraBuffer.ScreenOrientation orientation = mSensorEventManager.getOrientation();
@@ -841,6 +826,7 @@ public class CameraActivity extends AppCompatActivity implements
             runOnUiThread(() ->
             {
                 mBinding.switchCameraBtn.setEnabled(true);
+
                 setPostProcessingDefaults();
             });
         }
@@ -875,6 +861,17 @@ public class CameraActivity extends AppCompatActivity implements
         Log.i(TAG, "Focus state: " + state.name());
     }
 
+    private void startImageProcessor() {
+        // Start service to process the image
+        Intent intent = new Intent(this, ProcessorService.class);
+
+        intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath().getPath());
+        intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, false);
+        intent.putExtra(ProcessorService.RECEIVER_KEY, mProgressReceiver);
+
+        Objects.requireNonNull(startService(intent));
+    }
+
     @Override
     public void onCameraAutoExposureStateChanged(NativeCameraSessionBridge.CameraExposureState state) {
         Log.i(TAG, "Exposure state: " + state.name());
@@ -904,14 +901,7 @@ public class CameraActivity extends AppCompatActivity implements
                     .setDuration(250)
                     .start();
 
-            // Start service to process the image
-            Intent intent = new Intent(this, ProcessorService.class);
-
-            intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath().getPath());
-            intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, false);
-            intent.putExtra(ProcessorService.RECEIVER_KEY, mProgressReceiver);
-
-            Objects.requireNonNull(startService(intent));
+            startImageProcessor();
         });
     }
 
@@ -1012,7 +1002,7 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void updatePreviewSettings() {
-        if(mPostProcessSettings != null) {
+        if(mPostProcessSettings != null && mNativeCamera != null) {
             mNativeCamera.setRawPreviewSettings(
                     mPostProcessSettings.shadows,
                     mPostProcessSettings.contrast,

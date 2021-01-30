@@ -380,15 +380,15 @@ namespace motioncam {
         if (ACaptureSessionOutputContainer_add(state.captureSessionContainer.get(), sessionOutput) != ACAMERA_OK)
             throw CameraSessionException("Failed to add preview output to session container");
 
-        if (ACaptureRequest_addTarget(mSessionContext->repeatCaptureRequest->captureRequest, outputTarget) != ACAMERA_OK)
-            throw CameraSessionException("Failed to add RAW output target");
-
-        if (ACaptureRequest_addTarget(mSessionContext->afCaptureRequest->captureRequest, outputTarget) != ACAMERA_OK)
-            throw CameraSessionException("Failed to add AF RAW output target");
-
-        for(int i = 0; i < 2; i++)
-            if (ACaptureRequest_addTarget(mSessionContext->hdrCaptureRequests[i]->captureRequest, outputTarget) != ACAMERA_OK)
-                throw CameraSessionException("Failed to add HDR RAW output target");
+//        if (ACaptureRequest_addTarget(mSessionContext->repeatCaptureRequest->captureRequest, outputTarget) != ACAMERA_OK)
+//            throw CameraSessionException("Failed to add RAW output target");
+//
+//        if (ACaptureRequest_addTarget(mSessionContext->afCaptureRequest->captureRequest, outputTarget) != ACAMERA_OK)
+//            throw CameraSessionException("Failed to add AF RAW output target");
+//
+//        for(int i = 0; i < 2; i++)
+//            if (ACaptureRequest_addTarget(mSessionContext->hdrCaptureRequests[i]->captureRequest, outputTarget) != ACAMERA_OK)
+//                throw CameraSessionException("Failed to add HDR RAW output target");
     }
 
     void CameraSession::setupRawCaptureOutput(CameraCaptureSessionContext& state) {

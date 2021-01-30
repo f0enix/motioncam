@@ -1769,7 +1769,7 @@ public:
     Input<float> sharpen0{"sharpen0"};
     Input<float> sharpen1{"sharpen1"};
     Input<float> chromaFilterWeight{"chromaFilterWeight"};
-        
+    
     Output<Buffer<uint8_t>> output{"output", 3};
     
     Func clamped0{"clamped0"};

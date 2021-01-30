@@ -37,6 +37,7 @@ namespace motioncam {
         mBufferManager(new RawBufferManager()),
         mRunning(false),
         mEnableRawPreview(false),
+        mOverrideWhiteBalance(false),
         mShadows(1.0f),
         mContrast(0.5f),
         mSaturation(1.0f),
@@ -567,12 +568,13 @@ namespace motioncam {
         std::shared_ptr<RawImageBuffer> buffer;
 
         std::chrono::steady_clock::time_point fpsTimestamp = std::chrono::steady_clock::now();
+        std::chrono::steady_clock::time_point wbTimestamp = std::chrono::steady_clock::now();
         std::chrono::steady_clock::time_point previewTimestamp;
 
         cl_int errCode = -1;
 
         bool outputCreated = false;
-        int downscaleFactor = 4;
+        int downscaleFactor = 3;
         int processedFrames = 0;
         double totalPreviewTimeMs = 0;
         bool previewSettled = false;
@@ -640,29 +642,10 @@ namespace motioncam {
 
             auto now = std::chrono::steady_clock::now();
             double durationMs = std::chrono::duration <double, std::milli>(now - fpsTimestamp).count();
+
+            // Print camera FPS + stats
             if(durationMs > 3000.0f) {
                 double avgProcessTimeMs = totalPreviewTimeMs / processedFrames;
-                int tmpDownscaleFactor = downscaleFactor;
-
-                // TODO: This should probably save the quality so it doesn't keep flip flopping
-//                // Vary camera preview quality dependening on GPU processing time
-//                // Set 20 fps as acceptable frame rate
-//                if(avgProcessTimeMs < 50) {
-//                    --tmpDownscaleFactor;
-//                }
-//                else {
-//                    ++tmpDownscaleFactor;
-//                }
-//
-//                tmpDownscaleFactor = std::max(3, std::min(4, tmpDownscaleFactor));
-//                if(!previewSettled && tmpDownscaleFactor != downscaleFactor) {
-//                    downscaleFactor = tmpDownscaleFactor;
-//                    releaseCameraPreviewOutputBuffer(outputBuffer);
-//                    outputCreated = false;
-//
-//                    if(tmpDownscaleFactor > downscaleFactor)
-//                        previewSettled = true;
-//                }
 
                 LOGI("Camera FPS: %d, cameraQuality=%d processTimeMs=%.2f", processedFrames / 3, downscaleFactor, avgProcessTimeMs);
 
@@ -707,6 +690,11 @@ namespace motioncam {
 
         mPreprocessThread = nullptr;
         mPreviewListener.reset();
+    }
+
+    void RawImageConsumer::setWhiteBalanceOverride(bool override) {
+        // TODO This doesn't do anything yet
+        mOverrideWhiteBalance = override;
     }
 
     void RawImageConsumer::doCopyImage() {

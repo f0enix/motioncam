@@ -53,6 +53,8 @@ namespace motioncam {
         void updateRawPreviewSettings(float shadows, float contrast, float saturation, float blacks, float whitePoint);
         void disableRawPreview();
 
+        void setWhiteBalanceOverride(bool override);
+
     private:
         static bool copyMetadata(RawImageMetadata& dst, const ACameraMetadata* src);
         void onBufferReady(const std::shared_ptr<RawImageBuffer>& buffer);
@@ -76,6 +78,7 @@ namespace motioncam {
         std::shared_ptr<std::thread> mPreprocessThread;
         std::atomic<bool> mRunning;
         std::atomic<bool> mEnableRawPreview;
+        std::atomic<bool> mOverrideWhiteBalance;
 
         std::atomic<float> mShadows;
         std::atomic<float> mContrast;
