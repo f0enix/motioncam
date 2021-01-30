@@ -290,7 +290,6 @@ namespace motioncam {
             
             hdrMask = ToHalideBuffer<uint8_t>(blankMask);
             hdrInput = Halide::Runtime::Buffer<uint16_t>((uint16_t*) blankInput.data, blankInput.cols, blankInput.rows, 3);
-            hdrScale = hdrMetadata == nullptr ? 1.0f : hdrMetadata->exposureScale;
         }
         
         postprocess(inputBuffers[0],
@@ -1246,11 +1245,13 @@ namespace motioncam {
                            *underexposedFrame);
             
             // Adjust white point since the base exposure is scaled to the underexposed image
-            estimateWhitePoint(*underexposedFrame,
-                               rawContainer.getCameraMetadata(),
-                               settings.shadows * (1.0/hdrMetadata->exposureScale),
-                               settings.blacks,
-                               settings.whitePoint);
+            if(hdrMetadata->error < MAX_HDR_ERROR) {
+                estimateWhitePoint(*underexposedFrame,
+                                   rawContainer.getCameraMetadata(),
+                                   settings.shadows * (1.0/hdrMetadata->exposureScale),
+                                   settings.blacks,
+                                   settings.whitePoint);
+            }
         }
 
         outputImage = postProcess(
