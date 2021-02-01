@@ -8,28 +8,29 @@
     android:layout_height="match_parent">
 
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
+        android:gravity="center_horizontal"
         android:layout_marginTop="20dp"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintEnd_toStartOf="@+id/settingsBtn">
+        app:layout_constraintTop_toTopOf="parent">
 
             <LinearLayout
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:orientation="vertical">
 
                 <TextView
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center"
+                    android:gravity="center_horizontal"
                     android:text="CONTRAST"/>
 
                 <SeekBar
                     android:id="@+id/contrastSeekBar"
-                    android:layout_width="110dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:progress="50"
                     android:progressBackgroundTint="@color/white"
@@ -40,19 +41,20 @@
             </LinearLayout>
 
             <LinearLayout
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:orientation="vertical">
 
                 <TextView
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center"
+                    android:gravity="center_horizontal"
                     android:text="COLOUR"/>
 
                 <SeekBar
                     android:id="@+id/colourSeekBar"
-                    android:layout_width="110dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:progress="75"
                     android:progressBackgroundTint="@color/white"
@@ -62,35 +64,55 @@
                     android:padding="10dp"/>
             </LinearLayout>
 
-            <LinearLayout
-                android:layout_width="50dp"
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
+                android:gravity="center_horizontal"
+                android:text="TINT"/>
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:text="BURST"/>
+            <SeekBar
+                android:id="@+id/tintSeekBar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:progress="50"
+                android:progressBackgroundTint="@color/white"
+                android:thumbTint="@color/white"
+                android:progressTint="@color/white"
+                android:max="100"
+                android:padding="10dp"/>
+        </LinearLayout>
 
-                <Switch
-                    android:id="@+id/burstModeSwitch"
-                    android:layout_width="wrap_content"
-                    android:layout_height="match_parent"/>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-            </LinearLayout>
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_horizontal"
+                android:text="TEMP"/>
+
+            <SeekBar
+                android:id="@+id/temperatureSeekBar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:progress="50"
+                android:progressBackgroundTint="@color/white"
+                android:thumbTint="@color/white"
+                android:progressTint="@color/white"
+                android:max="100"
+                android:padding="10dp"/>
+        </LinearLayout>
 
     </LinearLayout>
-
-    <ImageView
-        android:id="@+id/settingsBtn"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
-        android:layout_marginTop="30dp"
-        android:layout_marginEnd="20dp"
-        android:background="@drawable/round_settings_24"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
 
     <FrameLayout
         android:id="@+id/cameraFrame"
@@ -254,6 +276,15 @@
             android:layout_centerVertical="true"
             android:layout_marginLeft="10dp"
             android:background="@drawable/outline_autorenew_24" />
+
+        <ImageView
+            android:id="@+id/settingsBtn"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/round_settings_24"
+            android:layout_centerVertical="true"
+            android:layout_alignParentEnd="true" />
 
     </RelativeLayout>
 

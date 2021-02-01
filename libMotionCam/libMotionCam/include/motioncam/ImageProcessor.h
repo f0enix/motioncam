@@ -50,6 +50,8 @@ namespace motioncam {
                                   const float saturation,
                                   const float blacks,
                                   const float whitePoint,
+                                  const float temperatureOffset,
+                                  const float tintOffset,
                                   const float tonemapVariance,
                                   Halide::Runtime::Buffer<uint8_t>& inputBuffer,
                                   Halide::Runtime::Buffer<uint8_t>& outputBuffer);

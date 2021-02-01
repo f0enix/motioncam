@@ -15,7 +15,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
 import android.util.Size;
-import android.view.Display;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
@@ -88,6 +87,8 @@ public class CameraActivity extends AppCompatActivity implements
     private ProcessorReceiver mProgressReceiver;
 
     private PostProcessSettings mPostProcessSettings;
+    private float mTemperatureOffset;
+    private float mTintOffset;
     private AsyncNativeCameraOps mAsyncNativeCameraOps;
     private ObjectAnimator mShadowsAnimator;
 
@@ -217,6 +218,46 @@ public class CameraActivity extends AppCompatActivity implements
             }
         });
 
+        mBinding.temperatureSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                // Offset range -500 to 500
+                float offset = (progress - 50.0f) / 100.0f * 1000.0f;
+                mTemperatureOffset = offset;
+
+                updatePreviewSettings();
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+
+        mBinding.tintSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                // Offset range -30 to 30
+                float offset = (progress - 50.0f) / 100.0f * 60.0f;
+                mTintOffset = offset;
+
+                updatePreviewSettings();
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+
+            }
+        });
+
         // Buttons
         mBinding.captureBtn.setOnClickListener(v -> onCaptureClicked());
         mBinding.switchCameraBtn.setOnClickListener(v -> onSwitchCameraClicked());
@@ -291,6 +332,8 @@ public class CameraActivity extends AppCompatActivity implements
         int jpegQuality = prefs.getInt(SettingsViewModel.PREFS_KEY_JPEG_QUALITY, CameraProfile.DEFAULT_JPEG_QUALITY);
         int contrast = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, 50);
         int colour = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, 50);
+        int tempOffset = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, 50);
+        int tintOffset = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, 50);
         boolean burst = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_PREVIEW_BURST, false);
 
         mPostProcessSettings.shadows = 1.0f;
@@ -308,7 +351,10 @@ public class CameraActivity extends AppCompatActivity implements
         // Update UI
         mBinding.contrastSeekBar.setProgress(contrast);
         mBinding.colourSeekBar.setProgress(colour);
-        mBinding.burstModeSwitch.setChecked(burst);
+        mBinding.temperatureSeekBar.setProgress(tempOffset);
+        mBinding.tintSeekBar.setProgress(tintOffset);
+
+        ((Switch) mBinding.manualControlsFrame.findViewById(R.id.burstModeSwitch)).setChecked(burst);
     }
 
     @Override
@@ -354,12 +400,16 @@ public class CameraActivity extends AppCompatActivity implements
         mTextureView = null;
 
         // Save UI state (TODO: do this per camera id)
+        boolean burstMode = ((Switch) mBinding.manualControlsFrame.findViewById(R.id.burstModeSwitch)).isChecked();
+
         SharedPreferences prefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
         prefs
             .edit()
             .putInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, mBinding.contrastSeekBar.getProgress())
             .putInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, mBinding.colourSeekBar.getProgress())
-            .putBoolean(SettingsViewModel.PREFS_KEY_UI_PREVIEW_BURST, mBinding.burstModeSwitch.isChecked())
+            .putInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, mBinding.temperatureSeekBar.getProgress())
+            .putInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, mBinding.tintSeekBar.getProgress())
+            .putBoolean(SettingsViewModel.PREFS_KEY_UI_PREVIEW_BURST, burstMode)
             .apply();
     }
 
@@ -444,7 +494,9 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void onCaptureClicked() {
-        if(mBinding.burstModeSwitch.isChecked()) {
+        boolean burstMode = ((Switch) mBinding.manualControlsFrame.findViewById(R.id.burstModeSwitch)).isChecked();
+
+        if(burstMode) {
             // Pass native camera handle
             Intent intent = new Intent(this, PostProcessActivity.class);
 
@@ -708,6 +760,22 @@ public class CameraActivity extends AppCompatActivity implements
         mTextureView.setTransform(cameraMatrix);
     }
 
+    private int getCameraPreviewQuality() {
+        // Get preview quality
+        SharedPreferences sharedPrefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
+        int cameraPreviewQuality = sharedPrefs.getInt(SettingsViewModel.PREFS_KEY_CAMERA_PREVIEW_QUALITY, 0);
+
+        switch(cameraPreviewQuality) {
+            default:
+            case 0:
+                return 4;
+            case 1:
+                return 3;
+            case 2:
+                return 2;
+        }
+    }
+
     @Override
     public void onSurfaceTextureAvailable(SurfaceTexture surfaceTexture, int width, int height) {
         Log.d(TAG, "onSurfaceTextureAvailable() w: " + width + " h: " + height);
@@ -724,7 +792,7 @@ public class CameraActivity extends AppCompatActivity implements
         }
 
         // Get display size
-        Display display = getWindowManager().getDefaultDisplay();
+//        Display display = getWindowManager().getDefaultDisplay();
 
         // Use small preview window since we're not using the camera preview.
         int displayWidth = 240;//display.getMode().getPhysicalWidth();
@@ -747,7 +815,7 @@ public class CameraActivity extends AppCompatActivity implements
         mSurface = new Surface(surfaceTexture);
 
         mNativeCamera.startCapture(mSelectedCamera, mSurface);
-        mNativeCamera.enableRawPreview(this, false);
+        mNativeCamera.enableRawPreview(this, getCameraPreviewQuality(), false);
 
         // Update orientation in case we've switched front/back cameras
         NativeCameraBuffer.ScreenOrientation orientation = mSensorEventManager.getOrientation();
@@ -1008,7 +1076,9 @@ public class CameraActivity extends AppCompatActivity implements
                     mPostProcessSettings.contrast,
                     mPostProcessSettings.saturation,
                     mPostProcessSettings.blacks,
-                    mPostProcessSettings.whitePoint);
+                    mPostProcessSettings.whitePoint,
+                    mTemperatureOffset,
+                    mTintOffset);
         }
     }
 

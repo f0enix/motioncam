@@ -576,15 +576,16 @@ namespace motioncam {
             mCameraSession->setExposureCompensation(value);
     }
 
-    void CaptureSessionManager::enableRawPreview(std::shared_ptr<RawPreviewListener> listener, bool overrideWb) {
+    void CaptureSessionManager::enableRawPreview(std::shared_ptr<RawPreviewListener> listener, const int previewQuality, bool overrideWb) {
         if(mImageConsumer)
             mImageConsumer->setWhiteBalanceOverride(overrideWb);
-            mImageConsumer->enableRawPreview(std::move(listener));
+            mImageConsumer->enableRawPreview(std::move(listener), previewQuality);
     }
 
-    void CaptureSessionManager::updateRawPreviewSettings(float shadows, float contrast, float saturation, float blacks, float whitePoint) {
+    void CaptureSessionManager::updateRawPreviewSettings(
+            float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset) {
         if(mImageConsumer)
-            mImageConsumer->updateRawPreviewSettings(shadows, contrast, saturation, blacks, whitePoint);
+            mImageConsumer->updateRawPreviewSettings(shadows, contrast, saturation, blacks, whitePoint, tempOffset, tintOffset);
     }
 
     void CaptureSessionManager::disableRawPreview() {

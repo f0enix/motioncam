@@ -304,18 +304,19 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         return GetMetadata(mNativeCameraHandle, cameraInfo.cameraId);
     }
 
-    public void enableRawPreview(CameraRawPreviewListener listener, boolean overrideWb) {
+    public void enableRawPreview(CameraRawPreviewListener listener, int previewQuality, boolean overrideWb) {
         ensureValidHandle();
 
         mRawPreviewListener = listener;
 
-        EnableRawPreview(mNativeCameraHandle, this, overrideWb);
+        EnableRawPreview(mNativeCameraHandle, this, previewQuality, overrideWb);
     }
 
-    public void setRawPreviewSettings(float shadows, float contrast, float saturation, float blacks, float whitePoint) {
+    public void setRawPreviewSettings(
+            float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset) {
         ensureValidHandle();
 
-        SetRawPreviewSettings(mNativeCameraHandle, shadows, contrast, saturation, blacks, whitePoint);
+        SetRawPreviewSettings(mNativeCameraHandle, shadows, contrast, saturation, blacks, whitePoint, tempOffset, tintOffset);
     }
 
     public void disableRawPreview() {
@@ -424,8 +425,8 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
     private native boolean SetAutoExposure(long handle);
     private native boolean SetExposureCompensation(long handle, float value);
 
-    private native boolean EnableRawPreview(long handle, NativeCameraRawPreviewListener listener, boolean overrideWb);
-    private native boolean SetRawPreviewSettings(long handle, float shadows, float contrast, float saturation, float blacks, float whitePoint);
+    private native boolean EnableRawPreview(long handle, NativeCameraRawPreviewListener listener, int previewQuality, boolean overrideWb);
+    private native boolean SetRawPreviewSettings(long handle, float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOfset);
     private native boolean DisableRawPreview(long handle);
 
     private native boolean SetFocusPoint(long handle, float focusX, float focusY, float exposureX, float exposureY);

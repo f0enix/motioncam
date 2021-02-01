@@ -647,6 +647,8 @@ namespace motioncam {
                                        const float saturation,
                                        const float blacks,
                                        const float whitePoint,
+                                       const float temperatureOffset,
+                                       const float tintOffset,
                                        const float tonemapVariance,
                                        Halide::Runtime::Buffer<uint8_t>& inputBuffer,
                                        Halide::Runtime::Buffer<uint8_t>& outputBuffer)
@@ -664,11 +666,18 @@ namespace motioncam {
             shadingMapBuffer[i].set_host_dirty();
         }
         
-        // Get conversion matrix
         cv::Mat cameraToSrgb;
         cv::Vec3f cameraWhite;
         
-        createSrgbMatrix(cameraMetadata, rawBuffer.metadata.asShot, cameraWhite, cameraToSrgb);
+        // Use user tint/temperature offsets
+        CameraProfile cameraProfile(cameraMetadata);
+        Temperature temperature;
+        
+        cameraProfile.temperatureFromVector(rawBuffer.metadata.asShot, temperature);
+        
+        Temperature userTemperature(temperature.temperature() + temperatureOffset, temperature.tint() + tintOffset);
+        
+        createSrgbMatrix(cameraMetadata, userTemperature, cameraWhite, cameraToSrgb);
         
         Halide::Runtime::Buffer<float> cameraToSrgbBuffer = ToHalideBuffer<float>(cameraToSrgb);
         cameraToSrgbBuffer.set_host_dirty();

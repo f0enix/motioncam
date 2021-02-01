@@ -449,10 +449,10 @@ namespace motioncam {
     ACaptureRequest* CameraSession::createCaptureRequest() {
         ACaptureRequest* captureRequest = nullptr;
 
-        if(ACameraDevice_createCaptureRequest(mSessionContext->activeCamera.get(), TEMPLATE_PREVIEW, &captureRequest) != ACAMERA_OK)
+        if(ACameraDevice_createCaptureRequest(mSessionContext->activeCamera.get(), TEMPLATE_ZERO_SHUTTER_LAG, &captureRequest) != ACAMERA_OK)
             throw CameraSessionException("Failed to create capture request");
 
-        const uint8_t captureIntent         = ACAMERA_CONTROL_CAPTURE_INTENT_PREVIEW;
+        const uint8_t captureIntent         = ACAMERA_CONTROL_CAPTURE_INTENT_ZERO_SHUTTER_LAG;
         const uint8_t controlMode           = ACAMERA_CONTROL_MODE_AUTO;
         const uint8_t tonemapMode           = ACAMERA_TONEMAP_MODE_FAST;
         const uint8_t shadingMode           = ACAMERA_SHADING_MODE_FAST;
@@ -489,6 +489,12 @@ namespace motioncam {
         ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
         ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
         ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AWB_MODE, 1, &awbMode);
+
+        uint8_t afTrigger = ACAMERA_CONTROL_AF_TRIGGER_IDLE;
+        uint8_t aeTrigger = ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER_IDLE;
+
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER, 1, &aeTrigger);
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 1, &afTrigger);
 
         return captureRequest;
     }

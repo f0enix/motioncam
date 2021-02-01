@@ -9,7 +9,7 @@
     android:alpha="0.75"
     android:padding="5dp">
 
-    <androidx.constraintlayout.widget.ConstraintLayout
+    <RelativeLayout
         android:id="@+id/manualControlInfo"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -19,8 +19,6 @@
             android:id="@+id/infoFrame"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
             android:orientation="horizontal">
 
             <TextView
@@ -44,6 +42,15 @@
         </LinearLayout>
 
         <Switch
+            android:id="@+id/burstModeSwitch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_toStartOf="@+id/manualControlSwitch"
+            android:switchPadding="10dp"
+            android:text="@string/burst"
+            android:textColor="@color/white" />
+
+        <Switch
             android:id="@+id/manualControlSwitch"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -51,10 +58,10 @@
             android:switchTextAppearance="@style/MotionCam.TextAppearance.Small"
             android:text="@string/manual_controls"
             android:textColor="@color/white"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            android:layout_marginLeft="10dp"
+            android:layout_alignParentEnd="true" />
 
-    </androidx.constraintlayout.widget.ConstraintLayout>
+    </RelativeLayout>
 
     <LinearLayout
         android:id="@+id/cameraManualControlFrame"

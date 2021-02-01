@@ -49,8 +49,9 @@ namespace motioncam {
         int getHdrBufferCount();
         void cancelHdrBuffers();
 
-        void enableRawPreview(std::shared_ptr<RawPreviewListener> listener);
-        void updateRawPreviewSettings(float shadows, float contrast, float saturation, float blacks, float whitePoint);
+        void enableRawPreview(std::shared_ptr<RawPreviewListener> listener, const int previewQuality);
+        void updateRawPreviewSettings(
+                float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset);
         void disableRawPreview();
 
         void setWhiteBalanceOverride(bool override);
@@ -85,8 +86,11 @@ namespace motioncam {
         std::atomic<float> mSaturation;
         std::atomic<float> mBlacks;
         std::atomic<float> mWhitePoint;
+        std::atomic<float> mTempOffset;
+        std::atomic<float> mTintOffset;
 
         std::shared_ptr<CameraDescription> mCameraDesc;
+        int mRawPreviewQuality;
 
         std::mutex mBufferMutex;
 

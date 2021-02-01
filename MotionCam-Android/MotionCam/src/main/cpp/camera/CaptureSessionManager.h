@@ -49,8 +49,9 @@ namespace motioncam {
         void setFocusPoint(float focusX, float focusY, float exposureX, float exposureY);
         void setAutoFocus();
 
-        void enableRawPreview(std::shared_ptr<RawPreviewListener> listener, bool overrideWb);
-        void updateRawPreviewSettings(float shadows, float contrast, float saturation, float blacks, float whitePoint);
+        void enableRawPreview(std::shared_ptr<RawPreviewListener> listener, const int previewQuality, bool overrideWb);
+        void updateRawPreviewSettings(
+                float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset);
         void disableRawPreview();
 
         void updateOrientation(ScreenOrientation orientation);

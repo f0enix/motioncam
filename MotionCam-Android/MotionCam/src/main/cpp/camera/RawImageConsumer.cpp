@@ -17,6 +17,8 @@
 #include <motioncam/Settings.h>
 #include <motioncam/RawBufferManager.h>
 #include <motioncam/RawContainer.h>
+#include "motioncam/CameraProfile.h"
+#include "motioncam/Temperature.h"
 
 #include <motioncam/ImageProcessor.h>
 #include <camera/NdkCameraMetadata.h>
@@ -43,6 +45,8 @@ namespace motioncam {
         mSaturation(1.0f),
         mBlacks(0.0f),
         mWhitePoint(1.0f),
+        mTempOffset(0.0f),
+        mTintOffset(0.0f),
         mCameraDesc(cameraDescription)
     {
     }
@@ -186,8 +190,19 @@ namespace motioncam {
             return;
         }
 
+        // Use user tint/temperature offsets
+        CameraProfile cameraProfile(mCameraDesc->metadata);
+        Temperature temperature;
+
+        cameraProfile.temperatureFromVector(mHdrBuffers[0]->metadata.asShot, temperature);
+
         std::vector<std::string> frames;
         std::map<std::string, std::shared_ptr<RawImageBuffer>> frameBuffers;
+
+        PostProcessSettings userSettings = settings;
+
+        userSettings.temperature = temperature.temperature() + mTempOffset;
+        userSettings.tint = temperature.tint() + mTintOffset;
 
         auto it = mHdrBuffers.begin();
         int filenameIdx = 0;
@@ -203,7 +218,7 @@ namespace motioncam {
         }
 
         // Save all images. Use first buffer as reference timestamp
-        RawContainer rawContainer(mCameraDesc->metadata, settings, mHdrBuffers[0]->metadata.timestampNs, true, false, frames, frameBuffers);
+        RawContainer rawContainer(mCameraDesc->metadata, userSettings, mHdrBuffers[0]->metadata.timestampNs, true, false, frames, frameBuffers);
 
         rawContainer.saveContainer(outputPath);
 
@@ -574,7 +589,7 @@ namespace motioncam {
         cl_int errCode = -1;
 
         bool outputCreated = false;
-        int downscaleFactor = 3;
+        int downscaleFactor = mRawPreviewQuality;
         int processedFrames = 0;
         double totalPreviewTimeMs = 0;
         bool previewSettled = false;
@@ -605,7 +620,9 @@ namespace motioncam {
                     mSaturation,
                     mBlacks,
                     mWhitePoint,
-                    0.25f,
+                    mTempOffset,
+                    mTintOffset,
+                    0.30f,
                     inputBuffer,
                     outputBuffer);
 
@@ -662,7 +679,7 @@ namespace motioncam {
         LOGD("Exiting preprocess thread");
     }
 
-    void RawImageConsumer::enableRawPreview(std::shared_ptr<RawPreviewListener> listener) {
+    void RawImageConsumer::enableRawPreview(std::shared_ptr<RawPreviewListener> listener, const int previewQuality) {
         if(mEnableRawPreview)
             return;
 
@@ -670,15 +687,19 @@ namespace motioncam {
 
         mPreviewListener  = std::move(listener);
         mEnableRawPreview = true;
+        mRawPreviewQuality = previewQuality;
         mPreprocessThread = std::make_shared<std::thread>(&RawImageConsumer::doPreprocess, this);
     }
 
-    void RawImageConsumer::updateRawPreviewSettings(float shadows, float contrast, float saturation, float blacks, float whitePoint) {
+    void RawImageConsumer::updateRawPreviewSettings(
+            float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset) {
         mShadows = shadows;
         mContrast = contrast;
         mSaturation = saturation;
         mBlacks = blacks;
         mWhitePoint = whitePoint;
+        mTempOffset = tempOffset;
+        mTintOffset = tintOffset;
     }
 
     void RawImageConsumer::disableRawPreview() {

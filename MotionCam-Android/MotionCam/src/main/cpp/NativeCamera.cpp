@@ -461,7 +461,7 @@ jobject JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_GetMetadata(
 
 extern "C" JNIEXPORT
 jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EnableRawPreview(
-        JNIEnv *env, jobject thiz, jlong sessionHandle, jobject listener, jboolean overrideWb)
+        JNIEnv *env, jobject thiz, jlong sessionHandle, jobject listener, jint previewQuality, jboolean overrideWb)
 {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(sessionHandle);
 
@@ -475,7 +475,7 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EnableRawPr
 
     gRawPreviewListener = std::make_shared<NativeRawPreviewListener>(env, listener);
 
-    sessionManager->enableRawPreview(gRawPreviewListener, overrideWb);
+    sessionManager->enableRawPreview(gRawPreviewListener, previewQuality, overrideWb);
 
     return JNI_TRUE;
 }
@@ -894,14 +894,17 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_SetRawPrevi
         jfloat contrast,
         jfloat saturation,
         jfloat blacks,
-        jfloat whitePoint)
+        jfloat whitePoint,
+        jfloat tempOffset,
+        jfloat tintOffset)
 {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
     if(!sessionManager) {
         return JNI_FALSE;
     }
 
-    sessionManager->updateRawPreviewSettings(shadows, contrast, saturation, blacks, whitePoint);
+    sessionManager->updateRawPreviewSettings(
+            shadows, contrast, saturation, blacks, whitePoint, tempOffset, tintOffset);
 
     return JNI_TRUE;
 }
