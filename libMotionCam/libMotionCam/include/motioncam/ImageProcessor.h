@@ -83,7 +83,7 @@ namespace motioncam {
         
     private:
         static cv::Mat registerImage(const Halide::Runtime::Buffer<uint8_t>& referenceBuffer, const Halide::Runtime::Buffer<uint8_t>& toAlignBuffer, int scale=1);
-        static cv::Mat calcHistogram(const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const int downscale=4);
+        static cv::Mat calcHistogram(const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const int downscale);
         static float matchExposures(const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const RawImageBuffer& toMatch);
 
         static std::shared_ptr<RawData> loadRawImage(const RawImageBuffer& rawImage,

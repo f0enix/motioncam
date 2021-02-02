@@ -16,9 +16,12 @@
 #include "forward_transform.h"
 #include "inverse_transform.h"
 #include "fuse_image.h"
-#include "camera_preview2.h"
-#include "camera_preview3.h"
-#include "camera_preview4.h"
+#include "camera_preview2_raw10.h"
+#include "camera_preview3_raw10.h"
+#include "camera_preview4_raw10.h"
+#include "camera_preview2_raw16.h"
+#include "camera_preview3_raw16.h"
+#include "camera_preview4_raw16.h"
 
 #include "linear_image.h"
 #include "hdr_mask.h"
@@ -271,11 +274,15 @@ namespace motioncam {
         Halide::Runtime::Buffer<uint16_t> hdrInput;
         Halide::Runtime::Buffer<uint8_t> hdrMask;
         float hdrScale = 1.0f;
-        
+        float shadows = settings.shadows;
+
         if(hdrMetadata && hdrMetadata->error < MAX_HDR_ERROR) {
             hdrInput = hdrMetadata->hdrInput;
             hdrMask = hdrMetadata->mask;
             hdrScale = hdrMetadata->exposureScale;
+            
+            // Boost shadows to rougly match what the user selected.
+            shadows = 0.9f * settings.shadows * (1.0/hdrScale);
             
             hdrMask.translate(0, offsetX);
             hdrMask.translate(1, offsetY);
@@ -307,7 +314,7 @@ namespace motioncam {
                     EXPANDED_RANGE,
                     static_cast<int>(cameraMetadata.sensorArrangment),
                     settings.gamma,
-                    settings.shadows * (1.0/hdrScale),
+                    shadows,
                     settings.tonemapVariance,
                     settings.blacks,
                     settings.exposure,
@@ -682,16 +689,33 @@ namespace motioncam {
         Halide::Runtime::Buffer<float> cameraToSrgbBuffer = ToHalideBuffer<float>(cameraToSrgb);
         cameraToSrgbBuffer.set_host_dirty();
 
-        auto camera_preview = &camera_preview2;
+        auto camera_preview = &camera_preview4_raw10;
         
-        if(downscaleFactor == 3)
-            camera_preview = &camera_preview3;
-        else if(downscaleFactor == 4)
-            camera_preview = &camera_preview4;
+        if(rawBuffer.pixelFormat == PixelFormat::RAW10) {
+            if(downscaleFactor == 2)
+                camera_preview = &camera_preview2_raw10;
+            else if(downscaleFactor == 3)
+                camera_preview = &camera_preview3_raw10;
+            else if(downscaleFactor == 4)
+                camera_preview = &camera_preview4_raw10;
+            else
+                return;
+        }
+        else if(rawBuffer.pixelFormat == PixelFormat::RAW16) {
+            if(downscaleFactor == 2)
+                camera_preview = &camera_preview2_raw16;
+            else if(downscaleFactor == 3)
+                camera_preview = &camera_preview3_raw16;
+            else if(downscaleFactor == 4)
+                camera_preview = &camera_preview4_raw16;
+            else
+                return;
+        }
+        else
+            return;
                 
         camera_preview(inputBuffer,
                        rawBuffer.rowStride,
-                       static_cast<int>(rawBuffer.pixelFormat),
                        cameraToSrgbBuffer,
                        flipped,
                        width,
@@ -1045,8 +1069,8 @@ namespace motioncam {
 
     float ImageProcessor::matchExposures(const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const RawImageBuffer& toMatch)
     {
-        auto refHistogram = calcHistogram(cameraMetadata, reference);
-        auto toMatchHistogram = calcHistogram(cameraMetadata, toMatch);
+        auto refHistogram = calcHistogram(cameraMetadata, reference, 4);
+        auto toMatchHistogram = calcHistogram(cameraMetadata, toMatch, 4);
 
         // Cumulitive histogram
         for(int c = 0; c < refHistogram.rows; c++) {
@@ -1098,9 +1122,7 @@ namespace motioncam {
             progressListener.onError("No frames found");
             return;
         }
-        
-        auto referenceRawBuffer = rawContainer.getFrame(rawContainer.getReferenceImage());
-                        
+                                
         // If this is a HDR capture then find the underexposed images.
         std::vector<std::string> underexposedImages;
         
@@ -1156,6 +1178,8 @@ namespace motioncam {
                 rawContainer.updateReferenceImage(sharpestBuffer);
             }
         }
+
+        auto referenceRawBuffer = rawContainer.getFrame(rawContainer.getReferenceImage());
 
         //
         // Denoise
@@ -1247,19 +1271,39 @@ namespace motioncam {
             auto referenceRawBuffer = rawContainer.loadFrame(rawContainer.getReferenceImage());
             auto underexposedFrame = rawContainer.loadFrame(*underexposedImages.begin());
 
-            hdrMetadata =
-                prepareHdr(rawContainer.getCameraMetadata(),
-                           settings,
-                           *referenceRawBuffer,
-                           *underexposedFrame);
+            auto hist = calcHistogram(rawContainer.getCameraMetadata(), *referenceRawBuffer, 4);
+            const int bound = (int) (hist.cols * 0.90f);
+            float sum[3] = {0, 0, 0};
             
-            // Adjust white point since the base exposure is scaled to the underexposed image
-            if(hdrMetadata->error < MAX_HDR_ERROR) {
-                estimateWhitePoint(*underexposedFrame,
-                                   rawContainer.getCameraMetadata(),
-                                   settings.shadows * (1.0/hdrMetadata->exposureScale),
-                                   settings.blacks,
-                                   settings.whitePoint);
+            for(int c = 0; c < hist.rows; c++) {
+                for(int x = hist.cols - 1; x >= bound; x--) {
+                    sum[c] += hist.at<uint32_t>(c, x);
+                }
+            }
+            
+            sum[0] /= (referenceRawBuffer->width*referenceRawBuffer->height) / 64.0f;
+            sum[1] /= (referenceRawBuffer->width*referenceRawBuffer->height) / 64.0f;
+            sum[2] /= (referenceRawBuffer->width*referenceRawBuffer->height) / 64.0f;
+            
+            // Check if there's anypoint even using the underexposed image
+            if((sum[0] + sum[1] + sum[2]) / 3.0f > 0.001f) {
+                hdrMetadata =
+                    prepareHdr(rawContainer.getCameraMetadata(),
+                               settings,
+                               *referenceRawBuffer,
+                               *underexposedFrame);
+                
+                // Adjust white point since the base exposure is scaled to the underexposed image
+                if(hdrMetadata->error < MAX_HDR_ERROR) {
+                    estimateWhitePoint(*underexposedFrame,
+                                       rawContainer.getCameraMetadata(),
+                                       settings.shadows * (1.0/hdrMetadata->exposureScale),
+                                       settings.blacks,
+                                       settings.whitePoint);
+                }
+            }
+            else {
+                logger::log("Skipping HDR processing");
             }
         }
 
@@ -1947,7 +1991,6 @@ namespace motioncam {
         }
         
         cv::Mat mask(maskBuffer.height(), maskBuffer.width(), CV_8U, maskBuffer.data());
-        
         outputBuffer = Halide::Runtime::Buffer<uint16_t>(underexposedImage->rawBuffer.width()*2, underexposedImage->rawBuffer.height()*2, 3);
         
         // Upscale and blur mask

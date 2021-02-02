@@ -60,7 +60,7 @@
                     android:progressBackgroundTint="@color/white"
                     android:thumbTint="@color/white"
                     android:progressTint="@color/white"
-                    android:max="200"
+                    android:max="150"
                     android:padding="10dp"/>
             </LinearLayout>
 

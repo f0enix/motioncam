@@ -63,8 +63,8 @@ public class CameraActivity extends AppCompatActivity implements
 
     private static final int PERMISSION_REQUEST_CODE = 1;
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
-    private static final float MAX_SHADOWS_VALUE = 32.0f;
-    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 6;
+    private static final float MAX_SHADOWS_VALUE = 16.0f;
+    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 4;
 
     private enum FocusState {
         AUTO,
@@ -240,8 +240,8 @@ public class CameraActivity extends AppCompatActivity implements
         mBinding.tintSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                // Offset range -30 to 30
-                float offset = (progress - 50.0f) / 100.0f * 60.0f;
+                // Offset range -20 to 20
+                float offset = (progress - 50.0f) / 100.0f * 40.0f;
                 mTintOffset = offset;
 
                 updatePreviewSettings();
@@ -331,7 +331,7 @@ public class CameraActivity extends AppCompatActivity implements
 
         int jpegQuality = prefs.getInt(SettingsViewModel.PREFS_KEY_JPEG_QUALITY, CameraProfile.DEFAULT_JPEG_QUALITY);
         int contrast = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, 50);
-        int colour = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, 50);
+        int colour = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, 75);
         int tempOffset = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, 50);
         int tintOffset = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, 50);
         boolean burst = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_PREVIEW_BURST, false);
@@ -345,7 +345,7 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.sharpen1 = 1.4f;
         mPostProcessSettings.whitePoint = 1.0f;
         mPostProcessSettings.blacks = 0.0f;
-        mPostProcessSettings.tonemapVariance = 0.30f;
+        mPostProcessSettings.tonemapVariance = 0.25f;
         mPostProcessSettings.jpegQuality = jpegQuality;
 
         // Update UI
