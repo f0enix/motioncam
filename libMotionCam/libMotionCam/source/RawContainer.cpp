@@ -497,10 +497,11 @@ namespace motioncam {
     }
 
     void RawContainer::updateReferenceImage(const std::string& referenceName) {
+        mReferenceTimestamp = -1;
         mReferenceImage = referenceName;
     }
 
-    const std::vector<string>& RawContainer::getFrames() const {
+    std::vector<string> RawContainer::getFrames() const {
         return mFrames;
     }
 
@@ -509,6 +510,10 @@ namespace motioncam {
         if(buffer == mFrameBuffers.end()) {
             throw IOException("Cannot find " + frame + " in container");
         }
+        
+        // If we've already loaded the data, return it
+        if(buffer->second->data->len() > 0)
+            return buffer->second;
         
         // Load the data into the buffer
         std::vector<uint8_t> data;
@@ -529,20 +534,14 @@ namespace motioncam {
         return buffer->second;
     }
 
-    void RawContainer::releaseFrame(const std::string& frame) const {
-        auto buffer = mFrameBuffers.find(frame);
-        
-        if(buffer == mFrameBuffers.end()) {
-            throw IOException("Cannot find " + frame + " in container");
-        }
-
-        buffer->second->data->release();
-    }
-
-    void RawContainer::ignoreFrame(const std::string& frame) {
+    void RawContainer::removeFrame(const std::string& frame) {
         auto it = std::find(mFrames.begin(), mFrames.end(), frame);
         if(it != mFrames.end()) {
             mFrames.erase(it);
         }
+        
+        auto bufferIt = mFrameBuffers.find(frame);
+        if(bufferIt != mFrameBuffers.end())
+            mFrameBuffers.erase(bufferIt);
     }
 }

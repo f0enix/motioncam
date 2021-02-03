@@ -31,12 +31,11 @@ namespace motioncam {
         
         bool getWriteDNG() const;
         bool isHdr() const;
-        const std::vector<std::string>& getFrames() const;
+        std::vector<std::string> getFrames() const;
         
         std::shared_ptr<RawImageBuffer> getFrame(const std::string& frame) const;
         std::shared_ptr<RawImageBuffer> loadFrame(const std::string& frame) const;
-        void releaseFrame(const std::string& frame) const;
-        void ignoreFrame(const std::string& frame);
+        void removeFrame(const std::string& frame);
         
         void saveContainer(const std::string& outputPath);
         

@@ -161,7 +161,7 @@ extern "C" int extern_min_max(halide_buffer_t *in, int32_t width, int32_t height
 namespace motioncam {
     const int DENOISE_LEVELS    = 6;
     const int EXPANDED_RANGE    = 16384;
-    const float MAX_HDR_ERROR   = 0.03f;
+    const float MAX_HDR_ERROR   = 0.05f;
 
     struct RawData {
         Halide::Runtime::Buffer<uint16_t> rawBuffer;
@@ -1124,7 +1124,7 @@ namespace motioncam {
         }
                                 
         // If this is a HDR capture then find the underexposed images.
-        std::vector<std::string> underexposedImages;
+        std::vector<std::shared_ptr<RawImageBuffer>> underexposedImages;
         
         if(rawContainer.isHdr()) {
             double maxEv = -1e10;
@@ -1149,14 +1149,14 @@ namespace motioncam {
                     auto ev = log2(1.0 / (frame->metadata.exposureTime / (1000.0*1000.0*1000.0))) - log2(frame->metadata.iso / 100.0);
                 
                     if(abs(ev - maxEv) < abs(ev - minEv)) {
-                        underexposedImages.push_back(frameName);
+                        // Load the frame since we intend to remove it from the container
+                        auto raw = rawContainer.loadFrame(frameName);
+                        underexposedImages.push_back(raw);
+                        
+                        rawContainer.removeFrame(frameName);
                     }
                 }
             }
-
-            // Ignore all underexposed images before denoising
-            for(auto frame : underexposedImages)
-                rawContainer.ignoreFrame(frame);
             
             // Find the sharpest reference image
             if(!rawContainer.getFrames().empty()) {
@@ -1171,8 +1171,6 @@ namespace motioncam {
                         bestSharpness = sharpness;
                         sharpestBuffer = frameName;
                     }
-                    
-                    rawContainer.releaseFrame(frameName);
                 }
                 
                 rawContainer.updateReferenceImage(sharpestBuffer);
@@ -1269,7 +1267,7 @@ namespace motioncam {
 
         if(!underexposedImages.empty()) {
             auto referenceRawBuffer = rawContainer.loadFrame(rawContainer.getReferenceImage());
-            auto underexposedFrame = rawContainer.loadFrame(*underexposedImages.begin());
+            auto underexposedFrame = *underexposedImages.begin();
 
             auto hist = calcHistogram(rawContainer.getCameraMetadata(), *referenceRawBuffer, 4);
             const int bound = (int) (hist.cols * 0.90f);
@@ -1292,21 +1290,19 @@ namespace motioncam {
                                settings,
                                *referenceRawBuffer,
                                *underexposedFrame);
-                
-                // Adjust white point since the base exposure is scaled to the underexposed image
-                if(hdrMetadata->error < MAX_HDR_ERROR) {
-                    estimateWhitePoint(*underexposedFrame,
-                                       rawContainer.getCameraMetadata(),
-                                       settings.shadows * (1.0/hdrMetadata->exposureScale),
-                                       settings.blacks,
-                                       settings.whitePoint);
-                }
             }
             else {
                 logger::log("Skipping HDR processing");
             }
+            
+            // Adjust white point since the base exposure is scaled to the underexposed image
+            estimateWhitePoint(*underexposedFrame,
+                               rawContainer.getCameraMetadata(),
+                               settings.shadows * (1.0/hdrMetadata->exposureScale),
+                               settings.blacks,
+                               settings.whitePoint);
         }
-
+       
         outputImage = postProcess(
             denoiseOutput,
             hdrMetadata,
@@ -1611,8 +1607,6 @@ namespace motioncam {
                 
                 progressHelper.nextFusedImage();
             }
-
-            rawContainer.releaseFrame(*it);
 
             resetOutput = false;
             ++it;
