@@ -42,15 +42,6 @@
         </LinearLayout>
 
         <Switch
-            android:id="@+id/burstModeSwitch"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_toStartOf="@+id/manualControlSwitch"
-            android:switchPadding="10dp"
-            android:text="@string/burst"
-            android:textColor="@color/white" />
-
-        <Switch
             android:id="@+id/manualControlSwitch"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

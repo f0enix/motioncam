@@ -1746,6 +1746,7 @@ public:
     Input<Buffer<uint8_t>> hdrMask{"hdrMask", 2 };
     Input<float> hdrScale{"hdrScale"};
 
+    Input<float[3]> asShotVector{"asShotVector"};
     Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
 
     Input<Buffer<float>> inShadingMap0{"inShadingMap0", 2 };
@@ -1964,9 +1965,9 @@ void PostProcessGenerator::generate()
     linear(v_x, v_y, v_c) = (demosaic->output(v_x, v_y, v_c) / cast<float>(range));
 
     colorCorrectInput(v_x, v_y, v_c) =
-        select( v_c == 0, clamp( linear(v_x, v_y, 0), 0.0f, 1.0f ),
-                v_c == 1, clamp( linear(v_x, v_y, 1), 0.0f, 1.0f ),
-                          clamp( linear(v_x, v_y, 2), 0.0f, 1.0f ));
+        select( v_c == 0, clamp( linear(v_x, v_y, 0), 0.0f, asShotVector[0] ),
+                v_c == 1, clamp( linear(v_x, v_y, 1), 0.0f, asShotVector[1] ),
+                          clamp( linear(v_x, v_y, 2), 0.0f, asShotVector[2] ));
 
     transform(colorCorrected, colorCorrectInput, cameraToSrgb);
 
@@ -2398,6 +2399,7 @@ public:
     Input<Buffer<float>> inShadingMap2{"inShadingMap2", 2 };
     Input<Buffer<float>> inShadingMap3{"inShadingMap3", 2 };
     
+    Input<float[3]> asShotVector{"asShotVector"};
     Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
 
     Input<int> width{"width"};
@@ -2513,10 +2515,9 @@ void PreviewGenerator::generate() {
     Expr c2 = (demosaicInput(v_x, v_y, 2) - blackLevel[2]) / (cast<float>(whiteLevel - blackLevel[2])) * shadingMap[2](v_x, v_y);
     Expr c3 = (demosaicInput(v_x, v_y, 3) - blackLevel[3]) / (cast<float>(whiteLevel - blackLevel[3])) * shadingMap[3](v_x, v_y);
     
-    downscaledInput(v_x, v_y, v_c) = select(v_c == 0,  clamp( c0,               0.0f, 1.0f ),
-                                            v_c == 1,  clamp( (c1 + c2) / 2,    0.0f, 1.0f ),
-                                                       clamp( c3,               0.0f, 1.0f ));
-
+    downscaledInput(v_x, v_y, v_c) = select(v_c == 0,  clamp( c0,               0.0f, asShotVector[0] ),
+                                            v_c == 1,  clamp( (c1 + c2) / 2,    0.0f, asShotVector[1] ),
+                                                       clamp( c3,               0.0f, asShotVector[2] ));
     // Transform to SRGB space
     transform(colorCorrected, downscaledInput, cameraToSrgb);
 
@@ -2859,14 +2860,15 @@ public:
     Input<int> width{"width"};
     Input<int> height{"height"};
 
-    Input<int> downscaleFactor{"downscaleFactor"};    
+    Input<int> downscaleFactor{"downscaleFactor"};
 
     Input<int[4]> blackLevel{"blackLevel"};
     Input<int> whiteLevel{"whiteLevel"};
 
+    Input<float[3]> asShotVector{"asShotVector"};
     Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
 
-    Input<Buffer<float>[4]> shadingMap{"shadingMap", 2 };
+    Input<Buffer<float>[4]> inShadingMap{"shadingMap", 2 };
 
     Input<int> sensorArrangement{"sensorArrangement"};
 
@@ -2876,48 +2878,52 @@ public:
 };
 
 void MeasureImageGenerator::generate() {
-    Func inputRepeated;
-    Func channels[4];
-    Func downscaled[4];
-    Func scaledShadingMap[4];
+    Func inputRepeated{"inputRepeated"};
+    Func in[4];
+    Func shadingMap[4];
+    Func downscaled{"downscaled"};
+    Func result8u{"result8u"};
+    Func colorCorrected{"colorCorrected"};
+    Func downscaledInput{"downscaledInput"};
+    Func demosaicInput{"demosaicInput"};
 
     // Deinterleave
     inputRepeated = BoundaryConditions::repeat_edge(input);
 
-    deinterleave(channels[0], inputRepeated, 0, stride, pixelFormat);
-    deinterleave(channels[1], inputRepeated, 1, stride, pixelFormat);
-    deinterleave(channels[2], inputRepeated, 2, stride, pixelFormat);
-    deinterleave(channels[3], inputRepeated, 3, stride, pixelFormat);
-    
-    downscaled[0](v_x, v_y) = channels[0](v_x*downscaleFactor, v_y*downscaleFactor);
-    downscaled[1](v_x, v_y) = channels[1](v_x*downscaleFactor, v_y*downscaleFactor);
-    downscaled[2](v_x, v_y) = channels[2](v_x*downscaleFactor, v_y*downscaleFactor);
-    downscaled[3](v_x, v_y) = channels[3](v_x*downscaleFactor, v_y*downscaleFactor);
+    // Deinterleave
+    deinterleave(in[0], inputRepeated, 0, stride, pixelFormat);
+    deinterleave(in[1], inputRepeated, 1, stride, pixelFormat);
+    deinterleave(in[2], inputRepeated, 2, stride, pixelFormat);
+    deinterleave(in[3], inputRepeated, 3, stride, pixelFormat);
 
-    Expr w = width  / downscaleFactor;
+    Expr w = width / downscaleFactor;
     Expr h = height / downscaleFactor;
+    
+    downscaled(v_x, v_y, v_c) =
+        mux(v_c,
+            {   in[0](v_x*downscaleFactor, v_y*downscaleFactor),
+                in[1](v_x*downscaleFactor, v_y*downscaleFactor),
+                in[2](v_x*downscaleFactor, v_y*downscaleFactor),
+                in[3](v_x*downscaleFactor, v_y*downscaleFactor) });
 
     // Shading map
-    for(int c = 0; c < 4; c++)
-        linearScale(scaledShadingMap[c], shadingMap[c], shadingMap[c].width(), shadingMap[c].height(), w, h);
+    linearScale(shadingMap[0], inShadingMap[0], inShadingMap[0].width(), inShadingMap[0].height(), w, h);
+    linearScale(shadingMap[1], inShadingMap[1], inShadingMap[1].width(), inShadingMap[1].height(), w, h);
+    linearScale(shadingMap[2], inShadingMap[2], inShadingMap[2].width(), inShadingMap[2].height(), w, h);
+    linearScale(shadingMap[3], inShadingMap[3], inShadingMap[3].width(), inShadingMap[3].height(), w, h);
 
-    Func demosaicInput("demosaicInput");
-    Func shadingInput("shadingInput");
+    rearrange(demosaicInput, downscaled, sensorArrangement);
 
-    rearrange(demosaicInput, downscaled[0], downscaled[1], downscaled[2], downscaled[3], sensorArrangement);
-
-    Expr c0 = (demosaicInput(v_x, v_y, 0) - blackLevel[0]) / (cast<float>(whiteLevel - blackLevel[0])) * scaledShadingMap[0](v_x, v_y);
-    Expr c1 = (demosaicInput(v_x, v_y, 1) - blackLevel[1]) / (cast<float>(whiteLevel - blackLevel[1])) * scaledShadingMap[1](v_x, v_y);
-    Expr c2 = (demosaicInput(v_x, v_y, 2) - blackLevel[2]) / (cast<float>(whiteLevel - blackLevel[2])) * scaledShadingMap[2](v_x, v_y);
-    Expr c3 = (demosaicInput(v_x, v_y, 3) - blackLevel[3]) / (cast<float>(whiteLevel - blackLevel[3])) * scaledShadingMap[3](v_x, v_y);
-        
-    Func colorCorrectInput, colorCorrected, result8u;
-
-    colorCorrectInput(v_x, v_y, v_c) = select(v_c == 0,  clamp( c0,               0.0f, 1.0f ),
-                                              v_c == 1,  clamp( (c1 + c2) / 2,    0.0f, 1.0f ),
-                                                         clamp( c3,               0.0f, 1.0f ));
-
-    transform(colorCorrected, colorCorrectInput, cameraToSrgb);
+    Expr c0 = (demosaicInput(v_x, v_y, 0) - blackLevel[0]) / (cast<float>(whiteLevel - blackLevel[0])) * shadingMap[0](v_x, v_y);
+    Expr c1 = (demosaicInput(v_x, v_y, 1) - blackLevel[1]) / (cast<float>(whiteLevel - blackLevel[1])) * shadingMap[1](v_x, v_y);
+    Expr c2 = (demosaicInput(v_x, v_y, 2) - blackLevel[2]) / (cast<float>(whiteLevel - blackLevel[2])) * shadingMap[2](v_x, v_y);
+    Expr c3 = (demosaicInput(v_x, v_y, 3) - blackLevel[3]) / (cast<float>(whiteLevel - blackLevel[3])) * shadingMap[3](v_x, v_y);
+    
+    downscaledInput(v_x, v_y, v_c) = select(v_c == 0,  clamp( c0,               0.0f, asShotVector[0] ),
+                                            v_c == 1,  clamp( (c1 + c2) / 2,    0.0f, asShotVector[1] ),
+                                                       clamp( c3,               0.0f, asShotVector[2] ));
+    // Transform to SRGB space
+    transform(colorCorrected, downscaledInput, cameraToSrgb);
 
     result8u(v_x, v_y, v_c) = cast<uint8_t>(clamp(colorCorrected(v_x, v_y, v_c) * 255 + 0.5f, 0, 255));
 
@@ -3062,7 +3068,8 @@ public:
     Input<Buffer<float>> inShadingMap1{"inShadingMap1", 2 };
     Input<Buffer<float>> inShadingMap2{"inShadingMap2", 2 };
     Input<Buffer<float>> inShadingMap3{"inShadingMap3", 2 };
-    
+
+    Input<float[3]> asShotVector{"asShotVector"};    
     Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
 
     Input<int> downscaleFactor{"downscaleFactor"};
@@ -3153,10 +3160,10 @@ void LinearImageGenerator::generate() {
     linear(v_x, v_y, v_c) = (demosaic->output(v_x, v_y, v_c) / 16384.0f);
 
     colorCorrectInput(v_x, v_y, v_c) =
-        select( v_c == 0, clamp( linear(v_x, v_y, 0), 0.0f, 1.0f ),
-                v_c == 1, clamp( linear(v_x, v_y, 1), 0.0f, 1.0f ),
-                          clamp( linear(v_x, v_y, 2), 0.0f, 1.0f ));
-
+        select( v_c == 0, clamp( linear(v_x, v_y, 0), 0.0f, asShotVector[0] ),
+                v_c == 1, clamp( linear(v_x, v_y, 1), 0.0f, asShotVector[1] ),
+                          clamp( linear(v_x, v_y, 2), 0.0f, asShotVector[2] ));
+    
     transform(colorCorrected, colorCorrectInput, cameraToSrgb);
 
     output(v_x, v_y, v_c) = cast<uint16_t>(clamp(colorCorrected(v_x, v_y, v_c) * 65535 + 0.5f, 0, 65535));

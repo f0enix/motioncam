@@ -146,11 +146,15 @@ public class ProcessorService extends IntentService {
                     }
                 }
 
-                if(mTempFileDng.exists())
+                if(mTempFileDng.exists()) {
                     FileUtils.copyFile(mTempFileDng, mOutputFileDng);
+                    mTempFileDng.delete();
+                }
 
-                if(mTempFileJpeg.exists())
+                if(mTempFileJpeg.exists()) {
                     FileUtils.copyFile(mTempFileJpeg, mOutputFileJpeg);
+                    mTempFileJpeg.delete();
+                }
             }
 
             return null;
@@ -253,6 +257,9 @@ public class ProcessorService extends IntentService {
         // Find all pending files and process them
         File root = new File(metadataPath);
         File[] pendingFiles = root.listFiles((dir, name) -> name.toLowerCase().endsWith("zip"));
+
+        if(pendingFiles == null)
+            return;
 
         Log.i(TAG, "Found " + pendingFiles.length + " images to process");
 

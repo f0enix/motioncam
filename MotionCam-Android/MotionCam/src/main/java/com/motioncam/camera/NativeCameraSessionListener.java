@@ -8,5 +8,6 @@ public interface NativeCameraSessionListener {
     void onCameraAutoFocusStateChanged(int state);
     void onCameraAutoExposureStateChanged(int state);
     void onCameraHdrImageCaptureProgress(int progress);
+    void onCameraHdrImageCaptureFailed();
     void onCameraHdrImageCaptureCompleted();
 }

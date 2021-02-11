@@ -347,6 +347,7 @@ namespace motioncam {
             return;
         }
 
+        mHdrCaptureSequenceCompleted = false;
         mHdrCaptureInProgress = true;
         mHdrCaptureOutputPath = outputPath;
         mHdrCaptureSettings = postprocessSettings;
@@ -836,7 +837,7 @@ namespace motioncam {
             captureRequests[i] = mSessionContext->hdrCaptureRequests[0]->captureRequest;
 
         // Interleave underexposed requests
-        captureRequests[0] = mSessionContext->hdrCaptureRequests[1]->captureRequest;
+        captureRequests[numImages/2] = mSessionContext->hdrCaptureRequests[1]->captureRequest;
 
         LOGI("Initiating HDR capture (numImages=%d, baseIso=%d, baseExposure=%ld, hdrIso=%d, hdrExposure=%ld)",
                 numImages, baseIso, baseExposure, hdrIso, hdrExposure);
@@ -853,6 +854,25 @@ namespace motioncam {
     }
 
     void CameraSession::doAttemptSaveHdrData() {
+
+        // Check how long it has been since the capture sequence has complete
+        if(mHdrCaptureSequenceCompleted) {
+            double timeSinceSequenceCompleted =
+                    std::chrono::duration <double, std::milli>(std::chrono::steady_clock::now() - mHdrSequenceCompletedTimePoint).count();
+
+            // Fail if we haven't gotten the images in a reasonable amount of time
+            if(timeSinceSequenceCompleted > 5000) {
+                mHdrCaptureInProgress = false;
+                mHdrCaptureSequenceCompleted = false;
+
+                mImageConsumer->cancelHdrBuffers();
+
+                mSessionListener->onCameraHdrImageCaptureFailed();
+
+                return;
+            }
+        }
+
         int numHdrImages = mImageConsumer->getHdrBufferCount();
 
         // If we don't have the right number of images
@@ -1026,36 +1046,25 @@ namespace motioncam {
     }
 
     void CameraSession::onCameraCaptureFailed(const CaptureCallbackContext& context, ACameraCaptureFailure* failure) {
-//        // Resume capture if auto focus trigger failed
-//        if(context.event == CaptureEvent::TRIGGER_AF) {
-//            uint8_t afMode = ACAMERA_CONTROL_AF_MODE_CONTINUOUS_PICTURE;
-//            uint8_t aeMode = ACAMERA_CONTROL_AE_MODE_ON;
-//
-//            uint8_t afTrigger = ACAMERA_CONTROL_AF_TRIGGER_IDLE;
-//            uint8_t aeTrigger = ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER_IDLE;
-//
-//            ACaptureRequest_setEntry_u8(mSessionContext->captureRequest.get(), ACAMERA_CONTROL_AF_MODE, 1, &afMode);
-//            ACaptureRequest_setEntry_u8(mSessionContext->captureRequest.get(), ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
-//            ACaptureRequest_setEntry_u8(mSessionContext->captureRequest.get(), ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER, 1, &aeTrigger);
-//            ACaptureRequest_setEntry_u8(mSessionContext->captureRequest.get(), ACAMERA_CONTROL_AF_TRIGGER, 1, &afTrigger);
-//
-//            if(doRepeatCapture()) {
-//                json11::Json::object data = { { "error",  "AF failure" } };
-//                pushEvent(EventAction::EVENT_INTERNAL_ERROR, data);
-//            }
-//        }
+        // Resume capture if auto focus trigger failed
+        if(context.event == CaptureEvent::TRIGGER_AF) {
+            LOGE("AF_TRIGGER failed");
+        }
     }
 
     void CameraSession::onCameraCaptureSequenceCompleted(const CaptureCallbackContext& context, const int sequenceId) {
         if(context.event == CaptureEvent::HDR_CAPTURE) {
             LOGI("HDR capture sequence completed");
+            mHdrSequenceCompletedTimePoint = std::chrono::steady_clock::now();
+            mHdrCaptureSequenceCompleted = true;
         }
     }
 
     void CameraSession::onCameraCaptureSequenceAborted(const CaptureCallbackContext& context, int sequenceId) {
         if(context.event == CaptureEvent::HDR_CAPTURE) {
             LOGI("HDR capture sequence aborted");
-            mHdrCaptureInProgress = false;
+            mHdrSequenceCompletedTimePoint = std::chrono::steady_clock::now();
+            mHdrCaptureSequenceCompleted = true;
         }
     }
 

@@ -128,8 +128,8 @@ function build_camera_preview() {
 
 mkdir -p ../halide/host
 
-build_denoise host-profile host
-build_postprocess host-profile host
+build_denoise host host
+build_postprocess host host
 build_camera_preview host-opencl-cl_half host
 
 mkdir -p ../halide/arm64-v8a

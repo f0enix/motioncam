@@ -3,7 +3,6 @@ package com.motioncam.ui;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
@@ -391,7 +390,7 @@ public class PostProcessFragment extends Fragment implements
                         numMergeImages,
                         mViewModel.getWriteDng(),
                         mViewModel.getPostProcessSettings(),
-                        CameraProfile.generateCaptureFile().getPath(),
+                        CameraProfile.generateCaptureFile(getContext()).getPath(),
                         this);
             }
         }
@@ -456,14 +455,14 @@ public class PostProcessFragment extends Fragment implements
                 .findViewById(R.id.saveBtn).setEnabled(true);
 
         // In debug mode we don't want to delete the intermediate file
-        SharedPreferences sharedPrefs = getActivity().getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
-        boolean debugMode = sharedPrefs.getBoolean(SettingsViewModel.PREFS_KEY_DEBUG_MODE, false);
+        //SharedPreferences sharedPrefs = getActivity().getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
+        //boolean debugMode = sharedPrefs.getBoolean(SettingsViewModel.PREFS_KEY_DEBUG_MODE, false);
 
         // Start service to process the image
         Intent intent = new Intent(getActivity(), ProcessorService.class);
 
-        intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath().getPath());
-        intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, !debugMode);
+        intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath(getContext()).getPath());
+        intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, true);
         intent.putExtra(ProcessorService.RECEIVER_KEY, mProgressReceiver);
 
         Objects.requireNonNull(getActivity()).startService(intent);

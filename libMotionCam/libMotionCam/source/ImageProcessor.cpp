@@ -161,7 +161,7 @@ extern "C" int extern_min_max(halide_buffer_t *in, int32_t width, int32_t height
 namespace motioncam {
     const int DENOISE_LEVELS    = 6;
     const int EXPANDED_RANGE    = 16384;
-    const float MAX_HDR_ERROR   = 0.05f;
+    const float MAX_HDR_ERROR   = 0.03f;
 
     struct RawData {
         Halide::Runtime::Buffer<uint16_t> rawBuffer;
@@ -282,7 +282,7 @@ namespace motioncam {
             hdrScale = hdrMetadata->exposureScale;
             
             // Boost shadows to rougly match what the user selected.
-            shadows = 0.9f * settings.shadows * (1.0/hdrScale);
+            shadows = settings.shadows * (1.0/hdrScale);
             
             hdrMask.translate(0, offsetX);
             hdrMask.translate(1, offsetY);
@@ -306,6 +306,9 @@ namespace motioncam {
                     hdrInput,
                     hdrMask,
                     hdrScale,
+                    metadata.asShot[0],
+                    metadata.asShot[1],
+                    metadata.asShot[2],
                     cameraToSrgbBuffer,
                     shadingMapBuffer[0],
                     shadingMapBuffer[1],
@@ -356,45 +359,52 @@ namespace motioncam {
     }
 
     float ImageProcessor::estimateExposureCompensation(const RawImageBuffer& buffer, const RawCameraMetadata& cameraMetadata) {
-        auto rawBufferHistogram = calcHistogram(cameraMetadata, buffer, 1);
-        const int maxBufferPixels = (int) (1e-4 * (buffer.width*buffer.height)/4.0);
-        int maxRawBufferBin[3] = {0, 0, 0};
-                
-        for(int c = 0; c < rawBufferHistogram.rows; c++) {
-            int sum = 0;
-            
-            for(int x = rawBufferHistogram.cols - 1; x >= 0; x--) {
-                sum += rawBufferHistogram.at<uint32_t>(c, x);
-                
-                if(sum > maxBufferPixels) {
-                    maxRawBufferBin[c] = x;
-                    break;
-                }
+//        Measure measure("estimateExposureCompensation");
+        
+        auto hist = calcHistogram(cameraMetadata, buffer, 2);
+        const int totalPixels = (buffer.width*buffer.height)/16;
+        int bins[3] = {0, 0, 0};
+        
+        // Cumulative histogram
+        for(int c = 0; c < hist.rows; c++) {
+            for(int x = 1; x < hist.cols; x++) {
+                hist.at<uint32_t>(c, x) += hist.at<uint32_t>(c, x - 1);
             }
         }
+
+        // Exposure compensation
+        for(int c = 0; c < hist.rows; c++) {
+            for(int x = 0; x < hist.cols; x++) {
+                if(hist.at<uint32_t>(c, x) / (float) totalPixels > 0.9995) {
+                    bins[c] = x;
+                    break;
+                }
+                    
+            }
+        }
+
+        int maxBin = std::max(bins[0], std::max(bins[1], bins[2]));
         
-        int bin = cv::max(maxRawBufferBin[2], cv::max(maxRawBufferBin[0], maxRawBufferBin[1]));
-                
-        double m = rawBufferHistogram.cols / static_cast<double>(bin + 1);
-        return static_cast<float>(cv::log(m) / cv::log(2.0));
+        double m = hist.cols / static_cast<double>(maxBin + 1);
+        return std::log2(m);
     }
 
-    void ImageProcessor::estimateWhitePoint(const RawImageBuffer& rawBuffer,
-                                            const RawCameraMetadata& cameraMetadata,
-                                            float shadows,
-                                            float& outBlacks,
-                                            float& outWhitePoint) {
+    cv::Mat ImageProcessor::estimateWhitePoint(const RawImageBuffer& rawBuffer,
+                                               const RawCameraMetadata& cameraMetadata,
+                                               float shadows,
+                                               float& outBlacks,
+                                               float& outWhitePoint) {
         PostProcessSettings settings;
         
         settings.shadows = shadows;
         
         auto previewBuffer = createPreview(rawBuffer, 4, cameraMetadata, settings);
-
+        
         cv::Mat preview(previewBuffer.height(), previewBuffer.width(), CV_8UC4, previewBuffer.data());
         cv::Mat histogram;
 
         cv::cvtColor(preview, preview, cv::COLOR_RGBA2GRAY);
-
+        
         vector<cv::Mat> inputImages     = { preview };
         const vector<int> channels      = { 0 };
         const vector<int> histBins      = { 255 };
@@ -402,39 +412,39 @@ namespace motioncam {
 
         cv::calcHist(inputImages, channels, cv::Mat(), histogram, histBins, histRange);
         
+        histogram = histogram / (preview.rows * preview.cols);
+        
+        // Cumulative histogram
+        for(int i = 1; i < histogram.rows; i++) {
+            histogram.at<float>(i) += histogram.at<float>(i - 1);
+        }
+        
         // Estimate blacks
-        const float maxDehazePercent = 0.07f; // Max 7% pixels
+        const float maxDehazePercent = 0.03f; // Max 3% pixels
         const int maxEndBin = 8; // Max bin
 
-        int allowPixels = static_cast<int>(maxDehazePercent * static_cast<float>(preview.cols * preview.rows));
-        int pixels = 0;
         int endBin = 0;
 
         for(endBin = 0; endBin < maxEndBin; endBin++) {
-            int binPx = histogram.at<float>(endBin);
+            float binPx = histogram.at<float>(endBin);
 
-            if(binPx + pixels > allowPixels)
+            if(binPx > maxDehazePercent)
                 break;
-
-            pixels += binPx;
         }
 
-        outBlacks = std::max(0.02f, static_cast<float>(endBin) / static_cast<float>(histogram.rows - 1));
+        outBlacks = static_cast<float>(endBin) / static_cast<float>(histogram.rows - 1);
 
         // Estimate white point
-        allowPixels = static_cast<int>(0.005f * static_cast<float>(preview.cols * preview.rows));
-        pixels = 0;
-
         for(endBin = histogram.rows - 1; endBin >= 192; endBin--) {
-            int binPx = histogram.at<float>(endBin);
+            float binPx = histogram.at<float>(endBin);
 
-            if(binPx + pixels > allowPixels)
+            if(binPx < 0.998)
                 break;
-
-            pixels += binPx;
         }
 
         outWhitePoint = static_cast<float>(endBin) / ((float) histogram.rows - 1);
+        
+        return preview;
     }
 
     void ImageProcessor::estimateBasicSettings(const RawImageBuffer& rawBuffer,
@@ -446,8 +456,22 @@ namespace motioncam {
         // Start with basic initial values
         PostProcessSettings settings;
         
-        settings.shadows = estimateShadows(rawBuffer, cameraMetadata, settings);
-                
+        CameraProfile cameraProfile(cameraMetadata);
+        Temperature temperature;
+        
+        cameraProfile.temperatureFromVector(rawBuffer.metadata.asShot, temperature);
+        
+        settings.temperature    = static_cast<float>(temperature.temperature());
+        settings.tint           = static_cast<float>(temperature.tint());
+        settings.shadows        = estimateShadows(rawBuffer, cameraMetadata, settings);
+        settings.exposure       = estimateExposureCompensation(rawBuffer, cameraMetadata);
+
+        estimateWhitePoint(rawBuffer,
+                           cameraMetadata,
+                           settings.shadows,
+                           settings.blacks,
+                           settings.whitePoint);
+
         // Update estimated settings
         outSettings = settings;
     }
@@ -497,67 +521,18 @@ namespace motioncam {
         
         settings.temperature    = static_cast<float>(temperature.temperature());
         settings.tint           = static_cast<float>(temperature.tint());
-//        settings.exposure       = estimateExposureCompensation(rawBuffer, cameraMetadata);
         settings.shadows        = estimateShadows(rawBuffer, cameraMetadata, settings);
         
-        // Calculate blacks
-        auto previewBuffer = createPreview(rawBuffer, 4, cameraMetadata, settings);
-        
-        cv::Mat preview(previewBuffer.height(), previewBuffer.width(), CV_8UC4, previewBuffer.data());
-        cv::Mat histogram;
-                
-        vector<cv::Mat> inputImages     = { preview };
-        const vector<int> channels      = { 0 };
-        const vector<int> histBins      = { 255 };
-        const vector<float> histRange   = { 0, 256 };
-        
-        cv::calcHist(inputImages, channels, cv::Mat(), histogram, histBins, histRange);
-        
-        // Estimate blacks
-        const float maxDehazePercent = 0.07f; // Max 7% pixels
-        const int16_t maxEndBin = 8; // Max bin
-
-        int allowPixels = static_cast<int>(maxDehazePercent * static_cast<float>(preview.cols * preview.rows));
-        int pixels = 0;
-        int endBin = 0;
-        
-        for(endBin = 0; endBin < maxEndBin; endBin++) {
-            int binPx = histogram.at<float>(endBin);
-            
-            if(binPx + pixels > allowPixels)
-                break;
-            
-            pixels += binPx;
-        }
-
-        settings.blacks = std::max(0.02f, static_cast<float>(endBin) / static_cast<float>(histogram.rows - 1));
-
-        // Estimate white point
-        allowPixels = static_cast<int>(0.005 * (preview.cols * preview.rows));
-        pixels = 0;
-        
-        for(endBin = histogram.rows - 1; endBin >= 192; endBin--) {
-            int binPx = histogram.at<float>(endBin);
-            
-            if(binPx + pixels > allowPixels)
-                break;
-            
-            pixels += binPx;
-        }
-        
-        settings.whitePoint = static_cast<float>(endBin) / static_cast<float>(histogram.rows - 1);
+        auto preview = estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, settings.blacks, settings.whitePoint);
         
         //
         // Scene luminance
         //
 
-        cv::Mat tmp;
+        preview.convertTo(preview, CV_32F, 1.0/255.0);
+        cv::log(preview + 0.001f, preview);
 
-        cv::cvtColor(preview, tmp, cv::COLOR_BGRA2GRAY);
-        tmp.convertTo(tmp, CV_32F, 1.0/255.0);
-        cv::log(tmp + 0.001f, tmp);
-
-        settings.sceneLuminance = static_cast<float>(cv::exp(1.0/(preview.cols*preview.rows) * cv::sum(tmp)[0]));
+        settings.sceneLuminance = static_cast<float>(cv::exp(1.0/(preview.cols*preview.rows) * cv::sum(preview)[0]));
 
         //
         // Use faster method for noise estimate
@@ -716,6 +691,9 @@ namespace motioncam {
                 
         camera_preview(inputBuffer,
                        rawBuffer.rowStride,
+                       rawBuffer.metadata.asShot[0],
+                       rawBuffer.metadata.asShot[1],
+                       rawBuffer.metadata.asShot[2],
                        cameraToSrgbBuffer,
                        flipped,
                        width,
@@ -835,6 +813,9 @@ namespace motioncam {
             shadingMapBuffer[1],
             shadingMapBuffer[2],
             shadingMapBuffer[3],
+            rawBuffer.metadata.asShot[0],
+            rawBuffer.metadata.asShot[1],
+            rawBuffer.metadata.asShot[2],
             cameraToSrgbBuffer,
             rawBuffer.width / 2 / downscaleFactor,
             rawBuffer.height / 2 / downscaleFactor,
@@ -913,7 +894,7 @@ namespace motioncam {
         return rawData;
     }
 
-    __unused void ImageProcessor::measureImage(RawImageBuffer& rawBuffer, const RawCameraMetadata& cameraMetadata, float& outSceneLuminosity)
+    void ImageProcessor::measureImage(RawImageBuffer& rawBuffer, const RawCameraMetadata& cameraMetadata, float& outSceneLuminosity)
     {
 //        Measure measure("measureImage");
 
@@ -948,6 +929,9 @@ namespace motioncam {
                       cameraMetadata.blackLevel[2],
                       cameraMetadata.blackLevel[3],
                       cameraMetadata.whiteLevel,
+                      cameraWhite[0],
+                      cameraWhite[1],
+                      cameraWhite[2],
                       cameraToSrgbBuffer,
                       shadingMapBuffer[0],
                       shadingMapBuffer[1],
@@ -1054,6 +1038,9 @@ namespace motioncam {
                       cameraMetadata.blackLevel[2],
                       cameraMetadata.blackLevel[3],
                       cameraMetadata.whiteLevel,
+                      cameraWhite[0],
+                      cameraWhite[1],
+                      cameraWhite[2],
                       cameraToSrgbBuffer,
                       shadingMapBuffer[0],
                       shadingMapBuffer[1],
@@ -1061,7 +1048,7 @@ namespace motioncam {
                       shadingMapBuffer[3],
                       static_cast<int>(cameraMetadata.sensorArrangment),
                       histogramBuffer);
-
+        
         cv::Mat histogram(histogramBuffer.height(), histogramBuffer.width(), CV_32S, histogramBuffer.data());
         
         return histogram.clone();
@@ -1171,6 +1158,8 @@ namespace motioncam {
                         bestSharpness = sharpness;
                         sharpestBuffer = frameName;
                     }
+                    
+                    frame->data->release();
                 }
                 
                 rawContainer.updateReferenceImage(sharpestBuffer);
@@ -1178,7 +1167,7 @@ namespace motioncam {
         }
 
         auto referenceRawBuffer = rawContainer.getFrame(rawContainer.getReferenceImage());
-
+        
         //
         // Denoise
         //
@@ -1270,7 +1259,7 @@ namespace motioncam {
             auto underexposedFrame = *underexposedImages.begin();
 
             auto hist = calcHistogram(rawContainer.getCameraMetadata(), *referenceRawBuffer, 4);
-            const int bound = (int) (hist.cols * 0.90f);
+            const int bound = (int) (hist.cols * 0.95f);
             float sum[3] = {0, 0, 0};
             
             for(int c = 0; c < hist.rows; c++) {
@@ -1283,24 +1272,38 @@ namespace motioncam {
             sum[1] /= (referenceRawBuffer->width*referenceRawBuffer->height) / 64.0f;
             sum[2] /= (referenceRawBuffer->width*referenceRawBuffer->height) / 64.0f;
             
-            // Check if there's anypoint even using the underexposed image
-            if((sum[0] + sum[1] + sum[2]) / 3.0f > 0.001f) {
+            // Check if there's any point even using the underexposed image
+            bool usingHdr = false;
+            float maxSum = std::max(std::max(sum[0], sum[1]), sum[2]);
+            
+            if(maxSum > 0.01f) {
                 hdrMetadata =
                     prepareHdr(rawContainer.getCameraMetadata(),
                                settings,
                                *referenceRawBuffer,
                                *underexposedFrame);
+                
+                if(hdrMetadata->error < MAX_HDR_ERROR)
+                    usingHdr = true;
             }
             else {
                 logger::log("Skipping HDR processing");
             }
-            
-            // Adjust white point since the base exposure is scaled to the underexposed image
-            estimateWhitePoint(*underexposedFrame,
-                               rawContainer.getCameraMetadata(),
-                               settings.shadows * (1.0/hdrMetadata->exposureScale),
-                               settings.blacks,
-                               settings.whitePoint);
+
+            if(usingHdr) {
+                estimateWhitePoint(*underexposedFrame,
+                                   rawContainer.getCameraMetadata(),
+                                   settings.shadows * (1.0/hdrMetadata->exposureScale),
+                                   settings.blacks,
+                                   settings.whitePoint);
+            }
+            else {
+                estimateWhitePoint(*referenceRawBuffer,
+                                   rawContainer.getCameraMetadata(),
+                                   settings.shadows,
+                                   settings.blacks,
+                                   settings.whitePoint);
+            }
         }
        
         outputImage = postProcess(
@@ -1507,8 +1510,11 @@ namespace motioncam {
                 continue;
             }
             
-            auto current = loadRawImage(*rawContainer.loadFrame(*it), rawContainer.getCameraMetadata());
+            auto frame = rawContainer.loadFrame(*it);
+            auto current = loadRawImage(*frame, rawContainer.getCameraMetadata());
 
+            frame->data->release();
+            
             // Calculate movement between frames
             cv::Mat flow;
 
@@ -1607,7 +1613,7 @@ namespace motioncam {
                 
                 progressHelper.nextFusedImage();
             }
-
+            
             resetOutput = false;
             ++it;
         }
@@ -1966,7 +1972,14 @@ namespace motioncam {
         cv::Mat cameraToSrgb;
         cv::Vec3f cameraWhite;
         
-        createSrgbMatrix(cameraMetadata, underexposedImage->metadata.asShot, cameraWhite, cameraToSrgb);
+        if(settings.temperature > 0 || settings.tint > 0) {
+            Temperature t(settings.temperature, settings.tint);
+
+            createSrgbMatrix(cameraMetadata, t, cameraWhite, cameraToSrgb);
+        }
+        else {
+            createSrgbMatrix(cameraMetadata, underexposed.metadata.asShot, cameraWhite, cameraToSrgb);
+        }
 
         Halide::Runtime::Buffer<float> cameraToSrgbBuffer = ToHalideBuffer<float>(cameraToSrgb);
         
@@ -1999,6 +2012,9 @@ namespace motioncam {
                     shadingMapBuffer[1],
                     shadingMapBuffer[2],
                     shadingMapBuffer[3],
+                    cameraWhite[0],
+                    cameraWhite[1],
+                    cameraWhite[2],
                     cameraToSrgbBuffer,
                     1,
                     inputBuffers[0].width(),

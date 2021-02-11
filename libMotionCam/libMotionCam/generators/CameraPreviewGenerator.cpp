@@ -25,6 +25,7 @@ public:
 
     Input<Buffer<uint8_t>> input{"input", 1};
     Input<int> stride{"stride"};
+    Input<float[3]> asShotVector{"asShotVector"};
     Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
     Input<bool> flipped{"flipped", false};
 
@@ -508,9 +509,9 @@ void CameraPreviewGenerator::generate() {
 
     demosaiced(v_x, v_y, v_c) =
         select(
-            v_c == 0, clamp(linear(v_x, v_y, 0), cast<float16_t>(0.0f), cast<float16_t>(1.0f)),
-            v_c == 1, clamp((linear(v_x, v_y, 1) + linear(v_x, v_y, 2)) * cast<float16_t>(0.5f), cast<float16_t>(0.0f), cast<float16_t>(1.0f)),
-                      clamp(linear(v_x, v_y, 3), cast<float16_t>(0.0f), cast<float16_t>(1.0f)));
+            v_c == 0, clamp(linear(v_x, v_y, 0), cast<float16_t>(0.0f), cast<float16_t>(asShotVector[0])),
+            v_c == 1, clamp((linear(v_x, v_y, 1) + linear(v_x, v_y, 2)) * cast<float16_t>(0.5f), cast<float16_t>(0.0f), cast<float16_t>(asShotVector[1])),
+                      clamp(linear(v_x, v_y, 3), cast<float16_t>(0.0f), cast<float16_t>(asShotVector[2])));
 
     transform(colorCorrected, demosaiced, cameraToSrgb);
 

@@ -134,4 +134,16 @@ namespace motioncam {
         if(callbackMethod)
             env.getEnv()->CallVoidMethod(mListenerInstance, callbackMethod);
     }
+
+    void NativeCameraBridgeListener::onCameraHdrImageCaptureFailed() {
+        JavaEnv env(mJavaVm);
+        if (!env.getEnv()) {
+            LOGE("Dropped onCameraHdrImageCaptureFailed()");
+            return;
+        }
+
+        jmethodID callbackMethod = env.getEnv()->GetMethodID(mListenerClass, "onCameraHdrImageCaptureFailed", "()V");
+        if(callbackMethod)
+            env.getEnv()->CallVoidMethod(mListenerInstance, callbackMethod);
+    }
 }

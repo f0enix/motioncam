@@ -100,6 +100,7 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         void onCameraAutoFocusStateChanged(CameraFocusState state);
         void onCameraAutoExposureStateChanged(CameraExposureState state);
         void onCameraHdrImageCaptureProgress(int progress);
+        void onCameraHdrImageCaptureFailed();
         void onCameraHdrImageCaptureCompleted();
     }
 
@@ -371,6 +372,11 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
     @Override
     public void onCameraAutoExposureStateChanged(int state) {
         mListener.onCameraAutoExposureStateChanged(CameraExposureState.FromInt(state));
+    }
+
+    @Override
+    public void onCameraHdrImageCaptureFailed() {
+        mListener.onCameraHdrImageCaptureFailed();
     }
 
     @Override

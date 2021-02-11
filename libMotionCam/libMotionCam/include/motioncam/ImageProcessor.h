@@ -71,15 +71,15 @@ namespace motioncam {
                                          float& outG,
                                          float& outB);
 
-        static void estimateWhitePoint(const RawImageBuffer& rawBuffer,
-                                       const RawCameraMetadata& cameraMetadata,
-                                       float shadows,
-                                       float& outBlacks,
-                                       float& outWhitePoint);
+        static cv::Mat estimateWhitePoint(const RawImageBuffer& rawBuffer,
+                                          const RawCameraMetadata& cameraMetadata,
+                                          float shadows,
+                                          float& outBlacks,
+                                          float& outWhitePoint);
 
         static double measureSharpness(const RawImageBuffer& rawBuffer);
 
-        __unused static void measureImage(RawImageBuffer& rawImage, const RawCameraMetadata& cameraMetadata, float& outSceneLuminosity);
+        static void measureImage(RawImageBuffer& rawImage, const RawCameraMetadata& cameraMetadata, float& outSceneLuminosity);
         
     private:
         static cv::Mat registerImage(const Halide::Runtime::Buffer<uint8_t>& referenceBuffer, const Halide::Runtime::Buffer<uint8_t>& toAlignBuffer, int scale=1);

@@ -63,13 +63,26 @@ public class CameraActivity extends AppCompatActivity implements
 
     private static final int PERMISSION_REQUEST_CODE = 1;
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
-    private static final float MAX_SHADOWS_VALUE = 16.0f;
-    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 4;
+    private static final float MAX_SHADOWS_EV_VALUE = 5.0f;
+    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 8;
 
     private enum FocusState {
         AUTO,
         FIXED,
         FIXED_AF_AE
+    }
+
+    private enum CaptureMode {
+        HDR,
+        ZSL,
+        BURST
+    }
+
+    private enum PreviewControlMode {
+        CONTRAST,
+        COLOUR,
+        TINT,
+        WARMTH
     }
 
     private boolean mHavePermissions;
@@ -94,6 +107,8 @@ public class CameraActivity extends AppCompatActivity implements
 
     private boolean mManualControlsEnabled;
     private boolean mManualControlsSet;
+    private CaptureMode mCaptureMode = CaptureMode.HDR;
+    private PreviewControlMode mPreviewControlMode = PreviewControlMode.CONTRAST;
 
     private FocusState mFocusState = FocusState.AUTO;
     private PointF mAutoFocusPoint;
@@ -182,13 +197,11 @@ public class CameraActivity extends AppCompatActivity implements
         });
 
         // Preview settings
-        mBinding.contrastSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+        mBinding.previewSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if(mPostProcessSettings != null) {
-                    mPostProcessSettings.contrast = progress / 100.0f;
-                    updatePreviewSettings();
-                }
+                if(fromUser)
+                    updatePreviewControlsParam(progress);
             }
 
             @Override
@@ -197,70 +210,21 @@ public class CameraActivity extends AppCompatActivity implements
 
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
-            }
-        });
-
-        mBinding.colourSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if(mPostProcessSettings != null) {
-                    mPostProcessSettings.saturation = progress / 100.0f;
-                    updatePreviewSettings();
-                }
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-            }
-        });
-
-        mBinding.temperatureSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                // Offset range -500 to 500
-                float offset = (progress - 50.0f) / 100.0f * 1000.0f;
-                mTemperatureOffset = offset;
-
-                updatePreviewSettings();
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-            }
-        });
-
-        mBinding.tintSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                // Offset range -20 to 20
-                float offset = (progress - 50.0f) / 100.0f * 40.0f;
-                mTintOffset = offset;
-
-                updatePreviewSettings();
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-
             }
         });
 
         // Buttons
         mBinding.captureBtn.setOnClickListener(v -> onCaptureClicked());
         mBinding.switchCameraBtn.setOnClickListener(v -> onSwitchCameraClicked());
+
+        mBinding.hdrModeBtn.setOnClickListener(v -> onCaptureModeClicked(v));
+        mBinding.burstModeBtn.setOnClickListener(v -> onCaptureModeClicked(v));
+        mBinding.zslModeBtn.setOnClickListener(v -> onCaptureModeClicked(v));
+
+        mBinding.contrastBtn.setOnClickListener(v -> onPreviewModeClicked(v));
+        mBinding.colourBtn.setOnClickListener(v -> onPreviewModeClicked(v));
+        mBinding.tintBtn.setOnClickListener(v -> onPreviewModeClicked(v));
+        mBinding.warmthBtn.setOnClickListener(v -> onPreviewModeClicked(v));
 
         ((SeekBar) findViewById(R.id.manualControlIsoSeekBar)).setOnSeekBarChangeListener(mManualControlsSeekBar);
         ((SeekBar) findViewById(R.id.manualControlShutterSpeedSeekBar)).setOnSeekBarChangeListener(mManualControlsSeekBar);
@@ -330,31 +294,23 @@ public class CameraActivity extends AppCompatActivity implements
         SharedPreferences prefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
 
         int jpegQuality = prefs.getInt(SettingsViewModel.PREFS_KEY_JPEG_QUALITY, CameraProfile.DEFAULT_JPEG_QUALITY);
-        int contrast = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, 50);
-        int colour = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, 75);
-        int tempOffset = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, 50);
-        int tintOffset = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, 50);
-        boolean burst = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_PREVIEW_BURST, false);
 
         mPostProcessSettings.shadows = 1.0f;
-        mPostProcessSettings.contrast = contrast / 100.0f;
-        mPostProcessSettings.saturation = colour / 100.0f;
+        mPostProcessSettings.contrast = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, 0.5f);
+        mPostProcessSettings.saturation = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, 1.0f);
         mPostProcessSettings.greenSaturation = 1.0f;
         mPostProcessSettings.blueSaturation = 1.0f;
-        mPostProcessSettings.sharpen0 = 3.5f;
-        mPostProcessSettings.sharpen1 = 1.4f;
+        mPostProcessSettings.sharpen0 = 4.0f;
+        mPostProcessSettings.sharpen1 = 1.15f;
         mPostProcessSettings.whitePoint = 1.0f;
         mPostProcessSettings.blacks = 0.0f;
         mPostProcessSettings.tonemapVariance = 0.25f;
         mPostProcessSettings.jpegQuality = jpegQuality;
 
-        // Update UI
-        mBinding.contrastSeekBar.setProgress(contrast);
-        mBinding.colourSeekBar.setProgress(colour);
-        mBinding.temperatureSeekBar.setProgress(tempOffset);
-        mBinding.tintSeekBar.setProgress(tintOffset);
+        mTemperatureOffset = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, 0);
+        mTintOffset = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, 0);
 
-        ((Switch) mBinding.manualControlsFrame.findViewById(R.id.burstModeSwitch)).setChecked(burst);
+        updatePreviewTabUi(true);
     }
 
     @Override
@@ -400,17 +356,17 @@ public class CameraActivity extends AppCompatActivity implements
         mTextureView = null;
 
         // Save UI state (TODO: do this per camera id)
-        boolean burstMode = ((Switch) mBinding.manualControlsFrame.findViewById(R.id.burstModeSwitch)).isChecked();
-
-        SharedPreferences prefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
-        prefs
-            .edit()
-            .putInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, mBinding.contrastSeekBar.getProgress())
-            .putInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, mBinding.colourSeekBar.getProgress())
-            .putInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, mBinding.temperatureSeekBar.getProgress())
-            .putInt(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, mBinding.tintSeekBar.getProgress())
-            .putBoolean(SettingsViewModel.PREFS_KEY_UI_PREVIEW_BURST, burstMode)
-            .apply();
+        if(mPostProcessSettings != null) {
+            SharedPreferences prefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
+            prefs
+                .edit()
+                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, mPostProcessSettings.contrast)
+                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, mPostProcessSettings.saturation)
+                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, mTemperatureOffset)
+                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, mTintOffset)
+                .putString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, mCaptureMode.name())
+                .apply();
+        }
     }
 
     @Override
@@ -463,6 +419,126 @@ public class CameraActivity extends AppCompatActivity implements
                 }));
     }
 
+    private void updatePreviewTabUi(boolean updateModeSelection) {
+        final float seekBarMax = mBinding.previewSeekBar.getMax();
+        int progress = Math.round(seekBarMax / 2);
+
+        View selectionView = null;
+
+        mBinding.contrastValue.setText(Math.round(mPostProcessSettings.contrast * 100) + "%");
+        mBinding.colourValue.setText(Math.round(mPostProcessSettings.saturation / 2.0f * 100)  + "%");
+        mBinding.warmthValue.setText( Math.round((mTemperatureOffset + 1000.0f) / 2000.0f * 100.0f) + "%" );
+        mBinding.tintValue.setText( Math.round((mTintOffset + 50.0f) / 100.0f * 100.0f) + "%" );
+
+        switch(mPreviewControlMode) {
+            case CONTRAST:
+                progress = Math.round(mPostProcessSettings.contrast * seekBarMax);
+                selectionView = mBinding.contrastBtn;
+                break;
+
+            case COLOUR:
+                progress = Math.round(mPostProcessSettings.saturation / 2.0f * seekBarMax);
+                selectionView = mBinding.colourBtn;
+                break;
+
+            case TINT:
+                progress = Math.round(((mTintOffset + 50.0f) / 100.0f * seekBarMax));
+                selectionView = mBinding.tintBtn;
+                break;
+
+            case WARMTH:
+                progress = Math.round(((mTemperatureOffset + 1000.0f) / 2000.0f * seekBarMax));
+                selectionView = mBinding.warmthBtn;
+                break;
+        }
+
+        if(updateModeSelection && selectionView != null) {
+            mBinding.contrastBtn.setBackground(null);
+            mBinding.colourBtn.setBackground(null);
+            mBinding.tintBtn.setBackground(null);
+            mBinding.warmthBtn.setBackground(null);
+
+            selectionView.setBackgroundColor(getColor(R.color.colorPrimaryDark));
+            mBinding.previewSeekBar.setProgress(progress);
+        }
+    }
+
+    private void updateCaptureModeUi() {
+        mBinding.hdrModeBtn.setTextColor(getColor(R.color.textColor));
+        mBinding.zslModeBtn.setTextColor(getColor(R.color.textColor));
+        mBinding.burstModeBtn.setTextColor(getColor(R.color.textColor));
+
+        switch(mCaptureMode) {
+            case HDR:
+                mBinding.hdrModeBtn.setTextColor(getColor(R.color.colorAccent));
+                break;
+
+            case ZSL:
+                mBinding.zslModeBtn.setTextColor(getColor(R.color.colorAccent));
+                break;
+
+            case BURST:
+                mBinding.burstModeBtn.setTextColor(getColor(R.color.colorAccent));
+                break;
+        }
+    }
+
+    private void onCaptureModeClicked(View v) {
+        if(v == mBinding.hdrModeBtn) {
+            mCaptureMode = CaptureMode.HDR;
+        }
+        else if(v == mBinding.zslModeBtn) {
+            mCaptureMode = CaptureMode.ZSL;
+        }
+        else if(v == mBinding.burstModeBtn) {
+            mCaptureMode = CaptureMode.BURST;
+        }
+
+        updateCaptureModeUi();
+    }
+
+    private void onPreviewModeClicked(View v) {
+        if(v == mBinding.contrastBtn) {
+            mPreviewControlMode = PreviewControlMode.CONTRAST;
+        }
+        else if(v == mBinding.colourBtn) {
+            mPreviewControlMode = PreviewControlMode.COLOUR;
+        }
+        else if(v == mBinding.tintBtn) {
+            mPreviewControlMode = PreviewControlMode.TINT;
+        }
+        else if(v == mBinding.warmthBtn) {
+            mPreviewControlMode = PreviewControlMode.WARMTH;
+        }
+
+        updatePreviewTabUi(true);
+    }
+
+    private void updatePreviewControlsParam(int progress) {
+        final float seekBarMax = mBinding.previewSeekBar.getMax();
+
+        switch(mPreviewControlMode) {
+            case CONTRAST:
+                mPostProcessSettings.contrast = progress / seekBarMax;
+                break;
+
+            case COLOUR:
+                mPostProcessSettings.saturation = (progress / seekBarMax) * 2.0f;
+                break;
+
+            case TINT:
+                mTintOffset = (progress / seekBarMax - 0.5f) * 100.0f;
+                break;
+
+            case WARMTH:
+                mTemperatureOffset = (progress / seekBarMax - 0.5f) * 2000.0f;
+                break;
+        }
+
+        updatePreviewSettings();
+        updatePreviewTabUi(false);
+    }
+
     static private int getNumImagesToMerge(int iso, long exposureTime, float shadows) {
         int numImages;
 
@@ -474,6 +550,11 @@ public class CameraActivity extends AppCompatActivity implements
         }
         else {
             numImages = 5;
+        }
+
+        // If very dark, use more images
+        if(exposureTime >= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_10.getExposureTime()) {
+            numImages = 9;
         }
 
         // If shadows are increased by a significant amount, use more images
@@ -494,9 +575,7 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void onCaptureClicked() {
-        boolean burstMode = ((Switch) mBinding.manualControlsFrame.findViewById(R.id.burstModeSwitch)).isChecked();
-
-        if(burstMode) {
+        if(mCaptureMode == CaptureMode.BURST) {
             // Pass native camera handle
             Intent intent = new Intent(this, PostProcessActivity.class);
 
@@ -506,7 +585,46 @@ public class CameraActivity extends AppCompatActivity implements
 
             startActivity(intent);
         }
-        else {
+        else if(mCaptureMode == CaptureMode.ZSL) {
+            mBinding.captureBtn.setEnabled(false);
+
+            mBinding.cameraFrame.setAlpha(0.25f);
+            mBinding.cameraFrame
+                    .animate()
+                    .alpha(1.0f)
+                    .setDuration(250)
+                    .start();
+
+            PostProcessSettings settings = mPostProcessSettings.clone();
+
+            int numMergeImages =
+                    getNumImagesToMerge(mIso, mExposureTime, mPostProcessSettings.shadows);
+
+            settings.chromaEps = getChromaEps(numMergeImages);
+            settings.exposure = 0.0f;
+
+            // Increase denoising when lots of images are being merged
+            if(numMergeImages > 3)
+                settings.spatialDenoiseAggressiveness = 1.5f;
+            else
+                settings.spatialDenoiseAggressiveness = 1.0f;
+
+            Log.i(TAG, "Requested ZSL capture (numImages=" + numMergeImages + ")");
+
+            mAsyncNativeCameraOps.captureImage(
+                    Long.MIN_VALUE,
+                    numMergeImages,
+                    false,
+                    settings,
+                    CameraProfile.generateCaptureFile(this).getPath(),
+                    handle -> {
+                        mBinding.captureBtn.setEnabled(true);
+
+                        startImageProcessor();
+                    }
+            );
+        }
+        else if(mCaptureMode == CaptureMode.HDR) {
             mBinding.captureBtn.setEnabled(false);
 
             mBinding.cameraFrame
@@ -515,39 +633,59 @@ public class CameraActivity extends AppCompatActivity implements
                     .setDuration(250)
                     .start();
 
-            // Capture latest image
-            PostProcessSettings settings = mPostProcessSettings.clone();
+            mAsyncNativeCameraOps.estimateSettings(null, true, estimatedSettings ->
+                {
+                    if(estimatedSettings == null || mNativeCamera == null)
+                        return;
 
-            // Map camera exposure to our own
-            CameraManualControl.Exposure baseExposure = CameraManualControl.Exposure.Create(
-                CameraManualControl.GetClosestShutterSpeed(Math.round(mExposureTime)),
-                CameraManualControl.GetClosestIso(mIsoValues, mIso)
+                    // Map camera exposure to our own
+                    long cameraExposure = mManualControlsSet ? mExposureTime : Math.round(mExposureTime * Math.pow(2.0f, estimatedSettings.exposure));
+
+                    CameraManualControl.Exposure baseExposure = CameraManualControl.Exposure.Create(
+                            CameraManualControl.GetClosestShutterSpeed(cameraExposure),
+                            CameraManualControl.GetClosestIso(mIsoValues, mIso)
+                    );
+
+                    CameraManualControl.Exposure hdrExposure = CameraManualControl.Exposure.Create(
+                            CameraManualControl.GetClosestShutterSpeed(cameraExposure / HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV),
+                            CameraManualControl.GetClosestIso(mIsoValues, mIso)
+                    );
+
+                    PostProcessSettings settings = mPostProcessSettings.clone();
+
+                    // If the user has not override the shutter speed/iso, pick our own
+                    if(!mManualControlsSet) {
+                        baseExposure = CameraManualControl.MapToExposureLine(1.0, baseExposure);
+                        hdrExposure = CameraManualControl.MapToExposureLine(1.0, hdrExposure);
+
+                        // Reduce shadows to account for the increase in exposure
+                        settings.shadows = settings.shadows / (float) Math.pow(2.0f, settings.exposure);
+                    }
+
+                    int numMergeImages =
+                            getNumImagesToMerge(baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), mPostProcessSettings.shadows);
+
+                    Log.i(TAG, "Requested HDR capture (numImages=" + numMergeImages + ", exposure=" + settings.exposure + ")");
+
+                    settings.chromaEps = getChromaEps(numMergeImages);
+                    settings.exposure = 0.0f;
+
+                    // Increase denoising when lots of images are being merged
+                    if(numMergeImages > 3)
+                        settings.spatialDenoiseAggressiveness = 1.5f;
+                    else
+                        settings.spatialDenoiseAggressiveness = 1.0f;
+
+                    mNativeCamera.captureHdrImage(
+                            numMergeImages,
+                            baseExposure.iso.getIso(),
+                            baseExposure.shutterSpeed.getExposureTime(),
+                            hdrExposure.iso.getIso(),
+                            hdrExposure.shutterSpeed.getExposureTime(),
+                            settings,
+                            CameraProfile.generateCaptureFile(this).getPath());
+                }
             );
-
-            CameraManualControl.Exposure hdrExposure = CameraManualControl.Exposure.Create(
-                    CameraManualControl.GetClosestShutterSpeed(mExposureTime / HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV),
-                    CameraManualControl.GetClosestIso(mIsoValues, mIso)
-            );
-
-            baseExposure = CameraManualControl.MapToExposureLine(1.0, baseExposure);
-            hdrExposure = CameraManualControl.MapToExposureLine(1.0, hdrExposure);
-
-            int numMergeImages =
-                    getNumImagesToMerge(baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), mPostProcessSettings.shadows);
-
-            settings.chromaEps = getChromaEps(numMergeImages);
-            settings.shadows = settings.shadows;
-
-            Log.i(TAG, "Requested HDR capture (numImages=" + numMergeImages + ")");
-
-            mNativeCamera.captureHdrImage(
-                    numMergeImages,
-                    baseExposure.iso.getIso(),
-                    baseExposure.shutterSpeed.getExposureTime(),
-                    hdrExposure.iso.getIso(),
-                    hdrExposure.shutterSpeed.getExposureTime(),
-                    settings,
-                    CameraProfile.generateCaptureFile().getPath());
         }
     }
 
@@ -620,7 +758,7 @@ public class CameraActivity extends AppCompatActivity implements
         SharedPreferences sharedPrefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
 
         // Make sure we don't exceed our maximum memory use
-        long nativeCameraMemoryUseMb = sharedPrefs.getInt(SettingsViewModel.PREFS_KEY_MEMORY_USE_MBYTES, 512);
+        long nativeCameraMemoryUseMb = sharedPrefs.getInt(SettingsViewModel.PREFS_KEY_MEMORY_USE_MBYTES, 256);
         nativeCameraMemoryUseMb = Math.min(nativeCameraMemoryUseMb, SettingsViewModel.MAXIMUM_MEMORY_USE_MB);
 
         // Create camera bridge
@@ -685,6 +823,10 @@ public class CameraActivity extends AppCompatActivity implements
             mBinding.switchCameraBtn.setVisibility(View.GONE);
         else
             mBinding.switchCameraBtn.setVisibility(View.VISIBLE);
+
+        // Update capture mode
+        mCaptureMode = getCaptureMode(sharedPrefs);
+        updateCaptureModeUi();
 
         // Create texture view for camera preview
         mTextureView = new TextureView(this);
@@ -760,9 +902,8 @@ public class CameraActivity extends AppCompatActivity implements
         mTextureView.setTransform(cameraMatrix);
     }
 
-    private int getCameraPreviewQuality() {
+    private int getCameraPreviewQuality(SharedPreferences sharedPrefs) {
         // Get preview quality
-        SharedPreferences sharedPrefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
         int cameraPreviewQuality = sharedPrefs.getInt(SettingsViewModel.PREFS_KEY_CAMERA_PREVIEW_QUALITY, 0);
 
         switch(cameraPreviewQuality) {
@@ -774,6 +915,11 @@ public class CameraActivity extends AppCompatActivity implements
             case 2:
                 return 2;
         }
+    }
+
+    private CaptureMode getCaptureMode(SharedPreferences sharedPrefs) {
+        String captureMode = sharedPrefs.getString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, CaptureMode.HDR.name());
+        return CaptureMode.valueOf(captureMode);
     }
 
     @Override
@@ -807,6 +953,8 @@ public class CameraActivity extends AppCompatActivity implements
             return;
         }
 
+        SharedPreferences sharedPrefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
+
         Size previewOutputSize = mNativeCamera.getPreviewConfigurationOutput(mSelectedCamera, captureOutputSize, new Size(displayWidth, displayHeight));
         surfaceTexture.setDefaultBufferSize(previewOutputSize.getWidth(), previewOutputSize.getHeight());
 
@@ -815,7 +963,7 @@ public class CameraActivity extends AppCompatActivity implements
         mSurface = new Surface(surfaceTexture);
 
         mNativeCamera.startCapture(mSelectedCamera, mSurface);
-        mNativeCamera.enableRawPreview(this, getCameraPreviewQuality(), false);
+        mNativeCamera.enableRawPreview(this, getCameraPreviewQuality(sharedPrefs), false);
 
         // Update orientation in case we've switched front/back cameras
         NativeCameraBuffer.ScreenOrientation orientation = mSensorEventManager.getOrientation();
@@ -933,8 +1081,8 @@ public class CameraActivity extends AppCompatActivity implements
         // Start service to process the image
         Intent intent = new Intent(this, ProcessorService.class);
 
-        intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath().getPath());
-        intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, false);
+        intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath(this).getPath());
+        intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, true);
         intent.putExtra(ProcessorService.RECEIVER_KEY, mProgressReceiver);
 
         Objects.requireNonNull(startService(intent));
@@ -951,6 +1099,32 @@ public class CameraActivity extends AppCompatActivity implements
         runOnUiThread( () -> {
             mBinding.hdrProgressBar.setVisibility(View.VISIBLE);
             mBinding.hdrProgressBar.setProgress(progress);
+        });
+    }
+
+    @Override
+    public void onCameraHdrImageCaptureFailed() {
+        Log.i(TAG, "HDR capture failed");
+
+        runOnUiThread( () ->
+        {
+            mBinding.captureBtn.setEnabled(true);
+            mBinding.hdrProgressBar.setVisibility(View.INVISIBLE);
+
+            mBinding.cameraFrame
+                    .animate()
+                    .alpha(1.0f)
+                    .setDuration(250)
+                    .start();
+
+                // Tell user we didn't capture image
+                AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(this, R.style.BasicDialog)
+                        .setCancelable(false)
+                        .setTitle(R.string.error)
+                        .setMessage(R.string.capture_failed)
+                        .setPositiveButton(R.string.ok, (dialog, which) -> {});
+
+                dialogBuilder.show();
         });
     }
 
@@ -1058,7 +1232,7 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void onShadowsSeekBarChanged(int progress) {
-        float shadows = 1.0f + (progress / 100.0f * MAX_SHADOWS_VALUE);
+        float shadows = (float) Math.pow(2.0, (progress / 100.0) * MAX_SHADOWS_EV_VALUE);
 
         setShadowValue(shadows);
         mShadowsChangedTimeMs = System.currentTimeMillis();
@@ -1106,8 +1280,14 @@ public class CameraActivity extends AppCompatActivity implements
 
                 mPostProcessSettings.blacks = settings.blacks;
                 mPostProcessSettings.whitePoint = settings.whitePoint;
+                mPostProcessSettings.temperature = settings.temperature + mTemperatureOffset;
+                mPostProcessSettings.tint = settings.tint + mTintOffset;
+                mPostProcessSettings.exposure = settings.exposure;
 
-                int shadowsProgress = Math.round(settings.shadows / MAX_SHADOWS_VALUE * 100);
+                Log.i(TAG, "Estimated settings " + String.format(
+                        "blacks=%.2f, whitePoint=%.2f, exposure=%.2f", settings.blacks, settings.whitePoint, settings.exposure));
+
+                int shadowsProgress = (int) (100 * (Math.log10(settings.shadows) / Math.log10(2.0)) / MAX_SHADOWS_EV_VALUE);
 
                 mBinding.shadowsSeekBar.setProgress(shadowsProgress, true);
             });

@@ -18,6 +18,7 @@ namespace motioncam {
         void onCameraAutoExposureStateChanged(const CameraExposureState state);
         void onCameraHdrImageCaptureProgress(int progress);
         void onCameraHdrImageCaptureCompleted();
+        void onCameraHdrImageCaptureFailed();
 
     private:
         JavaVM *mJavaVm;

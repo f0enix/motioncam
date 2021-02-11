@@ -190,19 +190,8 @@ namespace motioncam {
             return;
         }
 
-        // Use user tint/temperature offsets
-        CameraProfile cameraProfile(mCameraDesc->metadata);
-        Temperature temperature;
-
-        cameraProfile.temperatureFromVector(mHdrBuffers[0]->metadata.asShot, temperature);
-
         std::vector<std::string> frames;
         std::map<std::string, std::shared_ptr<RawImageBuffer>> frameBuffers;
-
-        PostProcessSettings userSettings = settings;
-
-        userSettings.temperature = temperature.temperature() + mTempOffset;
-        userSettings.tint = temperature.tint() + mTintOffset;
 
         auto it = mHdrBuffers.begin();
         int filenameIdx = 0;
@@ -218,7 +207,7 @@ namespace motioncam {
         }
 
         // Save all images. Use first buffer as reference timestamp
-        RawContainer rawContainer(mCameraDesc->metadata, userSettings, mHdrBuffers[0]->metadata.timestampNs, true, false, frames, frameBuffers);
+        RawContainer rawContainer(mCameraDesc->metadata, settings, mHdrBuffers[0]->metadata.timestampNs, true, false, frames, frameBuffers);
 
         rawContainer.saveContainer(outputPath);
 
@@ -322,39 +311,6 @@ namespace motioncam {
             LOGE("ACAMERA_SENSOR_TIMESTAMP error");
             return false;
         }
-
-//        // ACAMERA_COLOR_CORRECTION_TRANSFORM
-//        if(ACameraMetadata_getConstEntry(src, ACAMERA_COLOR_CORRECTION_TRANSFORM, &metadataEntry) == ACAMERA_OK) {
-//            cv::Mat m(3, 3, CV_32F);
-//
-//            for(int y = 0; y < 3; y++) {
-//                for(int x = 0; x < 3; x++) {
-//                    int i = y * 3 + x;
-//
-//                    m.at<float>(y, x) = (float) metadataEntry.data.r[i].numerator / (float) metadataEntry.data.r[i].denominator;
-//                }
-//            }
-//
-//            dst.colorTransform = m;
-//        }
-//        else {
-//            cv::Mat m(3, 3, CV_32F);
-//            cv::setIdentity(m);
-//
-//            dst.colorTransform = m;
-//        }
-//
-//        // Color correction gains
-//        if(ACameraMetadata_getConstEntry(src, ACAMERA_COLOR_CORRECTION_GAINS, &metadataEntry) == ACAMERA_OK) {
-//            for(int c = 0; c < 4; c++) {
-//                dst.colorCorrection[c] = metadataEntry.data.f[c];
-//            }
-//        }
-//        else {
-//            for(int c = 0; c < 4; c++) {
-//                dst.colorCorrection[c] = 1.0f;
-//            }
-//        }
 
         // Color balance
         if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_NEUTRAL_COLOR_POINT, &metadataEntry) == ACAMERA_OK) {
