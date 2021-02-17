@@ -1,7 +1,6 @@
 package com.motioncam.model;
 
 import android.content.Context;
-import android.os.Environment;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
@@ -21,7 +20,7 @@ public class CameraProfile {
 
     static public File getRootOutputPath(Context context) {
         File root = new File(
-                getFiles().getPath() +
+                context.getFilesDir().getPath() +
                         java.io.File.separator +
                         CameraProfile.CAPTURE_OUTPUT_PATH_NAME);
 

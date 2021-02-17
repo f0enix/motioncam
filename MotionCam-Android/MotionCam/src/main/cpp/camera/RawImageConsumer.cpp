@@ -230,6 +230,9 @@ namespace motioncam {
         }
 
         auto buffers = mBufferManager->getBuffers();
+        if(buffers.empty())
+            return;
+
         std::vector<std::shared_ptr<RawImageBuffer>> images;
 
         // Find reference frame
@@ -578,7 +581,7 @@ namespace motioncam {
                     mWhitePoint,
                     mTempOffset,
                     mTintOffset,
-                    0.30f,
+                    0.25f,
                     inputBuffer,
                     outputBuffer);
 
@@ -648,7 +651,8 @@ namespace motioncam {
     }
 
     void RawImageConsumer::updateRawPreviewSettings(
-            float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset) {
+            float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset)
+    {
         mShadows = shadows;
         mContrast = contrast;
         mSaturation = saturation;
@@ -686,6 +690,9 @@ namespace motioncam {
                 doMatchMetadata();
                 continue;
             }
+
+            if(!pendingImage)
+                continue;
 
             std::shared_ptr<RawImageBuffer> dst, previewBuffer;
 

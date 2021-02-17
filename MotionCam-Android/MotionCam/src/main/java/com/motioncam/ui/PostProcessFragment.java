@@ -1,8 +1,6 @@
 package com.motioncam.ui;
 
-import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
@@ -33,11 +31,9 @@ import com.motioncam.camera.PostProcessSettings;
 import com.motioncam.databinding.PreviewSettingsBinding;
 import com.motioncam.model.CameraProfile;
 import com.motioncam.model.PostProcessViewModel;
-import com.motioncam.model.SettingsViewModel;
 import com.motioncam.processor.ProcessorReceiver;
 import com.motioncam.processor.ProcessorService;
 
-import java.io.File;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -469,7 +465,7 @@ public class PostProcessFragment extends Fragment implements
     }
 
     @Override
-    public void onProcessingStarted(File filePath) {
+    public void onProcessingStarted() {
         View v = getView();
         if(v != null) {
             v.findViewById(R.id.saveProgressBar).setVisibility(View.VISIBLE);
@@ -478,7 +474,7 @@ public class PostProcessFragment extends Fragment implements
     }
 
     @Override
-    public void onProcessingProgress(File filePath, int progress) {
+    public void onProcessingProgress(int progress) {
         View v = getView();
         if(v != null) {
             v.findViewById(R.id.saveProgressBar).setVisibility(View.VISIBLE);
@@ -487,7 +483,7 @@ public class PostProcessFragment extends Fragment implements
     }
 
     @Override
-    public void onProcessingCompleted(File file) {
+    public void onProcessingCompleted() {
         View v = getView();
         if(v != null) {
             v.findViewById(R.id.saveProgressBar).setVisibility(View.INVISIBLE);

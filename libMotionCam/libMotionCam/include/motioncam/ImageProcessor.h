@@ -61,10 +61,15 @@ namespace motioncam {
                                                        const RawCameraMetadata& cameraMetadata,
                                                        const PostProcessSettings& settings);
         
+        static cv::Mat calcHistogram(const RawCameraMetadata& cameraMetadata,
+                                     const RawImageBuffer& reference,
+                                     const bool cumulative,
+                                     const int downscale);
+
         static void estimateBasicSettings(const RawImageBuffer& rawBuffer, const RawCameraMetadata& cameraMetadata, PostProcessSettings& outSettings);
         static void estimateSettings(const RawImageBuffer& rawBuffer, const RawCameraMetadata& cameraMetadata, PostProcessSettings& outSettings);
-        static float estimateShadows(const RawImageBuffer& buffer, const RawCameraMetadata& cameraMetadata, PostProcessSettings settings);
-        static float estimateExposureCompensation(const RawImageBuffer& buffer, const RawCameraMetadata& cameraMetadata);
+        static float estimateShadows(const cv::Mat& histogram, float keyValue=0.22f);
+        static float estimateExposureCompensation(const cv::Mat& histogram);
         static void estimateWhiteBalance(const RawImageBuffer& rawBuffer,
                                          const RawCameraMetadata& cameraMetadata,
                                          float& outR,
@@ -82,8 +87,10 @@ namespace motioncam {
         static void measureImage(RawImageBuffer& rawImage, const RawCameraMetadata& cameraMetadata, float& outSceneLuminosity);
         
     private:
-        static cv::Mat registerImage(const Halide::Runtime::Buffer<uint8_t>& referenceBuffer, const Halide::Runtime::Buffer<uint8_t>& toAlignBuffer, int scale=1);
-        static cv::Mat calcHistogram(const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const int downscale);
+        static cv::Mat registerImage(const Halide::Runtime::Buffer<uint8_t>& referenceBuffer,
+                                     const Halide::Runtime::Buffer<uint8_t>& toAlignBuffer,
+                                     int scale=1);
+        
         static float matchExposures(const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const RawImageBuffer& toMatch);
 
         static std::shared_ptr<RawData> loadRawImage(const RawImageBuffer& rawImage,

@@ -878,11 +878,18 @@ jfloat JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EstimateShado
 
     auto cameraId = sessionManager->getSelectedCameraId();
     auto metadata = sessionManager->getCameraDescription(cameraId)->metadata;
-    PostProcessSettings postProcessSettings;
+
+    cv::Mat histogram = motioncam::ImageProcessor::calcHistogram(metadata, *imageBuffer, false, 8);
+
+    double s = 1.8*1.8;
+    double ev = std::log2(s / (imageBuffer->metadata.exposureTime / (1000.0*1000.0*1000.0))) - std::log2(imageBuffer->metadata.iso / 100.0);
+    double keyValue = 1.03 - 20.0 / (20.0 + std::log(std::pow(10.0, ev) + 1));
+
+    float result = motioncam::ImageProcessor::estimateShadows(histogram, keyValue);
 
     sessionManager->unlockBuffers();
 
-    return gImageProcessor->estimateShadows(*imageBuffer, metadata, postProcessSettings);
+    return result;
 }
 
 extern "C" JNIEXPORT

@@ -47,9 +47,8 @@ public class ProcessorService extends IntentService {
         private final File mPendingFile;
         private final File mTempFileJpeg;
         private final File mTempFileDng;
-        private final File mOutputDirectory;
-        private final File mOutputFileJpeg;
-        private final File mOutputFileDng;
+        private final String mOutputFileNameJpeg;
+        private final String mOutputFileNameDng;
         private final NotificationManager mNotifyManager;
         private final NotificationCompat.Builder mBuilder;
         private final ResultReceiver mReceiver;
@@ -73,18 +72,11 @@ public class ProcessorService extends IntentService {
             mDeleteAfterProcessing = deleteAfterProcessing;
             mNotifyManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
 
-            String outputFileNameJpeg = fileNoExtension(pendingFile.getName()) + ".jpg";
-            String outputFileNameDng = fileNoExtension(pendingFile.getName()) + ".dng";
+            mOutputFileNameJpeg = fileNoExtension(pendingFile.getName()) + ".jpg";
+            mOutputFileNameDng = fileNoExtension(pendingFile.getName()) + ".dng";
 
-            mTempFileJpeg = new File(tempPath, outputFileNameJpeg);
-            mTempFileDng = new File(tempPath, outputFileNameDng);
-
-            // Set up the output path to point to the camera DCIM folder
-            File dcimDirectory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM);
-
-            mOutputDirectory = new File(dcimDirectory, "Camera");
-            mOutputFileJpeg = new File(mOutputDirectory, outputFileNameJpeg);
-            mOutputFileDng = new File(mOutputDirectory, outputFileNameDng);
+            mTempFileJpeg = new File(tempPath, mOutputFileNameJpeg);
+            mTempFileDng = new File(tempPath, mOutputFileNameDng);
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 NotificationChannel notificationChannel = new NotificationChannel(
@@ -131,28 +123,40 @@ public class ProcessorService extends IntentService {
 
             // Copy to media store
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                if (mTempFileDng.exists())
+                if (mTempFileDng.exists()) {
                     saveToMediaStore(mTempFileDng);
+                    mTempFileDng.delete();
+                }
 
-                if (mTempFileJpeg.exists())
+                if (mTempFileJpeg.exists()) {
                     saveToMediaStore(mTempFileJpeg);
+                    mTempFileJpeg.delete();
+                }
             }
             // Legacy copy file
             else {
-                if(!mOutputDirectory.exists()) {
-                    if(!mOutputDirectory.mkdirs()) {
-                        Log.e(TAG, "Failed to create " + mOutputDirectory);
+                // Set up the output path to point to the camera DCIM folder
+                File dcimDirectory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM);
+                File outputDirectory = new File(dcimDirectory, "Camera");
+
+                if(!outputDirectory.exists()) {
+                    if(!outputDirectory.mkdirs()) {
+                        Log.e(TAG, "Failed to create " + outputDirectory);
                         throw new IOException("Failed to create output directory");
                     }
                 }
 
                 if(mTempFileDng.exists()) {
-                    FileUtils.copyFile(mTempFileDng, mOutputFileDng);
+                    File outputFileDng = new File(outputDirectory, mOutputFileNameDng);
+
+                    FileUtils.copyFile(mTempFileDng, outputFileDng);
                     mTempFileDng.delete();
                 }
 
                 if(mTempFileJpeg.exists()) {
-                    FileUtils.copyFile(mTempFileJpeg, mOutputFileJpeg);
+                    File outputFileJpeg = new File(outputDirectory, mOutputFileNameJpeg);
+
+                    FileUtils.copyFile(mTempFileJpeg, outputFileJpeg);
                     mTempFileJpeg.delete();
                 }
             }
@@ -199,9 +203,7 @@ public class ProcessorService extends IntentService {
         public boolean onProgressUpdate(int progress) {
             if(mReceiver != null) {
                 Bundle bundle = new Bundle();
-
                 bundle.putInt(ProcessorReceiver.PROCESS_CODE_PROGRESS_VALUE_KEY, progress);
-                bundle.putString(ProcessorReceiver.PROCESS_CODE_OUTPUT_FILE_PATH_KEY, mOutputFileJpeg.getPath());
 
                 mReceiver.send(ProcessorReceiver.PROCESS_CODE_PROGRESS, bundle);
             }
@@ -218,8 +220,6 @@ public class ProcessorService extends IntentService {
                 Bundle bundle = new Bundle();
 
                 bundle.putInt(ProcessorReceiver.PROCESS_CODE_PROGRESS_VALUE_KEY, 100);
-                bundle.putString(ProcessorReceiver.PROCESS_CODE_OUTPUT_FILE_PATH_KEY, mOutputFileJpeg.getPath());
-
                 mReceiver.send(ProcessorReceiver.PROCESS_CODE_COMPLETED, bundle);
             }
 
@@ -228,7 +228,7 @@ public class ProcessorService extends IntentService {
 
         @Override
         public void onError(String error) {
-            Log.e(TAG, "Error processing image " + mOutputFileJpeg + " error: " + error);
+            Log.e(TAG, "Error processing image " + mOutputFileNameJpeg + " error: " + error);
             mNotifyManager.cancel(NOTIFICATION_ID);
         }
     }

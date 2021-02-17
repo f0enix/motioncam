@@ -155,29 +155,29 @@
                         android:progress="@={viewModel.jpegQuality}" />
                 </LinearLayout>
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="5dp"
-                    android:text="@string/debug_mode"
-                    android:textAppearance="@style/MotionCam.TextAppearance.Small.Bold" />
+<!--                <TextView-->
+<!--                    android:layout_width="match_parent"-->
+<!--                    android:layout_height="wrap_content"-->
+<!--                    android:layout_marginBottom="5dp"-->
+<!--                    android:text="@string/debug_mode"-->
+<!--                    android:textAppearance="@style/MotionCam.TextAppearance.Small.Bold" />-->
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/debug_mode_help"
-                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                    android:textColor="@color/silver" />
+<!--                <TextView-->
+<!--                    android:layout_width="match_parent"-->
+<!--                    android:layout_height="wrap_content"-->
+<!--                    android:text="@string/debug_mode_help"-->
+<!--                    android:textAppearance="@style/MotionCam.TextAppearance.Small"-->
+<!--                    android:textColor="@color/silver" />-->
 
-                <CheckBox
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/enable_debug_mode"
-                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                    android:textColor="@color/white"
-                    android:paddingTop="@dimen/seekBarPadding"
-                    android:paddingBottom="@dimen/seekBarPadding"
-                    android:checked="@={viewModel.debugMode}"/>
+<!--                <CheckBox-->
+<!--                    android:layout_width="wrap_content"-->
+<!--                    android:layout_height="wrap_content"-->
+<!--                    android:text="@string/enable_debug_mode"-->
+<!--                    android:textAppearance="@style/MotionCam.TextAppearance.Small"-->
+<!--                    android:textColor="@color/white"-->
+<!--                    android:paddingTop="@dimen/seekBarPadding"-->
+<!--                    android:paddingBottom="@dimen/seekBarPadding"-->
+<!--                    android:checked="@={viewModel.debugMode}"/>-->
 
             </LinearLayout>
 

@@ -4,8 +4,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.ResultReceiver;
 
-import java.io.File;
-
 public class ProcessorReceiver extends ResultReceiver {
     private Receiver mReceiver;
 
@@ -21,9 +19,9 @@ public class ProcessorReceiver extends ResultReceiver {
     }
 
     public interface Receiver {
-        void onProcessingStarted(File file);
-        void onProcessingProgress(File file, int progress);
-        void onProcessingCompleted(File file);
+        void onProcessingStarted();
+        void onProcessingProgress(int progress);
+        void onProcessingCompleted();
 
     }
 
@@ -39,22 +37,18 @@ public class ProcessorReceiver extends ResultReceiver {
         switch(resultCode)
         {
             case PROCESS_CODE_STARTED: {
-                String filePath = resultData.getString(PROCESS_CODE_OUTPUT_FILE_PATH_KEY, "");
-                mReceiver.onProcessingStarted(new File(filePath));
+                mReceiver.onProcessingStarted();
             }
             break;
 
             case PROCESS_CODE_PROGRESS: {
                 int progress = resultData.getInt(PROCESS_CODE_PROGRESS_VALUE_KEY, 0);
-                String filePath = resultData.getString(PROCESS_CODE_OUTPUT_FILE_PATH_KEY, "");
-
-                mReceiver.onProcessingProgress(new File(filePath), progress);
+                mReceiver.onProcessingProgress(progress);
             }
             break;
 
             case PROCESS_CODE_COMPLETED: {
-                String filePath = resultData.getString(PROCESS_CODE_OUTPUT_FILE_PATH_KEY, "");
-                mReceiver.onProcessingCompleted(new File(filePath));
+                mReceiver.onProcessingCompleted();
             }
             break;
 

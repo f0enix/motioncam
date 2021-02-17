@@ -276,6 +276,9 @@ namespace motioncam {
         float hdrScale = 1.0f;
         float shadows = settings.shadows;
 
+        cv::Mat blankMask(16, 16, CV_8U, cv::Scalar(0));
+        cv::Mat blankInput(16, 16, CV_16UC3, cv::Scalar(0));
+
         if(hdrMetadata && hdrMetadata->error < MAX_HDR_ERROR) {
             hdrInput = hdrMetadata->hdrInput;
             hdrMask = hdrMetadata->mask;
@@ -291,10 +294,7 @@ namespace motioncam {
             // Don't apply underexposed image when error is too high
             if(hdrMetadata)
                 logger::log("Not using HDR image, error too high (" + std::to_string(hdrMetadata->error) + ")");
-            
-            cv::Mat blankMask(1, 1, CV_8U, cv::Scalar(0));
-            cv::Mat blankInput(1, 1, CV_16UC3, cv::Scalar(0));
-            
+                        
             hdrMask = ToHalideBuffer<uint8_t>(blankMask);
             hdrInput = Halide::Runtime::Buffer<uint16_t>((uint16_t*) blankInput.data, blankInput.cols, blankInput.rows, 3);
         }
@@ -337,55 +337,35 @@ namespace motioncam {
         return output;
     }
 
-    float ImageProcessor::estimateShadows(const RawImageBuffer& buffer, const RawCameraMetadata& cameraMetadata, PostProcessSettings settings) {
-        float prevLw = 1e-5f;
+    float ImageProcessor::estimateShadows(const cv::Mat& histogram, float keyValue) {
+        float avgLuminance = 0.0f;
+        float totalPixels = 0;
         
-        for(int16_t i = 2; i < 16; i+=2) {
-            settings.shadows = i;
-            
-            auto previewBuffer = createPreview(buffer, 8, cameraMetadata, settings);
-
-            cv::Mat temp(previewBuffer.height(), previewBuffer.width(), CV_8UC4, previewBuffer.data());
-            cv::cvtColor(temp, temp, cv::COLOR_BGRA2GRAY);
-                        
-            float Lw = cv::mean(temp)[0];
-            if(Lw / prevLw < 1.05)
-                break;
-
-            prevLw = Lw;
+        int lowerBound = 5;
+        int upperBound = 230;
+        
+        for(int i = lowerBound; i < upperBound; i++) {
+            avgLuminance += histogram.at<float>(i) * std::log(i / 255.0f);
+            totalPixels += histogram.at<float>(i);
         }
+        
+        avgLuminance = std::exp(avgLuminance / (totalPixels + 1));
 
-        return std::max(1.0f, settings.shadows - 2);
+        return std::min(keyValue / avgLuminance, 32.0f);
     }
 
-    float ImageProcessor::estimateExposureCompensation(const RawImageBuffer& buffer, const RawCameraMetadata& cameraMetadata) {
-//        Measure measure("estimateExposureCompensation");
-        
-        auto hist = calcHistogram(cameraMetadata, buffer, 2);
-        const int totalPixels = (buffer.width*buffer.height)/16;
-        int bins[3] = {0, 0, 0};
-        
-        // Cumulative histogram
-        for(int c = 0; c < hist.rows; c++) {
-            for(int x = 1; x < hist.cols; x++) {
-                hist.at<uint32_t>(c, x) += hist.at<uint32_t>(c, x - 1);
-            }
-        }
+    float ImageProcessor::estimateExposureCompensation(const cv::Mat& histogram) {
+        int bin = 0;
 
         // Exposure compensation
-        for(int c = 0; c < hist.rows; c++) {
-            for(int x = 0; x < hist.cols; x++) {
-                if(hist.at<uint32_t>(c, x) / (float) totalPixels > 0.9995) {
-                    bins[c] = x;
-                    break;
-                }
-                    
+        for(int i = histogram.cols - 1; i >= 0; i--) {
+            if(histogram.at<float>(i) > 0.0f) {
+                bin = i;
+                break;
             }
         }
-
-        int maxBin = std::max(bins[0], std::max(bins[1], bins[2]));
         
-        double m = hist.cols / static_cast<double>(maxBin + 1);
+        double m = histogram.cols / static_cast<double>(bin + 1);
         return std::log2(m);
     }
 
@@ -420,8 +400,8 @@ namespace motioncam {
         }
         
         // Estimate blacks
-        const float maxDehazePercent = 0.03f; // Max 3% pixels
-        const int maxEndBin = 8; // Max bin
+        const float maxDehazePercent = 0.015f; // Max 1.5% pixels
+        const int maxEndBin = 15; // Max bin
 
         int endBin = 0;
 
@@ -438,7 +418,7 @@ namespace motioncam {
         for(endBin = histogram.rows - 1; endBin >= 192; endBin--) {
             float binPx = histogram.at<float>(endBin);
 
-            if(binPx < 0.998)
+            if(binPx < 0.995)
                 break;
         }
 
@@ -461,10 +441,12 @@ namespace motioncam {
         
         cameraProfile.temperatureFromVector(rawBuffer.metadata.asShot, temperature);
         
+        cv::Mat histogram = calcHistogram(cameraMetadata, rawBuffer, false, 4);
+        
         settings.temperature    = static_cast<float>(temperature.temperature());
         settings.tint           = static_cast<float>(temperature.tint());
-        settings.shadows        = estimateShadows(rawBuffer, cameraMetadata, settings);
-        settings.exposure       = estimateExposureCompensation(rawBuffer, cameraMetadata);
+        settings.shadows        = estimateShadows(histogram);
+        settings.exposure       = estimateExposureCompensation(histogram);
 
         estimateWhitePoint(rawBuffer,
                            cameraMetadata,
@@ -482,26 +464,13 @@ namespace motioncam {
                                               float& outG,
                                               float& outB)
     {
-        Measure measure("estimateWhiteBalance()");
+//        Measure measure("estimateWhiteBalance()");
         
-        auto histogram = calcHistogram(cameraMetadata, rawBuffer, 4);
-        float mean[3] = {0,0,0};
-        float sum[3] = {0,0,0};
+        // TODO
         
-        for(int c = 0; c < histogram.rows; c++) {
-            for (int i = 0; i < histogram.cols; i++) {
-                mean[c] += i * histogram.at<uint32_t>(c, i);
-                sum[c] += histogram.at<uint32_t>(c, i);
-            }
-        }
-
-        mean[0] /= sum[0];
-        mean[1] /= sum[1];
-        mean[2] /= sum[2];
-        
-        outR = mean[1] / mean[0];
+        outR = 1.0f;
         outG = 1.0f;
-        outB = mean[1] / mean[2];
+        outB = 1.0f;
     }
 
     void ImageProcessor::estimateSettings(const RawImageBuffer& rawBuffer,
@@ -519,9 +488,11 @@ namespace motioncam {
         
         cameraProfile.temperatureFromVector(rawBuffer.metadata.asShot, temperature);
         
+        cv::Mat histogram = calcHistogram(cameraMetadata, rawBuffer, false, 4);
+        
         settings.temperature    = static_cast<float>(temperature.temperature());
         settings.tint           = static_cast<float>(temperature.tint());
-        settings.shadows        = estimateShadows(rawBuffer, cameraMetadata, settings);
+        settings.shadows        = estimateShadows(histogram);
         
         auto preview = estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, settings.blacks, settings.whitePoint);
         
@@ -1008,9 +979,15 @@ namespace motioncam {
         return findHomography( scene, obj, cv::RANSAC );
     }
 
-    cv::Mat ImageProcessor::calcHistogram(const RawCameraMetadata& cameraMetadata, const RawImageBuffer& buffer, const int downscale) {
+    cv::Mat ImageProcessor::calcHistogram(const RawCameraMetadata& cameraMetadata,
+                                          const RawImageBuffer& buffer,
+                                          const bool cumulative,
+                                          const int downscale)
+    {
+        //Measure measure("calcHistogram()");
+        
         NativeBufferContext inputBufferContext(*buffer.data, false);
-        Halide::Runtime::Buffer<uint32_t> histogramBuffer(2u << 7u, 3);
+        Halide::Runtime::Buffer<uint32_t> histogramBuffer(2u << 7u);
         Halide::Runtime::Buffer<float> shadingMapBuffer[4];
         
         cv::Mat cameraToSrgb;
@@ -1050,50 +1027,47 @@ namespace motioncam {
                       histogramBuffer);
         
         cv::Mat histogram(histogramBuffer.height(), histogramBuffer.width(), CV_32S, histogramBuffer.data());
+        histogram.convertTo(histogram, CV_32F);
         
-        return histogram.clone();
+        if(cumulative) {
+            for(int i = 1; i < histogram.cols; i++) {
+                histogram.at<float>(i) += histogram.at<float>(i - 1);
+            }
+            
+            histogram /= histogram.at<float>(histogram.cols - 1);
+        }
+                
+        return histogram;
     }
 
     float ImageProcessor::matchExposures(const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const RawImageBuffer& toMatch)
     {
-        auto refHistogram = calcHistogram(cameraMetadata, reference, 4);
-        auto toMatchHistogram = calcHistogram(cameraMetadata, toMatch, 4);
+        auto refHistogram = calcHistogram(cameraMetadata, reference, true, 4);
+        auto toMatchHistogram = calcHistogram(cameraMetadata, toMatch, true, 4);
+        
+        float exposureScale = 1.0f;
+        std::vector<float> matches;
+        
+        for(int i = 0; i < toMatchHistogram.cols; i++) {
+            float a = toMatchHistogram.at<float>(i);
 
-        // Cumulitive histogram
-        for(int c = 0; c < refHistogram.rows; c++) {
-            for (int i = 1; i < refHistogram.cols; i++) {
-                refHistogram.at<uint32_t>(c, i) += refHistogram.at<uint32_t>(c, i - 1);
-                toMatchHistogram.at<uint32_t>(c, i) += toMatchHistogram.at<uint32_t>(c, i - 1);
+            for(int j = 1; j < refHistogram.cols; j++) {
+                float b = refHistogram.at<float>(j);
+
+                if(a <= b) {
+                    double match = j / (i + 1.0);
+                    matches.push_back(match);
+                    break;
+                }
             }
         }
         
-        float exposureScale = 0.0f;
+        if(matches.empty())
+            exposureScale = 1.0f;
+        else
+            exposureScale += *max_element(std::begin(matches), std::end(matches));
 
-        for(int c = 0; c < refHistogram.rows; c++) {
-            std::vector<float> matches;
-
-            for(int i = 0; i < toMatchHistogram.cols; i++) {
-                float a = toMatchHistogram.at<uint32_t>(c, i);
-
-                for(int j = 1; j < refHistogram.cols; j++) {
-                    float b = refHistogram.at<uint32_t>(c, j);
-
-                    if(a <= b) {
-                        double match = j / (i + 1.0);
-                        matches.push_back(match);
-                        break;
-                    }
-                }
-            }
-            
-            if(matches.empty())
-                exposureScale += 1.0f;
-            else
-                exposureScale += *max_element(std::begin(matches), std::end(matches));
-        }
-
-        // Average of channels
-        return exposureScale / 3;
+        return exposureScale;
     }
 
     void ImageProcessor::process(const std::string& inputPath,
@@ -1120,7 +1094,7 @@ namespace motioncam {
             // Figure out where the base & underexposed images are
             for(auto frameName : rawContainer.getFrames()) {
                 auto frame = rawContainer.getFrame(frameName);
-                auto ev = log2(1.0 / (frame->metadata.exposureTime / (1000.0*1000.0*1000.0))) - log2(frame->metadata.iso / 100.0);
+                auto ev = std::log2(1.0 / (frame->metadata.exposureTime / (1000.0*1000.0*1000.0))) - std::log2(frame->metadata.iso / 100.0);
                 
                 if(ev > maxEv)
                     maxEv = ev;
@@ -1130,12 +1104,12 @@ namespace motioncam {
             }
             
             // Make sure there's enough of a difference between the base and underexposed images
-            if(abs(maxEv - minEv) > 0.99) {
+            if(std::abs(maxEv - minEv) > 0.99) {
                 for(auto frameName : rawContainer.getFrames()) {
                     auto frame = rawContainer.getFrame(frameName);
-                    auto ev = log2(1.0 / (frame->metadata.exposureTime / (1000.0*1000.0*1000.0))) - log2(frame->metadata.iso / 100.0);
+                    auto ev = std::log2(1.0 / (frame->metadata.exposureTime / (1000.0*1000.0*1000.0))) - std::log2(frame->metadata.iso / 100.0);
                 
-                    if(abs(ev - maxEv) < abs(ev - minEv)) {
+                    if(std::abs(ev - maxEv) < std::abs(ev - minEv)) {
                         // Load the frame since we intend to remove it from the container
                         auto raw = rawContainer.loadFrame(frameName);
                         underexposedImages.push_back(raw);
@@ -1256,53 +1230,53 @@ namespace motioncam {
 
         if(!underexposedImages.empty()) {
             auto referenceRawBuffer = rawContainer.loadFrame(rawContainer.getReferenceImage());
-            auto underexposedFrame = *underexposedImages.begin();
-
-            auto hist = calcHistogram(rawContainer.getCameraMetadata(), *referenceRawBuffer, 4);
+            auto underexposedFrameIt = underexposedImages.begin();
+            
+            auto hist = calcHistogram(rawContainer.getCameraMetadata(), *referenceRawBuffer, false, 4);
             const int bound = (int) (hist.cols * 0.95f);
-            float sum[3] = {0, 0, 0};
+            float sum = 0;
+            const int totalPixels = (referenceRawBuffer->width * referenceRawBuffer->height) / 64;
             
-            for(int c = 0; c < hist.rows; c++) {
-                for(int x = hist.cols - 1; x >= bound; x--) {
-                    sum[c] += hist.at<uint32_t>(c, x);
-                }
-            }
-            
-            sum[0] /= (referenceRawBuffer->width*referenceRawBuffer->height) / 64.0f;
-            sum[1] /= (referenceRawBuffer->width*referenceRawBuffer->height) / 64.0f;
-            sum[2] /= (referenceRawBuffer->width*referenceRawBuffer->height) / 64.0f;
-            
-            // Check if there's any point even using the underexposed image
-            bool usingHdr = false;
-            float maxSum = std::max(std::max(sum[0], sum[1]), sum[2]);
-            
-            if(maxSum > 0.01f) {
-                hdrMetadata =
-                    prepareHdr(rawContainer.getCameraMetadata(),
-                               settings,
-                               *referenceRawBuffer,
-                               *underexposedFrame);
-                
-                if(hdrMetadata->error < MAX_HDR_ERROR)
-                    usingHdr = true;
-            }
-            else {
-                logger::log("Skipping HDR processing");
+            for(int x = hist.cols - 1; x >= bound; x--) {
+                sum += hist.at<float>(x);
             }
 
-            if(usingHdr) {
-                estimateWhitePoint(*underexposedFrame,
-                                   rawContainer.getCameraMetadata(),
-                                   settings.shadows * (1.0/hdrMetadata->exposureScale),
-                                   settings.blacks,
-                                   settings.whitePoint);
-            }
-            else {
+            // Check if there's any point even using the underexposed image (less than 0.5% in the >95% bins)
+            float p = (sum / totalPixels) * 100.0f;
+            if(p < 0.5f) {
+                logger::log("Skipping HDR processing (" + std::to_string(p) + ")");
+                
                 estimateWhitePoint(*referenceRawBuffer,
                                    rawContainer.getCameraMetadata(),
                                    settings.shadows,
                                    settings.blacks,
                                    settings.whitePoint);
+            }
+            // Try each underexposed image
+            else {
+                while(underexposedFrameIt != underexposedImages.end()) {
+                    hdrMetadata =
+                        prepareHdr(rawContainer.getCameraMetadata(),
+                                   settings,
+                                   *referenceRawBuffer,
+                                   *(*underexposedFrameIt));
+                    
+                    if(hdrMetadata->error < MAX_HDR_ERROR) {
+                        estimateWhitePoint(*(*underexposedFrameIt),
+                                           rawContainer.getCameraMetadata(),
+                                           settings.shadows * (1.0/hdrMetadata->exposureScale),
+                                           settings.blacks,
+                                           settings.whitePoint);
+                    
+                        break;
+                    }
+                    else {
+                        logger::log("HDR error too high (" + std::to_string(hdrMetadata->error) + ")");
+                    }
+                    
+                    hdrMetadata = nullptr;
+                    ++underexposedFrameIt;
+                }
             }
         }
        

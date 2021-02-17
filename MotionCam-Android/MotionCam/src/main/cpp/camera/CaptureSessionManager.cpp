@@ -583,7 +583,8 @@ namespace motioncam {
     }
 
     void CaptureSessionManager::updateRawPreviewSettings(
-            float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset) {
+            float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset)
+    {
         if(mImageConsumer)
             mImageConsumer->updateRawPreviewSettings(shadows, contrast, saturation, blacks, whitePoint, tempOffset, tintOffset);
     }

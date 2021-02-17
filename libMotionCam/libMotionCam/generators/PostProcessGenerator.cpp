@@ -2868,11 +2868,11 @@ public:
     Input<float[3]> asShotVector{"asShotVector"};
     Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
 
-    Input<Buffer<float>[4]> inShadingMap{"shadingMap", 2 };
+    Input<Buffer<float>[4]> inShadingMap{"shadingMap", 2};
 
     Input<int> sensorArrangement{"sensorArrangement"};
 
-    Output<Buffer<uint32_t>> histogram{"histogram", 2};
+    Output<Buffer<uint32_t>> histogram{"histogram", 1};
 
     void generate();
 };
@@ -2925,25 +2925,25 @@ void MeasureImageGenerator::generate() {
     // Transform to SRGB space
     transform(colorCorrected, downscaledInput, cameraToSrgb);
 
-    result8u(v_x, v_y, v_c) = cast<uint8_t>(clamp(colorCorrected(v_x, v_y, v_c) * 255 + 0.5f, 0, 255));
+    Expr L = 0.2989f*colorCorrected(v_x, v_y, 0) + 0.5870f*colorCorrected(v_x, v_y, 1) + 0.1140f*colorCorrected(v_x, v_y, 2);
+
+    result8u(v_x, v_y) = cast<uint8_t>(clamp(L * 255 + 0.5f, 0, 255));
 
     RDom r(0, w, 0, h);
 
-    histogram(v_i, v_c) = cast<uint32_t>(0);
-    histogram(result8u(r.x, r.y, v_c), v_c) += cast<uint32_t>(1);
+    histogram(v_i) = cast<uint32_t>(0);
+    histogram(result8u(r.x, r.y)) += cast<uint32_t>(1);
 
     // Schedule
     result8u
         .compute_root()
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c, 3)
-        .parallel(v_y, 8)
+        .reorder(v_x, v_y)
+        .parallel(v_y, 32)
         .vectorize(v_x, 8);
 
     histogram
         .compute_root()
-        .parallel(v_c)
-        .vectorize(v_i, 128);
+        .vectorize(v_i, 32);
 }
 
 //////////////

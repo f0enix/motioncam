@@ -10,7 +10,6 @@ import android.graphics.Bitmap;
 import android.graphics.Matrix;
 import android.graphics.PointF;
 import android.graphics.SurfaceTexture;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
@@ -21,7 +20,7 @@ import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.view.animation.DecelerateInterpolator;
+import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
 import android.widget.SeekBar;
 import android.widget.Switch;
@@ -46,10 +45,11 @@ import com.motioncam.processor.ProcessorReceiver;
 import com.motioncam.processor.ProcessorService;
 import com.motioncam.ui.BitmapDrawView;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.CompletableFuture;
 
 public class CameraActivity extends AppCompatActivity implements
@@ -64,7 +64,8 @@ public class CameraActivity extends AppCompatActivity implements
     private static final int PERMISSION_REQUEST_CODE = 1;
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
     private static final float MAX_SHADOWS_EV_VALUE = 5.0f;
-    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 8;
+    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 4;
+    public static final int SHADOW_UPDATE_FREQUENCY_MS = 250;
 
     private enum FocusState {
         AUTO,
@@ -98,12 +99,12 @@ public class CameraActivity extends AppCompatActivity implements
     private NativeCameraMetadata mCameraMetadata;
     private SensorEventManager mSensorEventManager;
     private ProcessorReceiver mProgressReceiver;
+    private Timer mShadowsUpdateTimer;
 
     private PostProcessSettings mPostProcessSettings;
     private float mTemperatureOffset;
     private float mTintOffset;
     private AsyncNativeCameraOps mAsyncNativeCameraOps;
-    private ObjectAnimator mShadowsAnimator;
 
     private boolean mManualControlsEnabled;
     private boolean mManualControlsSet;
@@ -116,6 +117,36 @@ public class CameraActivity extends AppCompatActivity implements
     private int mIso;
     private long mExposureTime;
     private long mShadowsChangedTimeMs;
+    private ObjectAnimator mShadowsAnimator;
+    private ShadowTimerTask mShadowUpdateTimerTask;
+
+    private class ShadowTimerTask extends TimerTask {
+        @Override
+        public void run() {
+            runOnUiThread(() -> {
+                if(mNativeCamera == null || mPostProcessSettings == null)
+                    return;
+
+                // Don't estimate shadows if the user has changed the shadows slider recently
+                if(System.currentTimeMillis() - mShadowsChangedTimeMs < 5000)
+                    return;
+
+                float shadows = mNativeCamera.estimateShadows();
+
+                if(mShadowsAnimator != null)
+                    mShadowsAnimator.cancel();
+
+                mShadowsAnimator =
+                        ObjectAnimator.ofFloat(CameraActivity.this, "shadowValue", mPostProcessSettings.shadows, shadows);
+
+                mShadowsAnimator.setDuration(200);
+                mShadowsAnimator.setInterpolator(new LinearInterpolator());
+                mShadowsAnimator.setAutoCancel(true);
+
+                mShadowsAnimator.start();
+            });
+        }
+    }
 
     private final SeekBar.OnSeekBarChangeListener mManualControlsSeekBar = new SeekBar.OnSeekBarChangeListener() {
         @Override
@@ -217,14 +248,14 @@ public class CameraActivity extends AppCompatActivity implements
         mBinding.captureBtn.setOnClickListener(v -> onCaptureClicked());
         mBinding.switchCameraBtn.setOnClickListener(v -> onSwitchCameraClicked());
 
-        mBinding.hdrModeBtn.setOnClickListener(v -> onCaptureModeClicked(v));
-        mBinding.burstModeBtn.setOnClickListener(v -> onCaptureModeClicked(v));
-        mBinding.zslModeBtn.setOnClickListener(v -> onCaptureModeClicked(v));
+        mBinding.hdrModeBtn.setOnClickListener(this::onCaptureModeClicked);
+        mBinding.burstModeBtn.setOnClickListener(this::onCaptureModeClicked);
+        mBinding.zslModeBtn.setOnClickListener(this::onCaptureModeClicked);
 
-        mBinding.contrastBtn.setOnClickListener(v -> onPreviewModeClicked(v));
-        mBinding.colourBtn.setOnClickListener(v -> onPreviewModeClicked(v));
-        mBinding.tintBtn.setOnClickListener(v -> onPreviewModeClicked(v));
-        mBinding.warmthBtn.setOnClickListener(v -> onPreviewModeClicked(v));
+        mBinding.contrastBtn.setOnClickListener(this::onPreviewModeClicked);
+        mBinding.colourBtn.setOnClickListener(this::onPreviewModeClicked);
+        mBinding.tintBtn.setOnClickListener(this::onPreviewModeClicked);
+        mBinding.warmthBtn.setOnClickListener(this::onPreviewModeClicked);
 
         ((SeekBar) findViewById(R.id.manualControlIsoSeekBar)).setOnSeekBarChangeListener(mManualControlsSeekBar);
         ((SeekBar) findViewById(R.id.manualControlShutterSpeedSeekBar)).setOnSeekBarChangeListener(mManualControlsSeekBar);
@@ -303,7 +334,7 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.sharpen0 = 4.0f;
         mPostProcessSettings.sharpen1 = 1.15f;
         mPostProcessSettings.whitePoint = 1.0f;
-        mPostProcessSettings.blacks = 0.0f;
+        mPostProcessSettings.blacks = 0.05f;
         mPostProcessSettings.tonemapVariance = 0.25f;
         mPostProcessSettings.jpegQuality = jpegQuality;
 
@@ -319,6 +350,8 @@ public class CameraActivity extends AppCompatActivity implements
 
         mSensorEventManager.enable();
         mProgressReceiver.setReceiver(this);
+
+        mBinding.rawCameraPreview.setBitmap(null);
 
         // Reset manual controls
         ((Switch) findViewById(R.id.manualControlSwitch)).setChecked(false);
@@ -342,6 +375,10 @@ public class CameraActivity extends AppCompatActivity implements
 
         mSensorEventManager.disable();
         mProgressReceiver.setReceiver(null);
+
+        mShadowsUpdateTimer.cancel();
+        mShadowsUpdateTimer = null;
+        mShadowUpdateTimerTask = null;
 
         if(mNativeCamera != null) {
             mNativeCamera.stopCapture();
@@ -452,7 +489,7 @@ public class CameraActivity extends AppCompatActivity implements
                 break;
         }
 
-        if(updateModeSelection && selectionView != null) {
+        if(updateModeSelection) {
             mBinding.contrastBtn.setBackground(null);
             mBinding.colourBtn.setBackground(null);
             mBinding.tintBtn.setBackground(null);
@@ -687,6 +724,8 @@ public class CameraActivity extends AppCompatActivity implements
                 }
             );
         }
+
+        mShadowsChangedTimeMs = System.currentTimeMillis();
     }
 
     @Override
@@ -969,6 +1008,12 @@ public class CameraActivity extends AppCompatActivity implements
         NativeCameraBuffer.ScreenOrientation orientation = mSensorEventManager.getOrientation();
         if(orientation != null)
             onOrientationChanged(orientation);
+
+        // Schedule timer to update shadows
+        mShadowsUpdateTimer = new Timer("ShadowsUpdateTimer");
+
+        mShadowUpdateTimerTask = new ShadowTimerTask();
+        mShadowsUpdateTimer.scheduleAtFixedRate(mShadowUpdateTimerTask, 0, SHADOW_UPDATE_FREQUENCY_MS);
     }
 
     @Override
@@ -1240,6 +1285,10 @@ public class CameraActivity extends AppCompatActivity implements
 
     private void setShadowValue(float value) {
         mPostProcessSettings.shadows = value;
+
+        int shadowsProgress = (int) (100 * (Math.log10(value) / Math.log10(2.0)) / MAX_SHADOWS_EV_VALUE);
+        mBinding.shadowsSeekBar.setProgress(shadowsProgress, false);
+
         updatePreviewSettings();
     }
 
@@ -1257,46 +1306,6 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void setAutoExposureState(NativeCameraSessionBridge.CameraExposureState state) {
-        // Update shadows based on new exposure
-        if(state == NativeCameraSessionBridge.CameraExposureState.CONVERGED) {
-            // Don't auto estimate shadows if the user has changed the shadows slider recently
-            if(System.currentTimeMillis() - mShadowsChangedTimeMs < 5000)
-                return;
-
-            mAsyncNativeCameraOps.estimateSettings(null, true, settings -> {
-                if(settings == null)
-                    return;
-
-                if(mShadowsAnimator != null)
-                    mShadowsAnimator.cancel();
-
-                mShadowsAnimator =
-                        ObjectAnimator.ofFloat(CameraActivity.this, "shadowValue", mPostProcessSettings.shadows, settings.shadows);
-
-                mShadowsAnimator.setDuration(750);
-                mShadowsAnimator.setInterpolator(new DecelerateInterpolator());
-                mShadowsAnimator.setAutoCancel(true);
-                mShadowsAnimator.start();
-
-                mPostProcessSettings.blacks = settings.blacks;
-                mPostProcessSettings.whitePoint = settings.whitePoint;
-                mPostProcessSettings.temperature = settings.temperature + mTemperatureOffset;
-                mPostProcessSettings.tint = settings.tint + mTintOffset;
-                mPostProcessSettings.exposure = settings.exposure;
-
-                Log.i(TAG, "Estimated settings " + String.format(
-                        "blacks=%.2f, whitePoint=%.2f, exposure=%.2f", settings.blacks, settings.whitePoint, settings.exposure));
-
-                int shadowsProgress = (int) (100 * (Math.log10(settings.shadows) / Math.log10(2.0)) / MAX_SHADOWS_EV_VALUE);
-
-                mBinding.shadowsSeekBar.setProgress(shadowsProgress, true);
-            });
-        }
-        else if(state == NativeCameraSessionBridge.CameraExposureState.SEARCHING) {
-            if(mShadowsAnimator != null)
-                mShadowsAnimator.cancel();
-            mShadowsAnimator = null;
-        }
     }
 
     private void setFocusState(FocusState state, PointF focusPt) {
@@ -1407,18 +1416,16 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     @Override
-    public void onProcessingStarted(File file) {
+    public void onProcessingStarted() {
 
     }
 
     @Override
-    public void onProcessingProgress(File file, int progress) {
+    public void onProcessingProgress(int progress) {
 
     }
 
     @Override
-    public void onProcessingCompleted(File file) {
-        Uri uri = Uri.fromFile(file);
-        sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, uri));
+    public void onProcessingCompleted() {
     }
 }
