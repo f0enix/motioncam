@@ -854,7 +854,6 @@ namespace motioncam {
     }
 
     void CameraSession::doAttemptSaveHdrData() {
-
         // Check how long it has been since the capture sequence has complete
         if(mHdrCaptureSequenceCompleted) {
             double timeSinceSequenceCompleted =

@@ -63,9 +63,9 @@ public class CameraActivity extends AppCompatActivity implements
 
     private static final int PERMISSION_REQUEST_CODE = 1;
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
-    private static final float MAX_SHADOWS_EV_VALUE = 5.0f;
+    private static final float MAX_SHADOWS_EV_VALUE = 3.0f;
     private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 4;
-    public static final int SHADOW_UPDATE_FREQUENCY_MS = 250;
+    public static final int SHADOW_UPDATE_FREQUENCY_MS = 500;
 
     private enum FocusState {
         AUTO,
@@ -116,9 +116,10 @@ public class CameraActivity extends AppCompatActivity implements
     private PointF mAutoExposurePoint;
     private int mIso;
     private long mExposureTime;
-    private long mShadowsChangedTimeMs;
     private ObjectAnimator mShadowsAnimator;
     private ShadowTimerTask mShadowUpdateTimerTask;
+    private float mShadowEstimated;
+    private float mShadowOffset;
 
     private class ShadowTimerTask extends TimerTask {
         @Override
@@ -127,19 +128,15 @@ public class CameraActivity extends AppCompatActivity implements
                 if(mNativeCamera == null || mPostProcessSettings == null)
                     return;
 
-                // Don't estimate shadows if the user has changed the shadows slider recently
-                if(System.currentTimeMillis() - mShadowsChangedTimeMs < 5000)
-                    return;
-
-                float shadows = mNativeCamera.estimateShadows();
+                float shadows = mNativeCamera.estimateShadows(16.0f);
 
                 if(mShadowsAnimator != null)
                     mShadowsAnimator.cancel();
 
                 mShadowsAnimator =
-                        ObjectAnimator.ofFloat(CameraActivity.this, "shadowValue", mPostProcessSettings.shadows, shadows);
+                        ObjectAnimator.ofFloat(CameraActivity.this, "shadowValue", mShadowEstimated, shadows);
 
-                mShadowsAnimator.setDuration(200);
+                mShadowsAnimator.setDuration(400);
                 mShadowsAnimator.setInterpolator(new LinearInterpolator());
                 mShadowsAnimator.setAutoCancel(true);
 
@@ -340,6 +337,9 @@ public class CameraActivity extends AppCompatActivity implements
 
         mTemperatureOffset = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, 0);
         mTintOffset = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, 0);
+
+        mShadowEstimated = 1.0f;
+        mShadowOffset = 0.0f;
 
         updatePreviewTabUi(true);
     }
@@ -612,6 +612,8 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void onCaptureClicked() {
+        mPostProcessSettings.shadows = calculateShadows();
+
         if(mCaptureMode == CaptureMode.BURST) {
             // Pass native camera handle
             Intent intent = new Intent(this, PostProcessActivity.class);
@@ -706,6 +708,8 @@ public class CameraActivity extends AppCompatActivity implements
 
                     settings.chromaEps = getChromaEps(numMergeImages);
                     settings.exposure = 0.0f;
+                    settings.temperature = estimatedSettings.temperature + mTemperatureOffset;
+                    settings.tint = estimatedSettings.tint + mTintOffset;
 
                     // Increase denoising when lots of images are being merged
                     if(numMergeImages > 3)
@@ -724,8 +728,6 @@ public class CameraActivity extends AppCompatActivity implements
                 }
             );
         }
-
-        mShadowsChangedTimeMs = System.currentTimeMillis();
     }
 
     @Override
@@ -1277,25 +1279,25 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void onShadowsSeekBarChanged(int progress) {
-        float shadows = (float) Math.pow(2.0, (progress / 100.0) * MAX_SHADOWS_EV_VALUE);
-
-        setShadowValue(shadows);
-        mShadowsChangedTimeMs = System.currentTimeMillis();
+        mShadowOffset = 6.0f * ((progress - 50.0f) / 100.0f);
     }
 
     private void setShadowValue(float value) {
-        mPostProcessSettings.shadows = value;
-
-        int shadowsProgress = (int) (100 * (Math.log10(value) / Math.log10(2.0)) / MAX_SHADOWS_EV_VALUE);
-        mBinding.shadowsSeekBar.setProgress(shadowsProgress, false);
+        mShadowEstimated = value;
 
         updatePreviewSettings();
     }
 
+    private float calculateShadows() {
+        return (float) Math.pow(2.0, Math.log(mShadowEstimated) / Math.log(2.0) + mShadowOffset);
+    }
+
     private void updatePreviewSettings() {
         if(mPostProcessSettings != null && mNativeCamera != null) {
+            float shadows = calculateShadows();
+
             mNativeCamera.setRawPreviewSettings(
-                    mPostProcessSettings.shadows,
+                    shadows,
                     mPostProcessSettings.contrast,
                     mPostProcessSettings.saturation,
                     mPostProcessSettings.blacks,

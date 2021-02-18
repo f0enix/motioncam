@@ -287,10 +287,10 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         return jsonAdapter.fromJson(settingsJson);
     }
 
-    public float estimateShadows() {
+    public float estimateShadows(float bias) {
         ensureValidHandle();
 
-        return EstimateShadows(mNativeCameraHandle);
+        return EstimateShadows(mNativeCameraHandle, bias);
     }
 
     public double measureSharpness(long bufferHandle) {
@@ -454,6 +454,6 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
 
     private native double MeasureSharpness(long handle, long bufferHandle);
 
-    private native float EstimateShadows(long handle);
+    private native float EstimateShadows(long handle, float bias);
     private native String EstimatePostProcessSettings(long handle, long bufferHandle, boolean basicSettings);
 }

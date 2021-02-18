@@ -265,6 +265,7 @@ jobject JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_GetPreviewOu
 
     return nullptr;
 }
+
 extern "C" JNIEXPORT
 jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_CaptureImage(
         JNIEnv *env,
@@ -865,7 +866,7 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_SetExposure
 }
 
 extern "C" JNIEXPORT
-jfloat JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EstimateShadows(JNIEnv *env, jobject thiz, jlong handle) {
+jfloat JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EstimateShadows(JNIEnv *env, jobject thiz, jlong handle, jfloat bias) {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
     if(!sessionManager) {
         return 1.0f;
@@ -883,7 +884,7 @@ jfloat JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EstimateShado
 
     double s = 1.8*1.8;
     double ev = std::log2(s / (imageBuffer->metadata.exposureTime / (1000.0*1000.0*1000.0))) - std::log2(imageBuffer->metadata.iso / 100.0);
-    double keyValue = 1.03 - 20.0 / (20.0 + std::log(std::pow(10.0, ev) + 1));
+    double keyValue = 1.03 - bias / (bias + std::log10(std::pow(10.0, ev) + 1));
 
     float result = motioncam::ImageProcessor::estimateShadows(histogram, keyValue);
 

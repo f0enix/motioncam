@@ -400,7 +400,7 @@ namespace motioncam {
         }
         
         // Estimate blacks
-        const float maxDehazePercent = 0.015f; // Max 1.5% pixels
+        const float maxDehazePercent = 0.02f; // Max 2% pixels
         const int maxEndBin = 15; // Max bin
 
         int endBin = 0;
@@ -418,7 +418,7 @@ namespace motioncam {
         for(endBin = histogram.rows - 1; endBin >= 192; endBin--) {
             float binPx = histogram.at<float>(endBin);
 
-            if(binPx < 0.995)
+            if(binPx < 0.9999)
                 break;
         }
 
@@ -493,6 +493,7 @@ namespace motioncam {
         settings.temperature    = static_cast<float>(temperature.temperature());
         settings.tint           = static_cast<float>(temperature.tint());
         settings.shadows        = estimateShadows(histogram);
+        settings.exposure       = estimateExposureCompensation(histogram);
         
         auto preview = estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, settings.blacks, settings.whitePoint);
         
@@ -1243,7 +1244,7 @@ namespace motioncam {
 
             // Check if there's any point even using the underexposed image (less than 0.5% in the >95% bins)
             float p = (sum / totalPixels) * 100.0f;
-            if(p < 0.5f) {
+            if(p < 1.0f) {
                 logger::log("Skipping HDR processing (" + std::to_string(p) + ")");
                 
                 estimateWhitePoint(*referenceRawBuffer,
@@ -1264,7 +1265,7 @@ namespace motioncam {
                     if(hdrMetadata->error < MAX_HDR_ERROR) {
                         estimateWhitePoint(*(*underexposedFrameIt),
                                            rawContainer.getCameraMetadata(),
-                                           settings.shadows * (1.0/hdrMetadata->exposureScale),
+                                           0.90f * settings.shadows * (1.0/hdrMetadata->exposureScale),
                                            settings.blacks,
                                            settings.whitePoint);
                     
