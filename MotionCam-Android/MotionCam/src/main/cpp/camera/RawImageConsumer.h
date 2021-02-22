@@ -92,7 +92,7 @@ namespace motioncam {
         std::shared_ptr<CameraDescription> mCameraDesc;
         int mRawPreviewQuality;
 
-        std::mutex mBufferMutex;
+        std::recursive_mutex mBufferMutex;
 
         moodycamel::BlockingConcurrentQueue<std::shared_ptr<AImage>> mImageQueue;
         atomic_queue::AtomicQueue2<std::shared_ptr<RawImageBuffer>, 2> mPreprocessQueue;

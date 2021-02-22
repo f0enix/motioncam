@@ -341,8 +341,8 @@ namespace motioncam {
         float avgLuminance = 0.0f;
         float totalPixels = 0;
         
-        int lowerBound = 5;
-        int upperBound = 230;
+        int lowerBound = 1;
+        int upperBound = 200;
         
         for(int i = lowerBound; i < upperBound; i++) {
             avgLuminance += histogram.at<float>(i) * std::log(i / 255.0f);
@@ -351,7 +351,7 @@ namespace motioncam {
         
         avgLuminance = std::exp(avgLuminance / (totalPixels + 1));
 
-        return std::min(keyValue / avgLuminance, 32.0f);
+        return std::min(keyValue / avgLuminance, 16.0f);
     }
 
     float ImageProcessor::estimateExposureCompensation(const cv::Mat& histogram) {
@@ -415,10 +415,10 @@ namespace motioncam {
         outBlacks = static_cast<float>(endBin) / static_cast<float>(histogram.rows - 1);
 
         // Estimate white point
-        for(endBin = histogram.rows - 1; endBin >= 192; endBin--) {
+        for(endBin = histogram.rows - 1; endBin >= 210; endBin--) {
             float binPx = histogram.at<float>(endBin);
 
-            if(binPx < 0.9999)
+            if(binPx < 0.999)
                 break;
         }
 
@@ -1265,10 +1265,10 @@ namespace motioncam {
                     if(hdrMetadata->error < MAX_HDR_ERROR) {
                         estimateWhitePoint(*(*underexposedFrameIt),
                                            rawContainer.getCameraMetadata(),
-                                           0.90f * settings.shadows * (1.0/hdrMetadata->exposureScale),
+                                           settings.shadows * (1.0/hdrMetadata->exposureScale),
                                            settings.blacks,
                                            settings.whitePoint);
-                    
+                        
                         break;
                     }
                     else {

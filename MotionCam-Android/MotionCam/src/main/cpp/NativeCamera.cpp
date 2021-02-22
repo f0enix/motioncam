@@ -115,7 +115,8 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_StartCaptur
         JNIEnv *env, jobject instance,
         jlong sessionHandle,
         jstring jcameraId,
-        jobject previewSurface)
+        jobject previewSurface,
+        jboolean setupForRawPreview)
 {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(sessionHandle);
     if(!sessionManager) {
@@ -134,7 +135,7 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_StartCaptur
     try {
         std::shared_ptr<ANativeWindow> window(ANativeWindow_fromSurface(env, previewSurface), ANativeWindow_release);
 
-        sessionManager->startCamera(cameraId, gCameraSessionListener, window);
+        sessionManager->startCamera(cameraId, gCameraSessionListener, window, setupForRawPreview);
     }
     catch(const CameraSessionException& e) {
         gLastError = e.what();

@@ -49,6 +49,10 @@ public class SettingsFragment extends Fragment {
                     break;
             }
         });
+
+        mViewModel.dualExposureControls.observe(getViewLifecycleOwner(), (value) -> {
+            dataBinding.cameraQualitySeekBar.setEnabled(value);
+        });
     }
 
     @Nullable

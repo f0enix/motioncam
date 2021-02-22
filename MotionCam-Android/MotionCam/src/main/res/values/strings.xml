@@ -53,4 +53,7 @@
     <string name="ok">Ok</string>
     <string name="hdr">HDR</string>
     <string name="burst">Burst</string>
+    <string name="dual_exposure">Dual Exposure Controls</string>
+    <string name="dual_exposure_help">Enable an accurate preview of the camera output. This enables dual exposure control.</string>
+    <string name="enable_dual_exposure">Enable dual exposure controls</string>
 </resources>

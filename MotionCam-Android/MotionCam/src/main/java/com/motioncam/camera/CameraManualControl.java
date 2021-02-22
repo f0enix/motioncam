@@ -131,7 +131,7 @@ public class CameraManualControl {
             return Math.log(x)/Math.log(2);
         }
 
-        double getEv(double cameraAperture) {
+        public double getEv(double cameraAperture) {
             double t = shutterSpeed.value / (1000.0*1000.0*1000.0);
             double ev100 = log2(cameraAperture*cameraAperture / t);
 
@@ -142,7 +142,7 @@ public class CameraManualControl {
         public final SHUTTER_SPEED shutterSpeed;
     }
 
-    private static Exposure[] EXPOSURE_LINE = new Exposure[] {
+    public static Exposure[] EXPOSURE_LINE = new Exposure[] {
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_8000, ISO.ISO_100),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_6400, ISO.ISO_100),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_5000, ISO.ISO_100),
@@ -165,21 +165,27 @@ public class CameraManualControl {
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_100, ISO.ISO_100),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_80, ISO.ISO_100),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_60, ISO.ISO_100),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_100),
 
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_125),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_160),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_200),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_250),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_320),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_60, ISO.ISO_125),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_60, ISO.ISO_160),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_60, ISO.ISO_200),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_60, ISO.ISO_250),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_60, ISO.ISO_320),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_60, ISO.ISO_400),
+
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_50, ISO.ISO_400),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_40, ISO.ISO_400),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_400),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_500),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_640),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_800),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_1000),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_1250),
 
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_25, ISO.ISO_800),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_15, ISO.ISO_800),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_10, ISO.ISO_800),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_10, ISO.ISO_1000),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_10, ISO.ISO_1250),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_25, ISO.ISO_1250),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_20, ISO.ISO_1250),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_15, ISO.ISO_1250),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_13, ISO.ISO_1250),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_10, ISO.ISO_1250),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_10, ISO.ISO_1600),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_10, ISO.ISO_2000),
@@ -187,6 +193,7 @@ public class CameraManualControl {
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_10, ISO.ISO_3200),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_8, ISO.ISO_3200),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_6, ISO.ISO_3200),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_5, ISO.ISO_3200),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_4, ISO.ISO_3200),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_3, ISO.ISO_3200)
     };

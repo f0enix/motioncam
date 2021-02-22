@@ -254,7 +254,8 @@ namespace motioncam {
     void CameraSession::openCamera(
         const OutputConfiguration& rawOutputConfig,
         std::shared_ptr<ACameraManager> cameraManager,
-        std::shared_ptr<ANativeWindow> previewOutputWindow)
+        std::shared_ptr<ANativeWindow> previewOutputWindow,
+        bool setupForRawPreview)
     {
         if(mSessionContext) {
             LOGE("Trying to open camera while already running!");
@@ -274,6 +275,10 @@ namespace motioncam {
 
         // Create event loop and start
         mSessionContext->eventLoopThread = std::make_unique<std::thread>(std::thread(&CameraSession::doEventLoop, this));
+
+        json11::Json::object data = {
+            { "setupForRawPreview", setupForRawPreview },
+        };
 
         pushEvent(EventAction::ACTION_OPEN_CAMERA);
     }
@@ -363,7 +368,7 @@ namespace motioncam {
         pushEvent(EventAction::ACTION_CAPTURE_HDR, data);
     }
 
-    void CameraSession::setupPreviewCaptureOutput(CameraCaptureSessionContext& state) {
+    void CameraSession::setupPreviewCaptureOutput(CameraCaptureSessionContext& state, bool setupForRawPreview) {
         ACaptureSessionOutput* sessionOutput = nullptr;
         ACameraOutputTarget* outputTarget = nullptr;
 
@@ -381,15 +386,13 @@ namespace motioncam {
         if (ACaptureSessionOutputContainer_add(state.captureSessionContainer.get(), sessionOutput) != ACAMERA_OK)
             throw CameraSessionException("Failed to add preview output to session container");
 
-//        if (ACaptureRequest_addTarget(mSessionContext->repeatCaptureRequest->captureRequest, outputTarget) != ACAMERA_OK)
-//            throw CameraSessionException("Failed to add RAW output target");
-//
-//        if (ACaptureRequest_addTarget(mSessionContext->afCaptureRequest->captureRequest, outputTarget) != ACAMERA_OK)
-//            throw CameraSessionException("Failed to add AF RAW output target");
-//
-//        for(int i = 0; i < 2; i++)
-//            if (ACaptureRequest_addTarget(mSessionContext->hdrCaptureRequests[i]->captureRequest, outputTarget) != ACAMERA_OK)
-//                throw CameraSessionException("Failed to add HDR RAW output target");
+        if(!setupForRawPreview) {
+            if (ACaptureRequest_addTarget(mSessionContext->repeatCaptureRequest->captureRequest, outputTarget) != ACAMERA_OK)
+                throw CameraSessionException("Failed to add RAW output target");
+
+            if (ACaptureRequest_addTarget(mSessionContext->afCaptureRequest->captureRequest, outputTarget) != ACAMERA_OK)
+                throw CameraSessionException("Failed to add AF RAW output target");
+        }
     }
 
     void CameraSession::setupRawCaptureOutput(CameraCaptureSessionContext& state) {
@@ -500,7 +503,7 @@ namespace motioncam {
         return captureRequest;
     }
 
-    void CameraSession::doOpenCamera() {
+    void CameraSession::doOpenCamera(bool setupForRawPreview) {
         if(mState != CameraCaptureSessionState::CLOSED) {
             LOGE("Trying to open camera that isn't closed");
             return;
@@ -542,7 +545,7 @@ namespace motioncam {
         mSessionContext->afCaptureRequest = std::make_shared<CaptureRequest>(createCaptureRequest(), true);
 
         // Set up output for preview
-        setupPreviewCaptureOutput(*mSessionContext);
+        setupPreviewCaptureOutput(*mSessionContext, setupForRawPreview);
 
         // Set up output for capture
         setupRawCaptureOutput(*mSessionContext);
@@ -630,6 +633,7 @@ namespace motioncam {
             ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
             ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_SENSITIVITY, 1, &mUserIso);
             ACaptureRequest_setEntry_i64(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_EXPOSURE_TIME, 1, &mUserExposureTime);
+            ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_EXPOSURE_COMPENSATION, 0, nullptr);
         }
 
         return ACameraCaptureSession_setRepeatingRequest(
@@ -1188,7 +1192,9 @@ namespace motioncam {
             //
 
             case EventAction::ACTION_OPEN_CAMERA: {
-                doOpenCamera();
+                auto setupForRawPreview = eventLoopData->data["setupForRawPreview"].bool_value();
+
+                doOpenCamera(setupForRawPreview);
                 break;
             }
 

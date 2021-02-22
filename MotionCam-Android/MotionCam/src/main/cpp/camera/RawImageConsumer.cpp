@@ -63,6 +63,8 @@ namespace motioncam {
             return;
         }
 
+        cancelHdrBuffers();
+
         mRunning = true;
 
         unlockBuffers();
@@ -90,6 +92,8 @@ namespace motioncam {
         mConsumerThreads.clear();
 
         lockBuffers();
+
+        cancelHdrBuffers();
     }
 
     void RawImageConsumer::queueImage(AImage* image) {
@@ -109,7 +113,7 @@ namespace motioncam {
         metadata.rawType = rawType;
 
         {
-            std::lock_guard<std::mutex> lock(mBufferMutex);
+            std::lock_guard<std::recursive_mutex> lock(mBufferMutex);
 
             // Add pending metadata
             mPendingMetadata.push_back(std::move(metadata));
@@ -117,17 +121,15 @@ namespace motioncam {
     }
 
     void RawImageConsumer::lockBuffers() {
-        std::lock_guard<std::mutex> guard(mBufferMutex);
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
         if(mBufferManager) {
-            cancelHdrBuffers();
-
             mBufferManager->lock();
         }
     }
 
     void RawImageConsumer::unlockBuffers() {
-        std::lock_guard<std::mutex> guard(mBufferMutex);
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
         if(mBufferManager)
             mBufferManager->unlock();
@@ -137,7 +139,7 @@ namespace motioncam {
         int hdrBufferCount = 0;
 
         {
-            std::lock_guard<std::mutex> guard(mBufferMutex);
+            std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
             hdrBufferCount = mHdrBuffers.size();
         }
 
@@ -145,7 +147,7 @@ namespace motioncam {
     }
 
     std::vector<std::shared_ptr<RawImageBuffer>> RawImageConsumer::getBuffers() {
-        std::lock_guard<std::mutex> guard(mBufferMutex);
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
         if(mBufferManager)
             return mBufferManager->getBuffers();
@@ -154,7 +156,7 @@ namespace motioncam {
     }
 
     std::shared_ptr<RawImageBuffer> RawImageConsumer::getBuffer(int64_t timestamp) {
-        std::lock_guard<std::mutex> guard(mBufferMutex);
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
         if(mBufferManager)
             return mBufferManager->getBuffer(timestamp);
@@ -163,7 +165,7 @@ namespace motioncam {
     }
 
     std::shared_ptr<RawImageBuffer> RawImageConsumer::lockLatest() {
-        std::lock_guard<std::mutex> guard(mBufferMutex);
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
         if(mBufferManager)
             return mBufferManager->lockLatest();
@@ -172,6 +174,8 @@ namespace motioncam {
     }
 
     void RawImageConsumer::cancelHdrBuffers() {
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
+
         for(auto buffer : mHdrBuffers)
             mBufferManager->discardBuffer(buffer);
 
@@ -183,7 +187,7 @@ namespace motioncam {
             const PostProcessSettings& settings,
             const std::string& outputPath)
     {
-        std::lock_guard<std::mutex> guard(mBufferMutex);
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
         if(mHdrBuffers.empty()) {
             LOGI("Failed to save, no buffers available");
@@ -222,7 +226,7 @@ namespace motioncam {
             const PostProcessSettings& settings,
             const std::string& outputPath)
     {
-        std::lock_guard<std::mutex> guard(mBufferMutex);
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
         if(!mBufferManager) {
             LOGW("Buffer manager does not exist. Can't save!");
@@ -444,7 +448,7 @@ namespace motioncam {
 
             // Lock buffer manager and add the buffers
             {
-                std::lock_guard<std::mutex> lock(mBufferMutex);
+                std::lock_guard<std::recursive_mutex> lock(mBufferMutex);
 
                 mBufferManager->addBuffers(buffers);
 
@@ -610,7 +614,7 @@ namespace motioncam {
             VERIFY_RESULT(CL_release(), "Failed to release CL context");
 
             {
-                std::lock_guard<std::mutex> lock(mBufferMutex);
+                std::lock_guard<std::recursive_mutex> lock(mBufferMutex);
                 onBufferReady(buffer);
             }
 
@@ -685,7 +689,7 @@ namespace motioncam {
             // Wait for image
             if(!mImageQueue.wait_dequeue_timed(pendingImage, std::chrono::milliseconds(100))) {
                 // Try to match buffers even if no image has been added
-                std::lock_guard<std::mutex> lock(mBufferMutex);
+                std::lock_guard<std::recursive_mutex> lock(mBufferMutex);
 
                 doMatchMetadata();
                 continue;
@@ -698,7 +702,7 @@ namespace motioncam {
 
             // Lock and get an image out
             {
-                std::lock_guard<std::mutex> lock(mBufferMutex);
+                std::lock_guard<std::recursive_mutex> lock(mBufferMutex);
 
                 if(!mSetupBuffersThread) {
                     int length = 0;
@@ -810,7 +814,7 @@ namespace motioncam {
 
             // Insert back
             {
-                std::lock_guard<std::mutex> guard(mBufferMutex);
+                std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
                 if(!result) {
                     LOGW("Got error, discarding buffer");
@@ -844,7 +848,7 @@ namespace motioncam {
         std::shared_ptr<std::thread> bufferThread;
 
         {
-            std::lock_guard<std::mutex> guard(mBufferMutex);
+            std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
             bufferThread = mSetupBuffersThread;
             mSetupBuffersThread = nullptr;

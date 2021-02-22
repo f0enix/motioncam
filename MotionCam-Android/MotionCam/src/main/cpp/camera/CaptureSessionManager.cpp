@@ -461,7 +461,8 @@ namespace motioncam {
     void CaptureSessionManager::startCamera(
             const std::string& cameraId,
             std::shared_ptr<CameraSessionListener> listener,
-            std::shared_ptr<ANativeWindow> previewOutputWindow)
+            std::shared_ptr<ANativeWindow> previewOutputWindow,
+            bool setupForRawPreview)
     {
         OutputConfiguration outputConfig;
 
@@ -487,7 +488,7 @@ namespace motioncam {
         LOGI("Opening camera %s", cameraId.c_str());
 
         mCameraSession = std::make_shared<CameraSession>(listener, cameraDesc, mImageConsumer);
-        mCameraSession->openCamera(outputConfig, mCameraManager, std::move(previewOutputWindow));
+        mCameraSession->openCamera(outputConfig, mCameraManager, std::move(previewOutputWindow), setupForRawPreview);
     }
 
     void CaptureSessionManager::stopCamera() {

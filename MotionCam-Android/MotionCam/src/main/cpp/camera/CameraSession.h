@@ -77,7 +77,8 @@ namespace motioncam {
         void openCamera(
             const OutputConfiguration& rawOutputConfig,
             std::shared_ptr<ACameraManager> cameraManager,
-            std::shared_ptr<ANativeWindow> previewOutputWindow);
+            std::shared_ptr<ANativeWindow> previewOutputWindow,
+            bool setupForRawPreview);
 
         void closeCamera();
 
@@ -128,7 +129,7 @@ namespace motioncam {
         void doProcessEvent(const EventLoopDataPtr& eventLoopData);
 
         bool doRepeatCapture();
-        void doOpenCamera();
+        void doOpenCamera(bool setupForRawPreview);
         void doCloseCamera();
         void doPauseCapture();
         void doResumeCapture();
@@ -157,7 +158,7 @@ namespace motioncam {
         ACaptureRequest* createCaptureRequest();
 
         void setupRawCaptureOutput(CameraCaptureSessionContext& state);
-        void setupPreviewCaptureOutput(CameraCaptureSessionContext& state);
+        void setupPreviewCaptureOutput(CameraCaptureSessionContext& state, bool enableCameraPreview);
 
     private:
         CameraCaptureSessionState mState;

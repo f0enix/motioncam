@@ -38,7 +38,8 @@ namespace motioncam {
         void startCamera(
                 const std::string& cameraId,
                 std::shared_ptr<CameraSessionListener> listener,
-                std::shared_ptr<ANativeWindow> previewOutputWindow);
+                std::shared_ptr<ANativeWindow> previewOutputWindow,
+                bool setupForRawPreview);
         void pauseCamera(bool pause);
         void stopCamera();
 

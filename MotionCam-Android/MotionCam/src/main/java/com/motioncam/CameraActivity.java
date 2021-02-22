@@ -14,6 +14,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
 import android.util.Size;
+import android.view.Display;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
@@ -128,7 +129,7 @@ public class CameraActivity extends AppCompatActivity implements
                 if(mNativeCamera == null || mPostProcessSettings == null)
                     return;
 
-                float shadows = mNativeCamera.estimateShadows(16.0f);
+                float shadows = mNativeCamera.estimateShadows(12.0f);
 
                 if(mShadowsAnimator != null)
                     mShadowsAnimator.cancel();
@@ -328,7 +329,7 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.saturation = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, 1.0f);
         mPostProcessSettings.greenSaturation = 1.0f;
         mPostProcessSettings.blueSaturation = 1.0f;
-        mPostProcessSettings.sharpen0 = 4.0f;
+        mPostProcessSettings.sharpen0 = 4.5f;
         mPostProcessSettings.sharpen1 = 1.15f;
         mPostProcessSettings.whitePoint = 1.0f;
         mPostProcessSettings.blacks = 0.05f;
@@ -342,6 +343,11 @@ public class CameraActivity extends AppCompatActivity implements
         mShadowOffset = 0.0f;
 
         updatePreviewTabUi(true);
+
+        // Update capture mode
+        mCaptureMode = getCaptureMode(prefs);
+
+        updateCaptureModeUi();
     }
 
     @Override
@@ -376,9 +382,11 @@ public class CameraActivity extends AppCompatActivity implements
         mSensorEventManager.disable();
         mProgressReceiver.setReceiver(null);
 
-        mShadowsUpdateTimer.cancel();
-        mShadowsUpdateTimer = null;
-        mShadowUpdateTimerTask = null;
+        if(mShadowsUpdateTimer != null) {
+            mShadowsUpdateTimer.cancel();
+            mShadowsUpdateTimer = null;
+            mShadowUpdateTimerTask = null;
+        }
 
         if(mNativeCamera != null) {
             mNativeCamera.stopCapture();
@@ -595,7 +603,7 @@ public class CameraActivity extends AppCompatActivity implements
         }
 
         // If shadows are increased by a significant amount, use more images
-        if(shadows >= 7.99) {
+        if(shadows >= 3.99) {
             numImages += 2;
         }
 
@@ -637,14 +645,13 @@ public class CameraActivity extends AppCompatActivity implements
             PostProcessSettings settings = mPostProcessSettings.clone();
 
             int numMergeImages =
-                    getNumImagesToMerge(mIso, mExposureTime, mPostProcessSettings.shadows);
+                    getNumImagesToMerge(mIso, mExposureTime, settings.shadows);
 
             settings.chromaEps = getChromaEps(numMergeImages);
             settings.exposure = 0.0f;
 
-            // Increase denoising when lots of images are being merged
-            if(numMergeImages > 3)
-                settings.spatialDenoiseAggressiveness = 1.5f;
+            if(numMergeImages < 3)
+                settings.spatialDenoiseAggressiveness = 0.5f;
             else
                 settings.spatialDenoiseAggressiveness = 1.0f;
 
@@ -677,8 +684,18 @@ public class CameraActivity extends AppCompatActivity implements
                     if(estimatedSettings == null || mNativeCamera == null)
                         return;
 
+                    PostProcessSettings settings = mPostProcessSettings.clone();
+
                     // Map camera exposure to our own
-                    long cameraExposure = mManualControlsSet ? mExposureTime : Math.round(mExposureTime * Math.pow(2.0f, estimatedSettings.exposure));
+                    long cameraExposure = mExposureTime;
+
+                    // If the ISO is very high, use our estimated exposure compensation to boost the shutter speed
+                    if(!mManualControlsSet && mIso >= 1600) {
+                        cameraExposure = Math.round(mExposureTime * Math.pow(2.0f, estimatedSettings.exposure));
+
+                        // Reduce shadows to account for the increase in exposure
+                        settings.shadows = settings.shadows / (float) Math.pow(2.0f, estimatedSettings.exposure);
+                    }
 
                     CameraManualControl.Exposure baseExposure = CameraManualControl.Exposure.Create(
                             CameraManualControl.GetClosestShutterSpeed(cameraExposure),
@@ -690,30 +707,24 @@ public class CameraActivity extends AppCompatActivity implements
                             CameraManualControl.GetClosestIso(mIsoValues, mIso)
                     );
 
-                    PostProcessSettings settings = mPostProcessSettings.clone();
+                    int numMergeImages =
+                            getNumImagesToMerge(baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), settings.shadows);
+
+                    Log.i(TAG, "Requested HDR capture (shadows=" + settings.shadows + " numImages=" + numMergeImages + ", exposure=" + settings.exposure + ")");
 
                     // If the user has not override the shutter speed/iso, pick our own
                     if(!mManualControlsSet) {
                         baseExposure = CameraManualControl.MapToExposureLine(1.0, baseExposure);
                         hdrExposure = CameraManualControl.MapToExposureLine(1.0, hdrExposure);
-
-                        // Reduce shadows to account for the increase in exposure
-                        settings.shadows = settings.shadows / (float) Math.pow(2.0f, settings.exposure);
                     }
-
-                    int numMergeImages =
-                            getNumImagesToMerge(baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), mPostProcessSettings.shadows);
-
-                    Log.i(TAG, "Requested HDR capture (numImages=" + numMergeImages + ", exposure=" + settings.exposure + ")");
 
                     settings.chromaEps = getChromaEps(numMergeImages);
                     settings.exposure = 0.0f;
                     settings.temperature = estimatedSettings.temperature + mTemperatureOffset;
                     settings.tint = estimatedSettings.tint + mTintOffset;
 
-                    // Increase denoising when lots of images are being merged
-                    if(numMergeImages > 3)
-                        settings.spatialDenoiseAggressiveness = 1.5f;
+                    if(numMergeImages < 3)
+                        settings.spatialDenoiseAggressiveness = 0.5f;
                     else
                         settings.spatialDenoiseAggressiveness = 1.0f;
 
@@ -865,14 +876,8 @@ public class CameraActivity extends AppCompatActivity implements
         else
             mBinding.switchCameraBtn.setVisibility(View.VISIBLE);
 
-        // Update capture mode
-        mCaptureMode = getCaptureMode(sharedPrefs);
-        updateCaptureModeUi();
-
         // Create texture view for camera preview
         mTextureView = new TextureView(this);
-        mTextureView.setAlpha(0);
-
         mBinding.cameraFrame.addView(
                 mTextureView,
                 0,
@@ -899,41 +904,39 @@ public class CameraActivity extends AppCompatActivity implements
         int width = textureWidth;
         int height = textureWidth * previewOutputSize.getWidth() / previewOutputSize.getHeight();
 
+        if (Surface.ROTATION_90 == displayOrientation || Surface.ROTATION_270 == displayOrientation) {
+            height = (textureWidth * previewOutputSize.getHeight()) / previewOutputSize.getWidth();
+        }
+
         Matrix cameraMatrix = new Matrix();
 
-        if (mCameraMetadata.sensorOrientation % 180 == 90) {
-            if(mCameraMetadata.sensorOrientation == 90) {
-                cameraMatrix.setPolyToPoly(
-                        new float[]{
-                                0.f, 0.f, // top left
-                                width, 0.f, // top right
-                                0.f, height, // bottom left
-                                width, height, // bottom right
-                        }, 0,
-                        new float[]{
-                                width, 0.f, // top left
-                                width, height, // top right
-                                0.f, 0.f, // bottom left
-                                0.f, height, // bottom right
-                        }, 0, 4);
-            }
-            else {
-                cameraMatrix.setPolyToPoly(
-                        new float[]{
-                                0.f, 0.f, // top left
-                                width, 0.f, // top right
-                                0.f, height, // bottom left
-                                width, height, // bottom right
-                        }, 0,
-                        new float[]{
-                                0.f, height, // top left
-                                0.f, 0.f,    // top right
-                                width, height, // bottom left
-                                width, 0.f, // bottom right
-                        }, 0, 4);
-            }
+        if (displayOrientation % 180 == 90) {
+            // Rotate the camera preview when the screen is landscape.
+            cameraMatrix.setPolyToPoly(
+                    new float[]{
+                            0.f, 0.f, // top left
+                            width, 0.f, // top right
+                            0.f, height, // bottom left
+                            width, height, // bottom right
+                    }, 0,
+                    displayOrientation == 90 ?
+                            // Clockwise
+                            new float[]{
+                                    0.f, height, // top left
+                                    0.f, 0.f,    // top right
+                                    width, height, // bottom left
+                                    width, 0.f, // bottom right
+                            } : // mDisplayOrientation == 270
+                            // Counter-clockwise
+                            new float[]{
+                                    width, 0.f, // top left
+                                    width, height, // top right
+                                    0.f, 0.f, // bottom left
+                                    0.f, height, // bottom right
+                            }, 0,
+                    4);
         }
-        else {
+        else if (displayOrientation == 180) {
             cameraMatrix.postRotate(180, width / 2.0f, height / 2.0f);
         }
 
@@ -959,8 +962,12 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private CaptureMode getCaptureMode(SharedPreferences sharedPrefs) {
-        String captureMode = sharedPrefs.getString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, CaptureMode.HDR.name());
-        return CaptureMode.valueOf(captureMode);
+        // Always in burst mode if raw preview is disabled
+        if(!sharedPrefs.getBoolean(SettingsViewModel.PREFS_KEY_DUAL_EXPOSURE_CONTROLS, false))
+            return CaptureMode.BURST;
+
+        return CaptureMode.valueOf(
+                sharedPrefs.getString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, CaptureMode.HDR.name()));
     }
 
     @Override
@@ -978,12 +985,29 @@ public class CameraActivity extends AppCompatActivity implements
             mSurface = null;
         }
 
-        // Get display size
-//        Display display = getWindowManager().getDefaultDisplay();
+        startCamera(surfaceTexture, width, height);
+    }
 
-        // Use small preview window since we're not using the camera preview.
-        int displayWidth = 240;//display.getMode().getPhysicalWidth();
-        int displayHeight = 480;//display.getMode().getPhysicalHeight();
+    private void startCamera(SurfaceTexture surfaceTexture, int width, int height) {
+        SharedPreferences sharedPrefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
+
+        boolean enableRawPreview = sharedPrefs.getBoolean(SettingsViewModel.PREFS_KEY_DUAL_EXPOSURE_CONTROLS, false);
+        int displayWidth;
+        int displayHeight;
+
+        if(enableRawPreview) {
+            // Use small preview window since we're not using the camera preview.
+            displayWidth = 240;
+            displayHeight = 480;
+
+        }
+        else {
+            // Get display size
+            Display display = getWindowManager().getDefaultDisplay();
+
+            displayWidth = display.getMode().getPhysicalWidth();
+            displayHeight = display.getMode().getPhysicalHeight();
+        }
 
         // Get capture size so we can figure out the correct aspect ratio
         Size captureOutputSize = mNativeCamera.getRawConfigurationOutput(mSelectedCamera);
@@ -994,17 +1018,14 @@ public class CameraActivity extends AppCompatActivity implements
             return;
         }
 
-        SharedPreferences sharedPrefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
-
-        Size previewOutputSize = mNativeCamera.getPreviewConfigurationOutput(mSelectedCamera, captureOutputSize, new Size(displayWidth, displayHeight));
+        Size previewOutputSize =
+                mNativeCamera.getPreviewConfigurationOutput(mSelectedCamera, captureOutputSize, new Size(displayWidth, displayHeight));
         surfaceTexture.setDefaultBufferSize(previewOutputSize.getWidth(), previewOutputSize.getHeight());
 
-//        configureTransform(width, height, previewOutputSize);
+        configureTransform(width, height, previewOutputSize);
 
         mSurface = new Surface(surfaceTexture);
-
-        mNativeCamera.startCapture(mSelectedCamera, mSurface);
-        mNativeCamera.enableRawPreview(this, getCameraPreviewQuality(sharedPrefs), false);
+        mNativeCamera.startCapture(mSelectedCamera, mSurface, enableRawPreview);
 
         // Update orientation in case we've switched front/back cameras
         NativeCameraBuffer.ScreenOrientation orientation = mSensorEventManager.getOrientation();
@@ -1012,10 +1033,27 @@ public class CameraActivity extends AppCompatActivity implements
             onOrientationChanged(orientation);
 
         // Schedule timer to update shadows
-        mShadowsUpdateTimer = new Timer("ShadowsUpdateTimer");
+        if(enableRawPreview) {
+            mShadowsUpdateTimer = new Timer("ShadowsUpdateTimer");
 
-        mShadowUpdateTimerTask = new ShadowTimerTask();
-        mShadowsUpdateTimer.scheduleAtFixedRate(mShadowUpdateTimerTask, 0, SHADOW_UPDATE_FREQUENCY_MS);
+            mShadowUpdateTimerTask = new ShadowTimerTask();
+            mShadowsUpdateTimer.scheduleAtFixedRate(mShadowUpdateTimerTask, 0, SHADOW_UPDATE_FREQUENCY_MS);
+
+            mBinding.previewControls.setVisibility(View.VISIBLE);
+            mBinding.captureModeSelection.setVisibility(View.VISIBLE);
+            mBinding.rawCameraPreview.setVisibility(View.VISIBLE);
+
+            mTextureView.setAlpha(0);
+
+            mNativeCamera.enableRawPreview(this, getCameraPreviewQuality(sharedPrefs), false);
+        }
+        else {
+            mBinding.previewControls.setVisibility(View.GONE);
+            mBinding.captureModeSelection.setVisibility(View.GONE);
+            mBinding.rawCameraPreview.setVisibility(View.GONE);
+
+            mTextureView.setAlpha(1);
+        }
     }
 
     @Override
