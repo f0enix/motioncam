@@ -1795,6 +1795,7 @@ public:
     Func chromaDenoiseInputU{"chromaDenoiseInputU"}, chromaDenoiseInputV{"chromaDenoiseInputV"};
     Func finalTonemap{"finalTonemap"};
     Func hsvInput{"hsvInput"};
+    Func hsvFixed{"hsvFixed"};
     Func saturationValue{"saturationValue"}, saturationFiltered{"saturationFiltered"};
     Func saturationApplied{"saturationApplied"};
     Func finalRgb{"finalRgb"};
@@ -1822,6 +1823,7 @@ private:
     void blur(Func& output, Func input);
     void blur2(Func& output, Func input);
     void blur3(Func& output, Func input);
+    void fixColorArtifacts(Func& output, Func input);
 };
 
 void PostProcessGenerator::blur(Func& output, Func input) {
@@ -1905,6 +1907,83 @@ void PostProcessGenerator::blur3(Func& output, Func input) {
             1  * in32(v_x, v_y + 4)
             ) / 256
         );
+}
+
+// TODO: This needs some work.
+void PostProcessGenerator::fixColorArtifacts(Func& output, Func input) {
+    Func mask{"mask"}, maskErodedTmp{"maskErodedTmp"}, maskEroded{"maskEroded"};
+    Func weight{"weight"};
+    Func blurX{"blurX"}, blurY{"blurY"};
+
+    mask(v_x, v_y) = 1.0f/8.0f * (
+        abs(input(v_x, v_y, 2) - input(v_x - 1, v_y - 1, 2)) +
+        abs(input(v_x, v_y, 2) - input(v_x,     v_y - 1, 2)) +
+        abs(input(v_x, v_y, 2) - input(v_x + 1, v_y - 1, 2)) +
+        abs(input(v_x, v_y, 2) - input(v_x - 1, v_y - 0, 2)) +
+        abs(input(v_x, v_y, 2) - input(v_x + 1, v_y - 0, 2)) +
+        abs(input(v_x, v_y, 2) - input(v_x - 1, v_y + 1, 2)) +
+        abs(input(v_x, v_y, 2) - input(v_x,     v_y + 1, 2)) +
+        abs(input(v_x, v_y, 2) - input(v_x + 1, v_y + 1, 2)) );
+
+    maskErodedTmp(v_x, v_y) = max(
+        mask(v_x - 3, v_y),
+        mask(v_x - 2, v_y),
+        mask(v_x - 1, v_y),
+        mask(v_x + 0, v_y),
+        mask(v_x + 1, v_y),
+        mask(v_x + 2, v_y),
+        mask(v_x + 3, v_y) );
+
+    maskEroded(v_x, v_y) = max(
+        maskErodedTmp(v_x, v_y - 3),
+        maskErodedTmp(v_x, v_y - 2),
+        maskErodedTmp(v_x, v_y - 1),
+        maskErodedTmp(v_x, v_y + 0),
+        maskErodedTmp(v_x, v_y + 1),
+        maskErodedTmp(v_x, v_y + 2),
+        maskErodedTmp(v_x, v_y + 3) );
+
+    blurX(v_x, v_y) = (
+        1 * maskEroded(v_x - 1, v_y) +
+        2 * maskEroded(v_x,     v_y) +
+        1 * maskEroded(v_x + 1, v_y)
+    ) / 4;
+
+    blurY(v_x, v_y) = (
+        1 * blurX(v_x, v_y - 1) +
+        2 * blurX(v_x, v_y)     +
+        1 * blurX(v_x, v_y + 1)             
+    ) / 4;
+
+    mask
+        .compute_at(blurY, v_yi)
+        .store_at(blurY, v_yo)
+        .vectorize(v_x, 8);
+
+    maskErodedTmp
+        .compute_at(blurY, v_yi)
+        .store_at(blurY, v_yo)
+        .vectorize(v_x, 8);
+
+    blurX
+        .compute_at(blurY, v_yi)
+        .store_at(blurY, v_yo)
+        .vectorize(v_x, 8);
+
+    blurY
+        .compute_root()
+        .reorder(v_x, v_y)
+        .split(v_y, v_yo, v_yi, 32)
+        .parallel(v_yo)
+        .vectorize(v_x, 8);
+
+    Expr H = input(v_x, v_y, 0);
+    Expr S = input(v_x, v_y, 1);
+    Expr V = input(v_x, v_y, 2);
+
+    output(v_x, v_y, v_c) = select( v_c == 0,   H,
+                                    v_c == 1,   (1.0f - blurY(v_x, v_y)) * S,
+                                                V);
 }
 
 void PostProcessGenerator::generate()
@@ -1998,15 +2077,15 @@ void PostProcessGenerator::generate()
     // Fix any small artifacts by median filtering
     weightedMedianFilter(Yfiltered, Y);
 
-    Func Utemp, Vtemp;
+    Func Utemp{"Utemp"}, Vtemp{"Vtemp"};
 
     Udownsampled = downsample(U, Utemp);
     Vdownsampled = downsample(V, Vtemp);
 
     uvDownsampled(v_x, v_y, v_c) = select(v_c == 0, Udownsampled(v_x, v_y), Vdownsampled(v_x, v_y));
 
-    Func Udenoise, Vdenoise;
-    Func UdenoiseTemp, VdenoiseTemp;
+    Func Udenoise{"Udenoise"}, Vdenoise{"Vdenoise"};
+    Func UdenoiseTemp{"UdenoiseTemp"}, VdenoiseTemp{"VdenoiseTemp"};
     
     Udenoise.define_extern("extern_denoise", { uvDownsampled, in0.width(), in0.height(), 0, chromaFilterWeight}, UInt(16), 2);
     Udenoise.compute_root();
@@ -2063,7 +2142,9 @@ void PostProcessGenerator::generate()
     
     rgbToHsv(hsvInput, tonemapOutputRgb);
 
-    shiftHues(saturationApplied, hsvInput, blueSaturation, greenSaturation, satParam);
+    fixColorArtifacts(hsvFixed, hsvInput);
+
+    shiftHues(saturationApplied, hsvFixed, blueSaturation, greenSaturation, satParam);
 
     hsvToBgr(finalRgb, saturationApplied);
 
@@ -2349,19 +2430,27 @@ void PostProcessGenerator::schedule_for_cpu() {
         .parallel(v_yo);
 
     sharpened
-        .compute_at(output, v_yi)
-        .store_at(output, v_yo)
+        .compute_at(hsvInput, v_yi)
+        .store_at(hsvInput, v_yo)
         .vectorize(v_x, vector_size_u32);
 
     finalTonemap
-        .compute_at(output, v_yi)
-        .store_at(output, v_yo)
+        .compute_at(hsvInput, v_yi)
+        .store_at(hsvInput, v_yo)
         .vectorize(v_x, vector_size_u16);
 
     tonemapOutputRgb
-        .compute_at(output, v_yi)
-        .store_at(output, v_yo)
+        .compute_at(hsvInput, v_yi)
+        .store_at(hsvInput, v_yo)
         .vectorize(v_x, vector_size_u16);
+
+    hsvInput
+        .compute_root()
+        .reorder(v_c, v_x, v_y)
+        .split(v_y, v_yo, v_yi, 32)
+        .parallel(v_yo)
+        .unroll(v_c)
+        .vectorize(v_x, 8);
 
     gammaCorrected
         .compute_at(output, v_yi)
