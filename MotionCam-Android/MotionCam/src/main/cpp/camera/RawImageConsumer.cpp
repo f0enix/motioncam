@@ -17,6 +17,8 @@
 #include <motioncam/Settings.h>
 #include <motioncam/RawBufferManager.h>
 #include <motioncam/RawContainer.h>
+#include "motioncam/CameraProfile.h"
+#include "motioncam/Temperature.h"
 
 #include <motioncam/ImageProcessor.h>
 #include <camera/NdkCameraMetadata.h>
@@ -37,11 +39,14 @@ namespace motioncam {
         mBufferManager(new RawBufferManager()),
         mRunning(false),
         mEnableRawPreview(false),
+        mOverrideWhiteBalance(false),
         mShadows(1.0f),
         mContrast(0.5f),
         mSaturation(1.0f),
         mBlacks(0.0f),
         mWhitePoint(1.0f),
+        mTempOffset(0.0f),
+        mTintOffset(0.0f),
         mCameraDesc(cameraDescription)
     {
     }
@@ -57,6 +62,8 @@ namespace motioncam {
             LOGD("Attempting to start already running image consumer");
             return;
         }
+
+        cancelHdrBuffers();
 
         mRunning = true;
 
@@ -85,13 +92,15 @@ namespace motioncam {
         mConsumerThreads.clear();
 
         lockBuffers();
+
+        cancelHdrBuffers();
     }
 
     void RawImageConsumer::queueImage(AImage* image) {
         mImageQueue.enqueue(std::shared_ptr<AImage>(image, AImage_delete));
     }
 
-    void RawImageConsumer::queueMetadata(const ACameraMetadata* cameraMetadata, ScreenOrientation screenOrientation) {
+    void RawImageConsumer::queueMetadata(const ACameraMetadata* cameraMetadata, ScreenOrientation screenOrientation, RawType rawType) {
         RawImageMetadata metadata;
 
         if(!copyMetadata(metadata, cameraMetadata)) {
@@ -99,11 +108,12 @@ namespace motioncam {
             return;
         }
 
-        // Keep screen orientation at time of capture
+        // Keep screen orientation and RAW type at time of capture
         metadata.screenOrientation = screenOrientation;
+        metadata.rawType = rawType;
 
         {
-            std::lock_guard<std::mutex> lock(mBufferMutex);
+            std::lock_guard<std::recursive_mutex> lock(mBufferMutex);
 
             // Add pending metadata
             mPendingMetadata.push_back(std::move(metadata));
@@ -111,21 +121,33 @@ namespace motioncam {
     }
 
     void RawImageConsumer::lockBuffers() {
-        std::lock_guard<std::mutex> guard(mBufferMutex);
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
-        if(mBufferManager)
+        if(mBufferManager) {
             mBufferManager->lock();
+        }
     }
 
     void RawImageConsumer::unlockBuffers() {
-        std::lock_guard<std::mutex> guard(mBufferMutex);
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
         if(mBufferManager)
             mBufferManager->unlock();
     }
 
+    int RawImageConsumer::getHdrBufferCount() {
+        int hdrBufferCount = 0;
+
+        {
+            std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
+            hdrBufferCount = mHdrBuffers.size();
+        }
+
+        return hdrBufferCount;
+    }
+
     std::vector<std::shared_ptr<RawImageBuffer>> RawImageConsumer::getBuffers() {
-        std::lock_guard<std::mutex> guard(mBufferMutex);
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
         if(mBufferManager)
             return mBufferManager->getBuffers();
@@ -134,7 +156,7 @@ namespace motioncam {
     }
 
     std::shared_ptr<RawImageBuffer> RawImageConsumer::getBuffer(int64_t timestamp) {
-        std::lock_guard<std::mutex> guard(mBufferMutex);
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
         if(mBufferManager)
             return mBufferManager->getBuffer(timestamp);
@@ -143,12 +165,58 @@ namespace motioncam {
     }
 
     std::shared_ptr<RawImageBuffer> RawImageConsumer::lockLatest() {
-        std::lock_guard<std::mutex> guard(mBufferMutex);
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
         if(mBufferManager)
             return mBufferManager->lockLatest();
 
         return std::shared_ptr<RawImageBuffer>();
+    }
+
+    void RawImageConsumer::cancelHdrBuffers() {
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
+
+        for(auto buffer : mHdrBuffers)
+            mBufferManager->discardBuffer(buffer);
+
+        mHdrBuffers.clear();
+    }
+
+    void RawImageConsumer::save(
+            const RawType rawType,
+            const PostProcessSettings& settings,
+            const std::string& outputPath)
+    {
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
+
+        if(mHdrBuffers.empty()) {
+            LOGI("Failed to save, no buffers available");
+            return;
+        }
+
+        std::vector<std::string> frames;
+        std::map<std::string, std::shared_ptr<RawImageBuffer>> frameBuffers;
+
+        auto it = mHdrBuffers.begin();
+        int filenameIdx = 0;
+
+        while(it != mHdrBuffers.end()) {
+            std::string filename = "frame" + std::to_string(filenameIdx) + ".raw";
+
+            frames.push_back(filename);
+            frameBuffers[filename] = *it;
+
+            ++it;
+            ++filenameIdx;
+        }
+
+        // Save all images. Use first buffer as reference timestamp
+        RawContainer rawContainer(mCameraDesc->metadata, settings, mHdrBuffers[0]->metadata.timestampNs, true, false, frames, frameBuffers);
+
+        rawContainer.saveContainer(outputPath);
+
+        // Return HDR buffers
+        cancelHdrBuffers();
     }
 
     void RawImageConsumer::save(
@@ -158,7 +226,7 @@ namespace motioncam {
             const PostProcessSettings& settings,
             const std::string& outputPath)
     {
-        std::lock_guard<std::mutex> guard(mBufferMutex);
+        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
         if(!mBufferManager) {
             LOGW("Buffer manager does not exist. Can't save!");
@@ -166,12 +234,14 @@ namespace motioncam {
         }
 
         auto buffers = mBufferManager->getBuffers();
+        if(buffers.empty())
+            return;
+
         std::vector<std::shared_ptr<RawImageBuffer>> images;
 
         // Find reference frame
         int referenceIdx = static_cast<int>(buffers.size()) - 1;
 
-        // Find reference index
         for(int i = 0; i < buffers.size(); i++) {
             if(buffers[i]->metadata.timestampNs == referenceTimestamp) {
                 referenceIdx = i;
@@ -228,7 +298,7 @@ namespace motioncam {
                 ++filenameIdx;
             }
 
-            RawContainer rawContainer(mCameraDesc->metadata, settings, referenceTimestamp, writeDNG, frames, frameBuffers);
+            RawContainer rawContainer(mCameraDesc->metadata, settings, referenceTimestamp, false, writeDNG, frames, frameBuffers);
 
             rawContainer.saveContainer(outputPath);
         }
@@ -245,17 +315,7 @@ namespace motioncam {
             dst.timestampNs = metadataEntry.data.i64[0];
         }
         else {
-            return false;
-        }
-
-        // Color correction gains
-        if(ACameraMetadata_getConstEntry(src, ACAMERA_COLOR_CORRECTION_GAINS, &metadataEntry) == ACAMERA_OK) {
-            dst.colorCorrection[0] = metadataEntry.data.f[0];
-            dst.colorCorrection[1] = metadataEntry.data.f[1];
-            dst.colorCorrection[2] = metadataEntry.data.f[2];
-            dst.colorCorrection[3] = metadataEntry.data.f[3];
-        }
-        else {
+            LOGE("ACAMERA_SENSOR_TIMESTAMP error");
             return false;
         }
 
@@ -266,6 +326,7 @@ namespace motioncam {
             dst.asShot[2] = (float) metadataEntry.data.r[2].numerator / (float) metadataEntry.data.r[2].denominator;
         }
         else {
+            LOGE("ACAMERA_SENSOR_NEUTRAL_COLOR_POINT error");
             return false;
         }
 
@@ -295,6 +356,7 @@ namespace motioncam {
             }
         }
         else {
+            LOGE("ACAMERA_LENS_INFO_SHADING_MAP_SIZE error");
             return false;
         }
 
@@ -311,6 +373,7 @@ namespace motioncam {
             }
         }
         else {
+            LOGE("ACAMERA_STATISTICS_LENS_SHADING_MAP error");
             return false;
         }
 
@@ -318,7 +381,10 @@ namespace motioncam {
     }
 
     void RawImageConsumer::onBufferReady(const std::shared_ptr<RawImageBuffer>& buffer) {
-        mBufferManager->returnBuffer(buffer);
+        if(buffer->metadata.rawType == RawType::HDR)
+            mHdrBuffers.push_back(buffer);
+        else
+            mBufferManager->returnBuffer(buffer);
     }
 
     void RawImageConsumer::doMatchMetadata() {
@@ -333,7 +399,7 @@ namespace motioncam {
                 pendingBufferIt->second->metadata = *it;
 
                 // Return buffer once ready
-                if(mEnableRawPreview) {
+                if(mEnableRawPreview && pendingBufferIt->second->metadata.rawType == RawType::ZSL) {
                     if(!mPreprocessQueue.try_push(pendingBufferIt->second)) {
                         onBufferReady(pendingBufferIt->second);
                     }
@@ -377,13 +443,12 @@ namespace motioncam {
         while(mRunning && memoryUseBytes + bufferLength < mMaximumMemoryUsageBytes) {
             std::vector<std::shared_ptr<RawImageBuffer>> buffers;
 
-            // Create 2 buffers at a time
             std::shared_ptr<RawImageBuffer> buffer = std::make_shared<RawImageBuffer>(std::make_unique<NativeClBuffer>(bufferLength));
             buffers.push_back(buffer);
 
             // Lock buffer manager and add the buffers
             {
-                std::lock_guard<std::mutex> lock(mBufferMutex);
+                std::lock_guard<std::recursive_mutex> lock(mBufferMutex);
 
                 mBufferManager->addBuffers(buffers);
 
@@ -481,12 +546,13 @@ namespace motioncam {
         std::shared_ptr<RawImageBuffer> buffer;
 
         std::chrono::steady_clock::time_point fpsTimestamp = std::chrono::steady_clock::now();
+        std::chrono::steady_clock::time_point wbTimestamp = std::chrono::steady_clock::now();
         std::chrono::steady_clock::time_point previewTimestamp;
 
         cl_int errCode = -1;
 
         bool outputCreated = false;
-        int downscaleFactor = 4;
+        int downscaleFactor = mRawPreviewQuality;
         int processedFrames = 0;
         double totalPreviewTimeMs = 0;
         bool previewSettled = false;
@@ -517,6 +583,8 @@ namespace motioncam {
                     mSaturation,
                     mBlacks,
                     mWhitePoint,
+                    mTempOffset,
+                    mTintOffset,
                     0.25f,
                     inputBuffer,
                     outputBuffer);
@@ -546,7 +614,7 @@ namespace motioncam {
             VERIFY_RESULT(CL_release(), "Failed to release CL context");
 
             {
-                std::lock_guard<std::mutex> lock(mBufferMutex);
+                std::lock_guard<std::recursive_mutex> lock(mBufferMutex);
                 onBufferReady(buffer);
             }
 
@@ -554,28 +622,10 @@ namespace motioncam {
 
             auto now = std::chrono::steady_clock::now();
             double durationMs = std::chrono::duration <double, std::milli>(now - fpsTimestamp).count();
+
+            // Print camera FPS + stats
             if(durationMs > 3000.0f) {
-                // Vary camera preview quality dependening on GPU processing time
                 double avgProcessTimeMs = totalPreviewTimeMs / processedFrames;
-                int tmpDownscaleFactor = downscaleFactor;
-
-                // Set 20 fps as acceptable frame rate
-                if(avgProcessTimeMs < 50) {
-                    --tmpDownscaleFactor;
-                }
-                else {
-                    ++tmpDownscaleFactor;
-                }
-
-                tmpDownscaleFactor = std::max(3, std::min(4, tmpDownscaleFactor));
-                if(!previewSettled && tmpDownscaleFactor != downscaleFactor) {
-                    downscaleFactor = tmpDownscaleFactor;
-                    releaseCameraPreviewOutputBuffer(outputBuffer);
-                    outputCreated = false;
-
-                    if(tmpDownscaleFactor > downscaleFactor)
-                        previewSettled = true;
-                }
 
                 LOGI("Camera FPS: %d, cameraQuality=%d processTimeMs=%.2f", processedFrames / 3, downscaleFactor, avgProcessTimeMs);
 
@@ -592,7 +642,7 @@ namespace motioncam {
         LOGD("Exiting preprocess thread");
     }
 
-    void RawImageConsumer::enableRawPreview(std::shared_ptr<RawPreviewListener> listener) {
+    void RawImageConsumer::enableRawPreview(std::shared_ptr<RawPreviewListener> listener, const int previewQuality) {
         if(mEnableRawPreview)
             return;
 
@@ -600,15 +650,20 @@ namespace motioncam {
 
         mPreviewListener  = std::move(listener);
         mEnableRawPreview = true;
+        mRawPreviewQuality = previewQuality;
         mPreprocessThread = std::make_shared<std::thread>(&RawImageConsumer::doPreprocess, this);
     }
 
-    void RawImageConsumer::updateRawPreviewSettings(float shadows, float contrast, float saturation, float blacks, float whitePoint) {
+    void RawImageConsumer::updateRawPreviewSettings(
+            float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset)
+    {
         mShadows = shadows;
         mContrast = contrast;
         mSaturation = saturation;
         mBlacks = blacks;
         mWhitePoint = whitePoint;
+        mTempOffset = tempOffset;
+        mTintOffset = tintOffset;
     }
 
     void RawImageConsumer::disableRawPreview() {
@@ -622,20 +677,32 @@ namespace motioncam {
         mPreviewListener.reset();
     }
 
+    void RawImageConsumer::setWhiteBalanceOverride(bool override) {
+        // TODO This doesn't do anything yet
+        mOverrideWhiteBalance = override;
+    }
+
     void RawImageConsumer::doCopyImage() {
         while(mRunning) {
             std::shared_ptr<AImage> pendingImage = nullptr;
 
             // Wait for image
             if(!mImageQueue.wait_dequeue_timed(pendingImage, std::chrono::milliseconds(100))) {
+                // Try to match buffers even if no image has been added
+                std::lock_guard<std::recursive_mutex> lock(mBufferMutex);
+
+                doMatchMetadata();
                 continue;
             }
+
+            if(!pendingImage)
+                continue;
 
             std::shared_ptr<RawImageBuffer> dst, previewBuffer;
 
             // Lock and get an image out
             {
-                std::lock_guard<std::mutex> lock(mBufferMutex);
+                std::lock_guard<std::recursive_mutex> lock(mBufferMutex);
 
                 if(!mSetupBuffersThread) {
                     int length = 0;
@@ -648,21 +715,23 @@ namespace motioncam {
                     else {
                         mSetupBuffersThread = std::make_shared<std::thread>(&RawImageConsumer::doSetupBuffers, this, static_cast<size_t>(length));
                     }
+
+                    // Give the buffers thread a chance to create some buffers before we try to get one below.
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 }
-                else {
-                    dst = mBufferManager->allocateBuffer();
 
-                    // If we aren't able to allocate a buffer something is probably broken. We aren't
-                    // matching metadata to buffers so we need to remove a pending buffer
-                    if (!dst) {
-                        if (!mPendingBuffers.empty()) {
-                            auto it = mPendingBuffers.begin();
-                            dst = it->second;
+                dst = mBufferManager->allocateBuffer();
 
-                            mPendingBuffers.erase(it);
+                // If we aren't able to allocate a buffer something is probably broken. We aren't
+                // matching metadata to buffers so we need to remove a pending buffer
+                if (!dst) {
+                    if (!mPendingBuffers.empty()) {
+                        auto it = mPendingBuffers.begin();
+                        dst = it->second;
 
-                            LOGW("Removing pending buffer");
-                        }
+                        mPendingBuffers.erase(it);
+
+                        LOGW("Removing pending buffer");
                     }
                 }
             }
@@ -745,7 +814,7 @@ namespace motioncam {
 
             // Insert back
             {
-                std::lock_guard<std::mutex> guard(mBufferMutex);
+                std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
                 if(!result) {
                     LOGW("Got error, discarding buffer");
@@ -779,7 +848,7 @@ namespace motioncam {
         std::shared_ptr<std::thread> bufferThread;
 
         {
-            std::lock_guard<std::mutex> guard(mBufferMutex);
+            std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
 
             bufferThread = mSetupBuffersThread;
             mSetupBuffersThread = nullptr;

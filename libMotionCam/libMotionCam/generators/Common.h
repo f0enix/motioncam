@@ -3,7 +3,6 @@
 
 enum class RawFormat : int {
     RAW10 = 0,
-    RAW12,
     RAW16
 };
 

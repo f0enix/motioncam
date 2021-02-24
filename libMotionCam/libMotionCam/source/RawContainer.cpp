@@ -157,7 +157,8 @@ namespace motioncam {
     RawContainer::RawContainer(const string& inputPath) :
         mZipReader(new util::ZipReader(inputPath)),
         mReferenceTimestamp(-1),
-        mWriteDNG(false)
+        mWriteDNG(false),
+        mIsHdr(false)
     {
         initialise();
     }
@@ -165,12 +166,14 @@ namespace motioncam {
     RawContainer::RawContainer(RawCameraMetadata cameraMetadata,
                                const PostProcessSettings& postProcessSettings,
                                const int64_t referenceTimestamp,
+                               const bool isHdr,
                                const bool writeDNG,
                                std::vector<string> frames,
                                std::map<string, std::shared_ptr<RawImageBuffer>>  frameBuffers) :
         mCameraMetadata(std::move(cameraMetadata)),
         mPostProcessSettings(postProcessSettings),
         mReferenceTimestamp(referenceTimestamp),
+        mIsHdr(isHdr),
         mWriteDNG(writeDNG),
         mFrames(std::move(frames)),
         mFrameBuffers(std::move(frameBuffers))
@@ -181,10 +184,11 @@ namespace motioncam {
         auto it = mFrames.begin();
         
         json11::Json::object metadataJson;
-        
-        // Save reference timestamp
+
+        // Save misc stuff
         metadataJson["referenceTimestamp"]  = std::to_string(mReferenceTimestamp);
         metadataJson["writeDNG"]            = mWriteDNG;
+        metadataJson["isHdr"]               = mIsHdr;
         
         // Global camera metadata
         metadataJson["colorIlluminant1"]    = color::IlluminantToString(mCameraMetadata.colorIlluminant1);
@@ -225,15 +229,6 @@ namespace motioncam {
             imageMetadata["height"]      = frame->height;
             imageMetadata["rowStride"]   = frame->rowStride;
             imageMetadata["pixelFormat"] = toString(frame->pixelFormat);
-
-            vector<float> colorCorrectionGains = {
-                frame->metadata.colorCorrection[0],
-                frame->metadata.colorCorrection[1],
-                frame->metadata.colorCorrection[2],
-                frame->metadata.colorCorrection[3]
-            };
-            
-            imageMetadata["colorCorrectionGains"] = colorCorrectionGains;
 
             vector<float> asShot = {
                 frame->metadata.asShot[0],
@@ -307,7 +302,8 @@ namespace motioncam {
         
         mReferenceTimestamp = std::stol(getOptionalStringSetting(json, "referenceTimestamp", "0"));
         mWriteDNG = getOptionalSetting(json, "writeDNG", false);
-        
+        mIsHdr = getOptionalSetting(json, "isHdr", false);
+
         // Black/white levels
         vector<Json> blackLevelValues = json["blackLevel"].array_items();
         for(auto& blackLevelValue : blackLevelValues) {
@@ -416,17 +412,6 @@ namespace motioncam {
             
             string timestamp                    = getRequiredSettingAsString(*it, "timestamp");
             buffer->metadata.timestampNs        = std::stol(timestamp);
-                
-            // Color correction
-            vector<Json> colorCorrectionItems = (*it)["colorCorrectionGains"].array_items();
-    
-            if(colorCorrectionItems.size() < 4)
-                throw InvalidState("Invalid metadata. Color correction gains are invalid");
-            
-            buffer->metadata.colorCorrection[0] = colorCorrectionItems[0].number_value();
-            buffer->metadata.colorCorrection[1] = colorCorrectionItems[1].number_value();
-            buffer->metadata.colorCorrection[2] = colorCorrectionItems[2].number_value();
-            buffer->metadata.colorCorrection[3] = colorCorrectionItems[3].number_value();
 
             // Lens shading maps
             int lenShadingMapWidth  = getRequiredSettingAsInt(*it, "lensShadingMapWidth");
@@ -503,11 +488,20 @@ namespace motioncam {
         return mWriteDNG;
     }
 
+    bool RawContainer::isHdr() const {
+        return mIsHdr;
+    }
+
     string RawContainer::getReferenceImage() const {
         return mReferenceImage;
     }
 
-    const std::vector<string>& RawContainer::getFrames() const {
+    void RawContainer::updateReferenceImage(const std::string& referenceName) {
+        mReferenceTimestamp = -1;
+        mReferenceImage = referenceName;
+    }
+
+    std::vector<string> RawContainer::getFrames() const {
         return mFrames;
     }
 
@@ -516,6 +510,10 @@ namespace motioncam {
         if(buffer == mFrameBuffers.end()) {
             throw IOException("Cannot find " + frame + " in container");
         }
+        
+        // If we've already loaded the data, return it
+        if(buffer->second->data->len() > 0)
+            return buffer->second;
         
         // Load the data into the buffer
         std::vector<uint8_t> data;
@@ -536,13 +534,14 @@ namespace motioncam {
         return buffer->second;
     }
 
-    void RawContainer::releaseFrame(const std::string& frame) const {
-        auto buffer = mFrameBuffers.find(frame);
-        
-        if(buffer == mFrameBuffers.end()) {
-            throw IOException("Cannot find " + frame + " in container");
+    void RawContainer::removeFrame(const std::string& frame) {
+        auto it = std::find(mFrames.begin(), mFrames.end(), frame);
+        if(it != mFrames.end()) {
+            mFrames.erase(it);
         }
-
-        buffer->second->data->release();
+        
+        auto bufferIt = mFrameBuffers.find(frame);
+        if(bufferIt != mFrameBuffers.end())
+            mFrameBuffers.erase(bufferIt);
     }
 }

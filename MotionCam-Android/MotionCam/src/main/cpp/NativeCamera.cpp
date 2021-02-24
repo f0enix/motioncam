@@ -115,7 +115,8 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_StartCaptur
         JNIEnv *env, jobject instance,
         jlong sessionHandle,
         jstring jcameraId,
-        jobject previewSurface)
+        jobject previewSurface,
+        jboolean setupForRawPreview)
 {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(sessionHandle);
     if(!sessionManager) {
@@ -134,7 +135,7 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_StartCaptur
     try {
         std::shared_ptr<ANativeWindow> window(ANativeWindow_fromSurface(env, previewSurface), ANativeWindow_release);
 
-        sessionManager->startCamera(cameraId, gCameraSessionListener, window);
+        sessionManager->startCamera(cameraId, gCameraSessionListener, window, setupForRawPreview);
     }
     catch(const CameraSessionException& e) {
         gLastError = e.what();
@@ -265,6 +266,7 @@ jobject JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_GetPreviewOu
 
     return nullptr;
 }
+
 extern "C" JNIEXPORT
 jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_CaptureImage(
         JNIEnv *env,
@@ -460,7 +462,9 @@ jobject JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_GetMetadata(
 }
 
 extern "C" JNIEXPORT
-jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EnableRawPreview(JNIEnv *env, jobject thiz, jlong sessionHandle, jobject listener) {
+jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EnableRawPreview(
+        JNIEnv *env, jobject thiz, jlong sessionHandle, jobject listener, jint previewQuality, jboolean overrideWb)
+{
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(sessionHandle);
 
     if(!sessionManager) {
@@ -473,7 +477,7 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EnableRawPr
 
     gRawPreviewListener = std::make_shared<NativeRawPreviewListener>(env, listener);
 
-    sessionManager->enableRawPreview(gRawPreviewListener);
+    sessionManager->enableRawPreview(gRawPreviewListener, previewQuality, overrideWb);
 
     return JNI_TRUE;
 }
@@ -863,7 +867,7 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_SetExposure
 }
 
 extern "C" JNIEXPORT
-jfloat JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EstimateShadows(JNIEnv *env, jobject thiz, jlong handle) {
+jfloat JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EstimateShadows(JNIEnv *env, jobject thiz, jlong handle, jfloat bias) {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
     if(!sessionManager) {
         return 1.0f;
@@ -876,11 +880,18 @@ jfloat JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EstimateShado
 
     auto cameraId = sessionManager->getSelectedCameraId();
     auto metadata = sessionManager->getCameraDescription(cameraId)->metadata;
-    PostProcessSettings postProcessSettings;
+
+    cv::Mat histogram = motioncam::ImageProcessor::calcHistogram(metadata, *imageBuffer, false, 8);
+
+    double s = 1.8*1.8;
+    double ev = std::log2(s / (imageBuffer->metadata.exposureTime / (1000.0*1000.0*1000.0))) - std::log2(imageBuffer->metadata.iso / 100.0);
+    double keyValue = 1.03 - bias / (bias + std::log10(std::pow(10.0, ev) + 1));
+
+    float result = motioncam::ImageProcessor::estimateShadows(histogram, keyValue);
 
     sessionManager->unlockBuffers();
 
-    return gImageProcessor->estimateShadows(*imageBuffer, metadata, postProcessSettings);
+    return result;
 }
 
 extern "C" JNIEXPORT
@@ -892,14 +903,71 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_SetRawPrevi
         jfloat contrast,
         jfloat saturation,
         jfloat blacks,
-        jfloat whitePoint)
+        jfloat whitePoint,
+        jfloat tempOffset,
+        jfloat tintOffset)
 {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
     if(!sessionManager) {
         return JNI_FALSE;
     }
 
-    sessionManager->updateRawPreviewSettings(shadows, contrast, saturation, blacks, whitePoint);
+    sessionManager->updateRawPreviewSettings(
+            shadows, contrast, saturation, blacks, whitePoint, tempOffset, tintOffset);
+
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT
+jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_CaptureHdrImage(
+    JNIEnv *env,
+    jobject thiz,
+    jlong handle,
+    jint numImages,
+    jint baseIso,
+    jlong baseExposure,
+    jint hdrIso,
+    jlong hdrExposure,
+    jstring postProcessSettings_,
+    jstring outputPath_)
+{
+    std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
+    if(!sessionManager) {
+        return JNI_FALSE;
+    }
+
+    const char *coutputPath = env->GetStringUTFChars(outputPath_, nullptr);
+    if(coutputPath == nullptr) {
+        LOGE("Failed to get output path");
+        return JNI_FALSE;
+    }
+
+    std::string outputPath(coutputPath);
+
+    env->ReleaseStringUTFChars(outputPath_, coutputPath);
+
+    const char* cjsonString = env->GetStringUTFChars(postProcessSettings_, nullptr);
+    if(cjsonString == nullptr) {
+        LOGE("Failed to get settings");
+        return JNI_FALSE;
+    }
+
+    std::string settingsJson(cjsonString);
+
+    env->ReleaseStringUTFChars(outputPath_, cjsonString);
+
+    // Parse post process settings
+    std::string err;
+    json11::Json json = json11::Json::parse(settingsJson, err);
+
+    // Can't parse the settings
+    if(!err.empty()) {
+        return JNI_FALSE;
+    }
+
+    motioncam::PostProcessSettings settings(json);
+
+    sessionManager->captureHdrImage(numImages, baseIso, baseExposure, hdrIso, hdrExposure, settings, outputPath);
 
     return JNI_TRUE;
 }

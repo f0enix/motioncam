@@ -42,6 +42,12 @@ function build_postprocess() {
 	ARCH=$2
 	FLAGS="no_runtime"
 
+	echo "[$ARCH] Building hdr_mask_generator"
+	./tmp/postprocess_generator -g hdr_mask_generator -f hdr_mask -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS}
+
+	echo "[$ARCH] Building linear_image_generator"
+	./tmp/postprocess_generator -g linear_image_generator -f linear_image -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS}
+
 	echo "[$ARCH] Building measure_image_generator"
 	./tmp/postprocess_generator -g measure_image_generator -f measure_image -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS}
 
@@ -96,14 +102,25 @@ function build_camera_preview() {
 	ARCH=$2
 	FLAGS="no_runtime"
 
-	echo "[$ARCH] Building camera_preview_generator2"
-	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview2 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=7 downscaleFactor=2
+	# RAW10
+	echo "[$ARCH] Building camera_preview_generator2_raw10"
+	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview2_raw10 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=7 downscale_factor=2 pixel_format=0
 
-	echo "[$ARCH] Building camera_preview_generator3"
-	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview3 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=6 downscaleFactor=3
+	echo "[$ARCH] Building camera_preview_generator3_raw10"
+	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview3_raw10 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=7 downscale_factor=3 pixel_format=0
 
-	echo "[$ARCH] Building camera_preview_generator4"
-	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview4 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=6 downscaleFactor=4
+	echo "[$ARCH] Building camera_preview_generator4_raw10"
+	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview4_raw10 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=6 downscale_factor=4 pixel_format=0
+
+	# RAW16
+	echo "[$ARCH] Building camera_preview_generator2_raw16"
+	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview2_raw16 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=7 downscale_factor=2 pixel_format=1
+
+	echo "[$ARCH] Building camera_preview_generator3_raw16"
+	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview3_raw16 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=7 downscale_factor=3 pixel_format=1
+
+	echo "[$ARCH] Building camera_preview_generator4_raw16"
+	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview4_raw16 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=6 downscale_factor=4 pixel_format=1
 
 	echo "[$ARCH] Building halide_runtime"
 	./tmp/camera_preview_generator -r halide_runtime -e static_library,h -o ../halide/${ARCH} target=${TARGET}
@@ -111,8 +128,8 @@ function build_camera_preview() {
 
 mkdir -p ../halide/host
 
-build_denoise host-profile host
-build_postprocess host-profile host
+build_denoise host host
+build_postprocess host host
 build_camera_preview host-opencl-cl_half host
 
 mkdir -p ../halide/arm64-v8a

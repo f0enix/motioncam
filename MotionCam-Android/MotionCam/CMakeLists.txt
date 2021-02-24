@@ -116,17 +116,37 @@ set_target_properties(exiv2-xmp PROPERTIES IMPORTED_LOCATION
 # Halide libraries
 #
 
-add_library(camera_preview2 STATIC IMPORTED)
-set_target_properties(camera_preview2 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview2.a)
+add_library(camera_preview2_raw10 STATIC IMPORTED)
+set_target_properties(camera_preview2_raw10 PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview2_raw10.a)
 
-add_library(camera_preview3 STATIC IMPORTED)
-set_target_properties(camera_preview3 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview3.a)
+add_library(camera_preview3_raw10 STATIC IMPORTED)
+set_target_properties(camera_preview3_raw10 PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview3_raw10.a)
 
-add_library(camera_preview4 STATIC IMPORTED)
-set_target_properties(camera_preview4 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview4.a)
+add_library(camera_preview4_raw10 STATIC IMPORTED)
+set_target_properties(camera_preview4_raw10 PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview4_raw10.a)
+
+add_library(camera_preview2_raw16 STATIC IMPORTED)
+set_target_properties(camera_preview2_raw16 PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview2_raw16.a)
+
+add_library(camera_preview3_raw16 STATIC IMPORTED)
+set_target_properties(camera_preview3_raw16 PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview3_raw16.a)
+
+add_library(camera_preview4_raw16 STATIC IMPORTED)
+set_target_properties(camera_preview4_raw16 PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview4_raw16.a)
+
+add_library(hdr_mask STATIC IMPORTED)
+set_target_properties(hdr_mask PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/hdr_mask.a)
+
+add_library(linear_image STATIC IMPORTED)
+set_target_properties(linear_image PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/linear_image.a)
 
 add_library(generate_edges STATIC IMPORTED)
 set_target_properties(generate_edges PROPERTIES IMPORTED_LOCATION
@@ -395,9 +415,14 @@ target_link_libraries(native-camera
         libexpat
 
         # Halide libraries
-        camera_preview2
-        camera_preview3
-        camera_preview4
+        camera_preview2_raw10
+        camera_preview3_raw10
+        camera_preview4_raw10
+        camera_preview2_raw16
+        camera_preview3_raw16
+        camera_preview4_raw16
+        hdr_mask
+        linear_image
         generate_edges
         measure_image
         deinterleave_raw

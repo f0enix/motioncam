@@ -1742,16 +1742,17 @@ public:
     Input<Buffer<uint16_t>> in2{"in2", 2 };
     Input<Buffer<uint16_t>> in3{"in3", 2 };
 
-    Input<Buffer<float>> inshadingMap0{"inshadingMap0", 2 };
-    Input<Buffer<float>> inshadingMap1{"inshadingMap1", 2 };
-    Input<Buffer<float>> inshadingMap2{"inshadingMap2", 2 };
-    Input<Buffer<float>> inshadingMap3{"inshadingMap3", 2 };
-    
-    Input<float> asShotVector0{"asShotVector0"};
-    Input<float> asShotVector1{"asShotVector1"};
-    Input<float> asShotVector2{"asShotVector2"};
+    Input<Buffer<uint16_t>> hdrInput{"hdrInput", 3 };
+    Input<Buffer<uint8_t>> hdrMask{"hdrMask", 2 };
+    Input<float> hdrScale{"hdrScale"};
 
+    Input<float[3]> asShotVector{"asShotVector"};
     Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
+
+    Input<Buffer<float>> inShadingMap0{"inShadingMap0", 2 };
+    Input<Buffer<float>> inShadingMap1{"inShadingMap1", 2 };
+    Input<Buffer<float>> inShadingMap2{"inShadingMap2", 2 };
+    Input<Buffer<float>> inShadingMap3{"inShadingMap3", 2 };
 
     Input<int16_t> range{"range"};
     Input<int> sensorArrangement{"sensorArrangement"};
@@ -1769,7 +1770,7 @@ public:
     Input<float> sharpen0{"sharpen0"};
     Input<float> sharpen1{"sharpen1"};
     Input<float> chromaFilterWeight{"chromaFilterWeight"};
-        
+    
     Output<Buffer<uint8_t>> output{"output", 3};
     
     Func clamped0{"clamped0"};
@@ -1782,6 +1783,7 @@ public:
     Func bayerInput{"bayerInput"};
     Func adjustExposure{"adjustExposure"};
     Func colorCorrected{"colorCorrected"};
+    Func hdrMerged{"hdrMerged"};
     Func colorCorrectedYuv{"colorCorrectedYuv"};
     Func Yfiltered{"Yfiltered"}, Udownsampled{"Udownsampled"}, Vdownsampled{"Vdownsampled"};
     Func uvDownsampled{"uvDownsampled"};
@@ -1793,6 +1795,7 @@ public:
     Func chromaDenoiseInputU{"chromaDenoiseInputU"}, chromaDenoiseInputV{"chromaDenoiseInputV"};
     Func finalTonemap{"finalTonemap"};
     Func hsvInput{"hsvInput"};
+    Func hsvFixed{"hsvFixed"};
     Func saturationValue{"saturationValue"}, saturationFiltered{"saturationFiltered"};
     Func saturationApplied{"saturationApplied"};
     Func finalRgb{"finalRgb"};
@@ -1820,6 +1823,7 @@ private:
     void blur(Func& output, Func input);
     void blur2(Func& output, Func input);
     void blur3(Func& output, Func input);
+    void fixColorArtifacts(Func& output, Func input);
 };
 
 void PostProcessGenerator::blur(Func& output, Func input) {
@@ -1905,6 +1909,83 @@ void PostProcessGenerator::blur3(Func& output, Func input) {
         );
 }
 
+// TODO: This needs some work.
+void PostProcessGenerator::fixColorArtifacts(Func& output, Func input) {
+    Func mask{"mask"}, maskErodedTmp{"maskErodedTmp"}, maskEroded{"maskEroded"};
+    Func weight{"weight"};
+    Func blurX{"blurX"}, blurY{"blurY"};
+
+    mask(v_x, v_y) = 1.0f/8.0f * (
+        abs(input(v_x, v_y, 2) - input(v_x - 1, v_y - 1, 2)) +
+        abs(input(v_x, v_y, 2) - input(v_x,     v_y - 1, 2)) +
+        abs(input(v_x, v_y, 2) - input(v_x + 1, v_y - 1, 2)) +
+        abs(input(v_x, v_y, 2) - input(v_x - 1, v_y - 0, 2)) +
+        abs(input(v_x, v_y, 2) - input(v_x + 1, v_y - 0, 2)) +
+        abs(input(v_x, v_y, 2) - input(v_x - 1, v_y + 1, 2)) +
+        abs(input(v_x, v_y, 2) - input(v_x,     v_y + 1, 2)) +
+        abs(input(v_x, v_y, 2) - input(v_x + 1, v_y + 1, 2)) );
+
+    maskErodedTmp(v_x, v_y) = max(
+        mask(v_x - 3, v_y),
+        mask(v_x - 2, v_y),
+        mask(v_x - 1, v_y),
+        mask(v_x + 0, v_y),
+        mask(v_x + 1, v_y),
+        mask(v_x + 2, v_y),
+        mask(v_x + 3, v_y) );
+
+    maskEroded(v_x, v_y) = max(
+        maskErodedTmp(v_x, v_y - 3),
+        maskErodedTmp(v_x, v_y - 2),
+        maskErodedTmp(v_x, v_y - 1),
+        maskErodedTmp(v_x, v_y + 0),
+        maskErodedTmp(v_x, v_y + 1),
+        maskErodedTmp(v_x, v_y + 2),
+        maskErodedTmp(v_x, v_y + 3) );
+
+    blurX(v_x, v_y) = (
+        1 * maskEroded(v_x - 1, v_y) +
+        2 * maskEroded(v_x,     v_y) +
+        1 * maskEroded(v_x + 1, v_y)
+    ) / 4;
+
+    blurY(v_x, v_y) = (
+        1 * blurX(v_x, v_y - 1) +
+        2 * blurX(v_x, v_y)     +
+        1 * blurX(v_x, v_y + 1)             
+    ) / 4;
+
+    mask
+        .compute_at(blurY, v_yi)
+        .store_at(blurY, v_yo)
+        .vectorize(v_x, 8);
+
+    maskErodedTmp
+        .compute_at(blurY, v_yi)
+        .store_at(blurY, v_yo)
+        .vectorize(v_x, 8);
+
+    blurX
+        .compute_at(blurY, v_yi)
+        .store_at(blurY, v_yo)
+        .vectorize(v_x, 8);
+
+    blurY
+        .compute_root()
+        .reorder(v_x, v_y)
+        .split(v_y, v_yo, v_yi, 32)
+        .parallel(v_yo)
+        .vectorize(v_x, 8);
+
+    Expr H = input(v_x, v_y, 0);
+    Expr S = input(v_x, v_y, 1);
+    Expr V = input(v_x, v_y, 2);
+
+    output(v_x, v_y, v_c) = select( v_c == 0,   H,
+                                    v_c == 1,   (1.0f - blurY(v_x, v_y)) * S,
+                                                V);
+}
+
 void PostProcessGenerator::generate()
 {
     Expr sharpen0Param = sharpen0;
@@ -1919,10 +2000,10 @@ void PostProcessGenerator::generate()
     clamped2 = BoundaryConditions::repeat_edge(in2);
     clamped3 = BoundaryConditions::repeat_edge(in3);
         
-    linearScale(shadingMap0, inshadingMap0, inshadingMap0.width(), inshadingMap0.height(), in0.width(), in0.height());
-    linearScale(shadingMap1, inshadingMap1, inshadingMap1.width(), inshadingMap1.height(), in1.width(), in1.height());
-    linearScale(shadingMap2, inshadingMap2, inshadingMap2.width(), inshadingMap2.height(), in2.width(), in2.height());
-    linearScale(shadingMap3, inshadingMap3, inshadingMap3.width(), inshadingMap3.height(), in3.width(), in3.height());
+    linearScale(shadingMap0, inShadingMap0, inShadingMap0.width(), inShadingMap0.height(), in0.width(), in0.height());
+    linearScale(shadingMap1, inShadingMap1, inShadingMap1.width(), inShadingMap1.height(), in1.width(), in1.height());
+    linearScale(shadingMap2, inShadingMap2, inShadingMap2.width(), inShadingMap2.height(), in2.width(), in2.height());
+    linearScale(shadingMap3, inShadingMap3, inShadingMap3.width(), inShadingMap3.height(), in3.width(), in3.height());
 
     rearrange(shadingMapArranged, shadingMap0, shadingMap1, shadingMap2, shadingMap3, sensorArrangement);
 
@@ -1963,14 +2044,22 @@ void PostProcessGenerator::generate()
     linear(v_x, v_y, v_c) = (demosaic->output(v_x, v_y, v_c) / cast<float>(range));
 
     colorCorrectInput(v_x, v_y, v_c) =
-        select( v_c == 0, clamp( linear(v_x, v_y, 0), 0.0f, asShotVector0 ),
-                v_c == 1, clamp( linear(v_x, v_y, 1), 0.0f, asShotVector1 ),
-                          clamp( linear(v_x, v_y, 2), 0.0f, asShotVector2 ));
+        select( v_c == 0, clamp( linear(v_x, v_y, 0), 0.0f, asShotVector[0] ),
+                v_c == 1, clamp( linear(v_x, v_y, 1), 0.0f, asShotVector[1] ),
+                          clamp( linear(v_x, v_y, 2), 0.0f, asShotVector[2] ));
 
     transform(colorCorrected, colorCorrectInput, cameraToSrgb);
 
+    // Blend in highlights
+    Func hdrMask32, hdrInput32;
+
+    hdrMask32(v_x, v_y) = BoundaryConditions::repeat_edge(hdrMask)(v_x, v_y) / 255.0f;
+    hdrInput32(v_x, v_y, v_c) = BoundaryConditions::repeat_edge(hdrInput)(v_x, v_y, v_c) / 65535.0f;
+
+    hdrMerged(v_x, v_y, v_c) = (1.0f - hdrMask32(v_x, v_y))*(hdrScale * colorCorrected(v_x, v_y, v_c)) + (hdrMask32(v_x, v_y)*hdrInput32(v_x, v_y, v_c));
+
     // Adjust exposure
-    adjustExposure(v_x, v_y, v_c) = clamp(exposureParam * colorCorrected(v_x, v_y, v_c), 0.0f, 1.0f);
+    adjustExposure(v_x, v_y, v_c) = clamp(exposureParam * hdrMerged(v_x, v_y, v_c), 0.0f, 1.0f);
 
     // Move to YUV space
     Func yuvResult("yuvResult");
@@ -1988,15 +2077,15 @@ void PostProcessGenerator::generate()
     // Fix any small artifacts by median filtering
     weightedMedianFilter(Yfiltered, Y);
 
-    Func Utemp, Vtemp;
+    Func Utemp{"Utemp"}, Vtemp{"Vtemp"};
 
     Udownsampled = downsample(U, Utemp);
     Vdownsampled = downsample(V, Vtemp);
 
     uvDownsampled(v_x, v_y, v_c) = select(v_c == 0, Udownsampled(v_x, v_y), Vdownsampled(v_x, v_y));
 
-    Func Udenoise, Vdenoise;
-    Func UdenoiseTemp, VdenoiseTemp;
+    Func Udenoise{"Udenoise"}, Vdenoise{"Vdenoise"};
+    Func UdenoiseTemp{"UdenoiseTemp"}, VdenoiseTemp{"VdenoiseTemp"};
     
     Udenoise.define_extern("extern_denoise", { uvDownsampled, in0.width(), in0.height(), 0, chromaFilterWeight}, UInt(16), 2);
     Udenoise.compute_root();
@@ -2053,7 +2142,9 @@ void PostProcessGenerator::generate()
     
     rgbToHsv(hsvInput, tonemapOutputRgb);
 
-    shiftHues(saturationApplied, hsvInput, blueSaturation, greenSaturation, satParam);
+    fixColorArtifacts(hsvFixed, hsvInput);
+
+    shiftHues(saturationApplied, hsvFixed, blueSaturation, greenSaturation, satParam);
 
     hsvToBgr(finalRgb, saturationApplied);
 
@@ -2339,19 +2430,27 @@ void PostProcessGenerator::schedule_for_cpu() {
         .parallel(v_yo);
 
     sharpened
-        .compute_at(output, v_yi)
-        .store_at(output, v_yo)
+        .compute_at(hsvInput, v_yi)
+        .store_at(hsvInput, v_yo)
         .vectorize(v_x, vector_size_u32);
 
     finalTonemap
-        .compute_at(output, v_yi)
-        .store_at(output, v_yo)
+        .compute_at(hsvInput, v_yi)
+        .store_at(hsvInput, v_yo)
         .vectorize(v_x, vector_size_u16);
 
     tonemapOutputRgb
-        .compute_at(output, v_yi)
-        .store_at(output, v_yo)
+        .compute_at(hsvInput, v_yi)
+        .store_at(hsvInput, v_yo)
         .vectorize(v_x, vector_size_u16);
+
+    hsvInput
+        .compute_root()
+        .reorder(v_c, v_x, v_y)
+        .split(v_y, v_yo, v_yi, 32)
+        .parallel(v_yo)
+        .unroll(v_c)
+        .vectorize(v_x, 8);
 
     gammaCorrected
         .compute_at(output, v_yi)
@@ -2384,10 +2483,10 @@ public:
 
     Input<Buffer<uint8_t>> input{"input", 1};
 
-    Input<Buffer<float>> inshadingMap0{"inshadingMap0", 2 };
-    Input<Buffer<float>> inshadingMap1{"inshadingMap1", 2 };
-    Input<Buffer<float>> inshadingMap2{"inshadingMap2", 2 };
-    Input<Buffer<float>> inshadingMap3{"inshadingMap3", 2 };
+    Input<Buffer<float>> inShadingMap0{"inShadingMap0", 2 };
+    Input<Buffer<float>> inShadingMap1{"inShadingMap1", 2 };
+    Input<Buffer<float>> inShadingMap2{"inShadingMap2", 2 };
+    Input<Buffer<float>> inShadingMap3{"inShadingMap3", 2 };
     
     Input<float[3]> asShotVector{"asShotVector"};
     Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
@@ -2485,16 +2584,18 @@ void PreviewGenerator::generate() {
     Expr w = width;
     Expr h = height;
     
-    deinterleaved(v_x, v_y, v_c) =
-        mux(v_c, { in[0](v_x, v_y), in[1](v_x, v_y), in[2](v_x, v_y), in[3](v_x, v_y) });
-
-    downscaled = downscale(deinterleaved, downscaledTemp, downscaleFactor);
+    downscaled(v_x, v_y, v_c) =
+        mux(v_c,
+            {   in[0](v_x*downscaleFactor, v_y*downscaleFactor),
+                in[1](v_x*downscaleFactor, v_y*downscaleFactor),
+                in[2](v_x*downscaleFactor, v_y*downscaleFactor),
+                in[3](v_x*downscaleFactor, v_y*downscaleFactor) });
 
     // Shading map
-    linearScale(shadingMap[0], inshadingMap0, inshadingMap0.width(), inshadingMap0.height(), w, h);
-    linearScale(shadingMap[1], inshadingMap1, inshadingMap1.width(), inshadingMap1.height(), w, h);
-    linearScale(shadingMap[2], inshadingMap2, inshadingMap2.width(), inshadingMap2.height(), w, h);
-    linearScale(shadingMap[3], inshadingMap3, inshadingMap3.width(), inshadingMap3.height(), w, h);
+    linearScale(shadingMap[0], inShadingMap0, inShadingMap0.width(), inShadingMap0.height(), w, h);
+    linearScale(shadingMap[1], inShadingMap1, inShadingMap1.width(), inShadingMap1.height(), w, h);
+    linearScale(shadingMap[2], inShadingMap2, inShadingMap2.width(), inShadingMap2.height(), w, h);
+    linearScale(shadingMap[3], inShadingMap3, inShadingMap3.width(), inShadingMap3.height(), w, h);
 
     rearrange(demosaicInput, downscaled, sensorArrangement);
 
@@ -2506,7 +2607,6 @@ void PreviewGenerator::generate() {
     downscaledInput(v_x, v_y, v_c) = select(v_c == 0,  clamp( c0,               0.0f, asShotVector[0] ),
                                             v_c == 1,  clamp( (c1 + c2) / 2,    0.0f, asShotVector[1] ),
                                                        clamp( c3,               0.0f, asShotVector[2] ));
-
     // Transform to SRGB space
     transform(colorCorrected, downscaledInput, cameraToSrgb);
 
@@ -2703,13 +2803,6 @@ void PreviewGenerator::schedule_for_cpu() {
             .vectorize(v_x, vector_size_u16);
     }
 
-    downscaledTemp
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .compute_at(downscaledInput, v_yi)
-        .store_at(downscaledInput, v_yo)
-        .vectorize(v_x, vector_size_u16);
-
     downscaled
         .reorder(v_c, v_x, v_y)
         .unroll(v_c)
@@ -2856,83 +2949,90 @@ public:
     Input<int> width{"width"};
     Input<int> height{"height"};
 
-    Input<int> downscaleFactor{"downscaleFactor"};    
+    Input<int> downscaleFactor{"downscaleFactor"};
 
     Input<int[4]> blackLevel{"blackLevel"};
     Input<int> whiteLevel{"whiteLevel"};
 
-    Input<float[4]> colorCorrectionGains{"colorCorrectionGains"};    
-    Input<Buffer<float>[4]> shadingMap{"shadingMap", 2 };
-
     Input<float[3]> asShotVector{"asShotVector"};
+    Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
+
+    Input<Buffer<float>[4]> inShadingMap{"shadingMap", 2};
+
     Input<int> sensorArrangement{"sensorArrangement"};
 
-    Output<Buffer<uint32_t>> histogram{"histogram", 2};
+    Output<Buffer<uint32_t>> histogram{"histogram", 1};
 
     void generate();
 };
 
 void MeasureImageGenerator::generate() {
-    Func inputRepeated;
-    Func channels[4];
-    Func downscaled[4];
-    Func scaledShadingMap[4];
+    Func inputRepeated{"inputRepeated"};
+    Func in[4];
+    Func shadingMap[4];
+    Func downscaled{"downscaled"};
+    Func result8u{"result8u"};
+    Func colorCorrected{"colorCorrected"};
+    Func downscaledInput{"downscaledInput"};
+    Func demosaicInput{"demosaicInput"};
 
     // Deinterleave
     inputRepeated = BoundaryConditions::repeat_edge(input);
 
-    deinterleave(channels[0], inputRepeated, 0, stride, pixelFormat);
-    deinterleave(channels[1], inputRepeated, 1, stride, pixelFormat);
-    deinterleave(channels[2], inputRepeated, 2, stride, pixelFormat);
-    deinterleave(channels[3], inputRepeated, 3, stride, pixelFormat);
-    
-    downscaled[0](v_x, v_y) = channels[0](v_x*downscaleFactor, v_y*downscaleFactor);
-    downscaled[1](v_x, v_y) = channels[1](v_x*downscaleFactor, v_y*downscaleFactor);
-    downscaled[2](v_x, v_y) = channels[2](v_x*downscaleFactor, v_y*downscaleFactor);
-    downscaled[3](v_x, v_y) = channels[3](v_x*downscaleFactor, v_y*downscaleFactor);
+    // Deinterleave
+    deinterleave(in[0], inputRepeated, 0, stride, pixelFormat);
+    deinterleave(in[1], inputRepeated, 1, stride, pixelFormat);
+    deinterleave(in[2], inputRepeated, 2, stride, pixelFormat);
+    deinterleave(in[3], inputRepeated, 3, stride, pixelFormat);
 
-    Expr w = width  / downscaleFactor;
+    Expr w = width / downscaleFactor;
     Expr h = height / downscaleFactor;
+    
+    downscaled(v_x, v_y, v_c) =
+        mux(v_c,
+            {   in[0](v_x*downscaleFactor, v_y*downscaleFactor),
+                in[1](v_x*downscaleFactor, v_y*downscaleFactor),
+                in[2](v_x*downscaleFactor, v_y*downscaleFactor),
+                in[3](v_x*downscaleFactor, v_y*downscaleFactor) });
 
     // Shading map
-    for(int c = 0; c < 4; c++)
-        linearScale(scaledShadingMap[c], shadingMap[c], shadingMap[c].width(), shadingMap[c].height(), w, h);
+    linearScale(shadingMap[0], inShadingMap[0], inShadingMap[0].width(), inShadingMap[0].height(), w, h);
+    linearScale(shadingMap[1], inShadingMap[1], inShadingMap[1].width(), inShadingMap[1].height(), w, h);
+    linearScale(shadingMap[2], inShadingMap[2], inShadingMap[2].width(), inShadingMap[2].height(), w, h);
+    linearScale(shadingMap[3], inShadingMap[3], inShadingMap[3].width(), inShadingMap[3].height(), w, h);
 
-    Func demosaicInput("demosaicInput");
-    Func shadingInput("shadingInput");
+    rearrange(demosaicInput, downscaled, sensorArrangement);
 
-    rearrange(demosaicInput, downscaled[0], downscaled[1], downscaled[2], downscaled[3], sensorArrangement);
+    Expr c0 = (demosaicInput(v_x, v_y, 0) - blackLevel[0]) / (cast<float>(whiteLevel - blackLevel[0])) * shadingMap[0](v_x, v_y);
+    Expr c1 = (demosaicInput(v_x, v_y, 1) - blackLevel[1]) / (cast<float>(whiteLevel - blackLevel[1])) * shadingMap[1](v_x, v_y);
+    Expr c2 = (demosaicInput(v_x, v_y, 2) - blackLevel[2]) / (cast<float>(whiteLevel - blackLevel[2])) * shadingMap[2](v_x, v_y);
+    Expr c3 = (demosaicInput(v_x, v_y, 3) - blackLevel[3]) / (cast<float>(whiteLevel - blackLevel[3])) * shadingMap[3](v_x, v_y);
+    
+    downscaledInput(v_x, v_y, v_c) = select(v_c == 0,  clamp( c0,               0.0f, asShotVector[0] ),
+                                            v_c == 1,  clamp( (c1 + c2) / 2,    0.0f, asShotVector[1] ),
+                                                       clamp( c3,               0.0f, asShotVector[2] ));
+    // Transform to SRGB space
+    transform(colorCorrected, downscaledInput, cameraToSrgb);
 
-    Expr c0 = (demosaicInput(v_x, v_y, 0) - blackLevel[0]) / (cast<float>(whiteLevel - blackLevel[0])) * scaledShadingMap[0](v_x, v_y) * colorCorrectionGains[0];
-    Expr c1 = (demosaicInput(v_x, v_y, 1) - blackLevel[1]) / (cast<float>(whiteLevel - blackLevel[1])) * scaledShadingMap[1](v_x, v_y) * colorCorrectionGains[1];
-    Expr c2 = (demosaicInput(v_x, v_y, 2) - blackLevel[2]) / (cast<float>(whiteLevel - blackLevel[2])) * scaledShadingMap[2](v_x, v_y) * colorCorrectionGains[2];
-    Expr c3 = (demosaicInput(v_x, v_y, 3) - blackLevel[3]) / (cast<float>(whiteLevel - blackLevel[3])) * scaledShadingMap[3](v_x, v_y) * colorCorrectionGains[3];
-        
-    Func result, result8u;
+    Expr L = 0.2989f*colorCorrected(v_x, v_y, 0) + 0.5870f*colorCorrected(v_x, v_y, 1) + 0.1140f*colorCorrected(v_x, v_y, 2);
 
-    result(v_x, v_y, v_c) = select(v_c == 0,  clamp( c0,               0.0f, asShotVector[0] ),
-                                   v_c == 1,  clamp( (c1 + c2) / 2,    0.0f, asShotVector[1] ),
-                                              clamp( c3,               0.0f, asShotVector[2] ));
-
-    result8u(v_x, v_y, v_c) = cast<uint8_t>(clamp(result(v_x, v_y, v_c) * 255 + 0.5f, 0, 255));
+    result8u(v_x, v_y) = cast<uint8_t>(clamp(L * 255 + 0.5f, 0, 255));
 
     RDom r(0, w, 0, h);
 
-    histogram(v_i, v_c) = cast<uint32_t>(0);
-    histogram(result8u(r.x, r.y, v_c), v_c) += cast<uint32_t>(1);
+    histogram(v_i) = cast<uint32_t>(0);
+    histogram(result8u(r.x, r.y)) += cast<uint32_t>(1);
 
     // Schedule
     result8u
         .compute_root()
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c, 3)
-        .parallel(v_y, 8)
+        .reorder(v_x, v_y)
+        .parallel(v_y, 32)
         .vectorize(v_x, 8);
 
     histogram
         .compute_root()
-        .parallel(v_c)
-        .vectorize(v_i, 128);
+        .vectorize(v_i, 32);
 }
 
 //////////////
@@ -2982,9 +3082,257 @@ void GenerateEdgesGenerator::generate() {
         .parallel(v_yo);
 }
 
+//////////////
+
+class HdrMaskGenerator : public Halide::Generator<HdrMaskGenerator> {
+public:
+    Input<Buffer<uint8_t>> input0{"input0", 2};
+    Input<Buffer<uint8_t>> input1{"input1", 2};    
+
+    Input<float> scaleInput0{"scaleInput0"};
+    Input<float> scaleInput1{"scaleInput1"};
+    Input<float> c{"c"};
+
+    Output<Buffer<uint8_t>> outputGhost{"outputGhost", 2};
+    Output<Buffer<uint8_t>> outputMask{"outputMask", 2};
+
+    void generate();
+
+private:
+    Var v_x{"x"};
+    Var v_y{"y"};
+    Var v_yo{"yo"};
+    Var v_yi{"yi"};
+};
+
+void HdrMaskGenerator::generate() {
+    Func inputf0, inputf1;
+    Func mask0, mask1;
+    Func map0, map1;
+    Func ghostMap;
+
+    inputf0(v_x, v_y) = max(0.0f, min(1.0f, cast<float>(BoundaryConditions::repeat_edge(input0)(v_x, v_y)) / 255.0f * scaleInput0));
+    inputf1(v_x, v_y) = max(0.0f, min(1.0f, cast<float>(BoundaryConditions::repeat_edge(input1)(v_x, v_y)) / 255.0f * scaleInput1));
+
+    mask0(v_x, v_y) = exp(-c * (inputf0(v_x, v_y) - 1.0f) * (inputf0(v_x, v_y) - 1.0f));
+    mask1(v_x, v_y) = exp(-c * (inputf1(v_x, v_y) - 1.0f) * (inputf1(v_x, v_y) - 1.0f));
+
+    map0(v_x, v_y) = cast<uint8_t>(select(mask0(v_x, v_y) > 0.5f, 1, 0));
+    map1(v_x, v_y) = cast<uint8_t>(select(mask1(v_x, v_y) > 0.5f, 1, 0));
+
+    ghostMap(v_x, v_y) = map0(v_x, v_y) & (map0(v_x, v_y) ^ map1(v_x, v_y));
+
+    outputGhost(v_x, v_y) =
+        ghostMap(v_x - 1, v_y - 1)  & ghostMap(v_x, v_y - 1)    & ghostMap(v_x + 1, v_y - 1) &
+        ghostMap(v_x - 1, v_y)      & ghostMap(v_x, v_y)        & ghostMap(v_x + 1, v_y)     &
+        ghostMap(v_x - 1, v_y + 1)  & ghostMap(v_x, v_y + 1)    & ghostMap(v_x + 1, v_y + 1);
+
+    outputMask(v_x, v_y) = cast<uint8_t>(clamp(mask0(v_x, v_y) * mask1(v_x, v_y) * 255.0f + 0.5f, 0, 255));
+
+    outputGhost
+        .compute_root()
+        .reorder(v_x, v_y)
+        .split(v_y, v_yo, v_yi, 16)
+        .parallel(v_yo)
+        .vectorize(v_x, 8);
+
+    outputMask
+        .compute_root()
+        .reorder(v_x, v_y)
+        .split(v_y, v_yo, v_yi, 16)
+        .parallel(v_yo)
+        .vectorize(v_x, 8);
+}
+
+//////////////
+
+class LinearImageGenerator : public Halide::Generator<LinearImageGenerator>, public PostProcessBase {
+public:
+    Input<Buffer<uint16_t>> in0{"in0", 2 };
+    Input<Buffer<uint16_t>> in1{"in1", 2 };
+    Input<Buffer<uint16_t>> in2{"in2", 2 };
+    Input<Buffer<uint16_t>> in3{"in3", 2 };
+
+    Input<Buffer<float>> inShadingMap0{"inShadingMap0", 2 };
+    Input<Buffer<float>> inShadingMap1{"inShadingMap1", 2 };
+    Input<Buffer<float>> inShadingMap2{"inShadingMap2", 2 };
+    Input<Buffer<float>> inShadingMap3{"inShadingMap3", 2 };
+
+    Input<float[3]> asShotVector{"asShotVector"};    
+    Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
+
+    Input<int> downscaleFactor{"downscaleFactor"};
+    Input<int> width{"width"};
+    Input<int> height{"height"};
+
+    Input<int> sensorArrangement{"sensorArrangement"};
+    
+    Input<int16_t[4]> blackLevel{"blackLevel"};
+    Input<int16_t> whiteLevel{"whiteLevel"};
+
+    Output<Buffer<uint16_t>> output{"output", 3};
+
+    void generate();
+
+private:
+    void schedule_for_cpu();
+
+    std::unique_ptr<Demosaic> demosaic;
+    Func shadingMap[4];
+    Func downscaled{"downscaled"};
+    Func shaded{"shaded"};
+    Func colorCorrected{"colorCorrected"};
+    Func combinedInput{"combinedInput"};
+    Func mirroredInput{"mirroredInput"};
+    Func bayerInput{"bayerInput"}; 
+};
+
+void LinearImageGenerator::generate() {
+    Func in[4];
+
+    in[0] = BoundaryConditions::repeat_edge(in0);
+    in[1] = BoundaryConditions::repeat_edge(in1);
+    in[2] = BoundaryConditions::repeat_edge(in2);
+    in[3] = BoundaryConditions::repeat_edge(in3);
+
+    downscaled(v_x, v_y, v_c) =
+        mux(v_c,
+            {   in[0](v_x*downscaleFactor, v_y*downscaleFactor),
+                in[1](v_x*downscaleFactor, v_y*downscaleFactor),
+                in[2](v_x*downscaleFactor, v_y*downscaleFactor),
+                in[3](v_x*downscaleFactor, v_y*downscaleFactor) });
+
+    // Shading map
+    linearScale(shadingMap[0], inShadingMap0, inShadingMap0.width(), inShadingMap0.height(), width, height);
+    linearScale(shadingMap[1], inShadingMap1, inShadingMap1.width(), inShadingMap1.height(), width, height);
+    linearScale(shadingMap[2], inShadingMap2, inShadingMap2.width(), inShadingMap2.height(), width, height);
+    linearScale(shadingMap[3], inShadingMap3, inShadingMap3.width(), inShadingMap3.height(), width, height);
+
+    Func shadingMapArranged{"shadingMapArranged"};
+
+    rearrange(shadingMapArranged, shadingMap[0], shadingMap[1], shadingMap[2], shadingMap[3], sensorArrangement);
+
+    shaded(v_x, v_y, v_c) = 
+        select( v_c == 0, cast<int16_t>( clamp( (downscaled(v_x, v_y, v_c) - blackLevel[0]) / (cast<float>(whiteLevel - blackLevel[0])) * shadingMapArranged(v_x, v_y, 0) * 16384.0f, 0, 16384.0f) ),
+                v_c == 1, cast<int16_t>( clamp( (downscaled(v_x, v_y, v_c) - blackLevel[1]) / (cast<float>(whiteLevel - blackLevel[1])) * shadingMapArranged(v_x, v_y, 1) * 16384.0f, 0, 16384.0f) ),
+                v_c == 2, cast<int16_t>( clamp( (downscaled(v_x, v_y, v_c) - blackLevel[2]) / (cast<float>(whiteLevel - blackLevel[2])) * shadingMapArranged(v_x, v_y, 2) * 16384.0f, 0, 16384.0f) ),
+                          cast<int16_t>( clamp( (downscaled(v_x, v_y, v_c) - blackLevel[3]) / (cast<float>(whiteLevel - blackLevel[3])) * shadingMapArranged(v_x, v_y, 3) * 16384.0f, 0, 16384.0f) ) );
+
+    // Demosaic image
+    combinedInput(v_x, v_y) =
+        select(v_y % 2 == 0,
+               select(v_x % 2 == 0, shaded(v_x/2, v_y/2, 0), shaded(v_x/2, v_y/2, 1)),
+               select(v_x % 2 == 0, shaded(v_x/2, v_y/2, 2), shaded(v_x/2, v_y/2, 3)));
+
+    mirroredInput = BoundaryConditions::mirror_image(combinedInput, { {0, in0.width()*2}, {0, in0.height()*2} } );
+
+    bayerInput(v_x, v_y) =
+        select(sensorArrangement == static_cast<int>(SensorArrangement::RGGB),
+                mirroredInput(v_x, v_y),
+
+            sensorArrangement == static_cast<int>(SensorArrangement::GRBG),
+                mirroredInput(v_x - 1, v_y),
+
+            sensorArrangement == static_cast<int>(SensorArrangement::GBRG),
+                mirroredInput(v_x, v_y - 1),
+
+                // BGGR
+                mirroredInput(v_x - 1, v_y - 1));
+
+    // Demosaic image
+    demosaic = create<Demosaic>();
+    demosaic->apply(bayerInput, in0.width(), in0.height(), sensorArrangement);
+    
+    // Transform to sRGB space
+    Func linear("linear"), colorCorrectInput("colorCorrectInput");
+
+    linear(v_x, v_y, v_c) = (demosaic->output(v_x, v_y, v_c) / 16384.0f);
+
+    colorCorrectInput(v_x, v_y, v_c) =
+        select( v_c == 0, clamp( linear(v_x, v_y, 0), 0.0f, asShotVector[0] ),
+                v_c == 1, clamp( linear(v_x, v_y, 1), 0.0f, asShotVector[1] ),
+                          clamp( linear(v_x, v_y, 2), 0.0f, asShotVector[2] ));
+    
+    transform(colorCorrected, colorCorrectInput, cameraToSrgb);
+
+    output(v_x, v_y, v_c) = cast<uint16_t>(clamp(colorCorrected(v_x, v_y, v_c) * 65535 + 0.5f, 0, 65535));
+
+    if(!auto_schedule)
+        schedule_for_cpu();
+}
+
+void LinearImageGenerator::schedule_for_cpu() { 
+    int vector_size_u8 = natural_vector_size<uint8_t>();
+    int vector_size_u16 = natural_vector_size<uint16_t>();
+
+    for(int c = 0; c < 4; c++) {
+        shadingMap[c]
+            .reorder(v_x, v_y)
+            .compute_at(combinedInput, v_yi)
+            .store_at(combinedInput, v_yo)
+            .vectorize(v_x, vector_size_u16);
+    }
+
+    shaded
+        .reorder(v_c, v_x, v_y)
+        .unroll(v_c)
+        .compute_at(combinedInput, v_yi)
+        .store_at(combinedInput, v_yo)
+        .vectorize(v_x, vector_size_u16);
+
+    combinedInput
+        .compute_root()
+        .reorder(v_x, v_y)
+        .split(v_y, v_yo, v_yi, 32)
+        .parallel(v_yo)
+        .vectorize(v_x, vector_size_u16);
+
+    bayerInput
+        .compute_root()
+        .reorder(v_x, v_y)
+        .split(v_y, v_yo, v_yi, 32)
+        .parallel(v_yo)
+        .vectorize(v_x, vector_size_u16);
+
+    demosaic->green
+        .compute_at(demosaic->output, v_yi)
+        .store_at(demosaic->output, v_yo)
+        .vectorize(v_x, vector_size_u16);
+
+    demosaic->blueIntermediate
+        .compute_at(demosaic->output, v_yi)
+        .store_at(demosaic->output, v_yo)
+        .vectorize(v_x, vector_size_u16);
+
+    demosaic->blue
+        .compute_at(demosaic->output, v_yi)
+        .store_at(demosaic->output, v_yo)
+        .vectorize(v_x, vector_size_u16);
+
+    demosaic->output
+        .compute_root()
+        .reorder(v_c, v_x, v_y)
+        .split(v_y, v_yo, v_yi, 32)
+        .unroll(v_c)
+        .parallel(v_yo)
+        .vectorize(v_x, vector_size_u16);
+
+    output
+        .compute_root()
+        .bound(v_c, 0, 3)
+        .reorder(v_c, v_x, v_y)
+        .split(v_y, v_yo, v_yi, 32)
+        .parallel(v_yo)
+        .unroll(v_c)
+        .vectorize(v_x, vector_size_u8);
+}
+
+//////////////
+
 HALIDE_REGISTER_GENERATOR(GenerateEdgesGenerator, generate_edges_generator)
 HALIDE_REGISTER_GENERATOR(MeasureImageGenerator, measure_image_generator)
 HALIDE_REGISTER_GENERATOR(DeinterleaveRawGenerator, deinterleave_raw_generator)
 HALIDE_REGISTER_GENERATOR(PostProcessGenerator, postprocess_generator)
 HALIDE_REGISTER_GENERATOR(PreviewGenerator, preview_generator)
-
+HALIDE_REGISTER_GENERATOR(HdrMaskGenerator, hdr_mask_generator)
+HALIDE_REGISTER_GENERATOR(LinearImageGenerator, linear_image_generator)

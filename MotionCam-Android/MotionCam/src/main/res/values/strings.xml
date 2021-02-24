@@ -29,10 +29,12 @@
     <string name="title_activity_test">Test</string>
     <string name="history">History</string>
     <string name="memory_use_description">The maximum amount of memory to use when capturing images from the camera.</string>
+    <string name="camera_preview_quality_description">The quality of the camera preview. Higher quality requires more GPU resources.</string>
     <string name="camera_profile">Camera Profile</string>
     <string name="camera_profile_description">The camera profile describes the default settings to use for captured images.</string>
     <string name="general">General</string>
     <string name="memory_usage">Memory Usage</string>
+    <string name="camera_preview_quality">Camera Preview Quality</string>
     <string name="overall_saturation">Overall Saturation</string>
     <string name="greens">Greens</string>
     <string name="blues">Blues</string>
@@ -46,6 +48,12 @@
     <string name="debug_mode_help">Turn this option on to leave unprocessed files on the filesystem</string>
     <string name="error">Error</string>
     <string name="not_supported_error">Your device does not support RAW capture.</string>
+    <string name="capture_failed">There was an error trying to capture the image.</string>
+    <string name="camera_error">The camera encountered an error.</string>
     <string name="ok">Ok</string>
     <string name="hdr">HDR</string>
+    <string name="burst">Burst</string>
+    <string name="dual_exposure">Dual Exposure Controls</string>
+    <string name="dual_exposure_help">Enable an accurate preview of the camera output. This enables dual exposure control.</string>
+    <string name="enable_dual_exposure">Enable dual exposure controls</string>
 </resources>

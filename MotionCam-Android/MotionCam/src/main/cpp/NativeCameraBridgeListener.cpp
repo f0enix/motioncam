@@ -110,4 +110,40 @@ namespace motioncam {
         if(callbackMethod)
             env.getEnv()->CallVoidMethod(mListenerInstance, callbackMethod, (int) state);
     }
+
+    void NativeCameraBridgeListener::onCameraHdrImageCaptureProgress(int progress) {
+        JavaEnv env(mJavaVm);
+        if (!env.getEnv()) {
+            LOGE("Dropped onCameraHdrImageCaptureProgress()");
+            return;
+        }
+
+        jmethodID callbackMethod = env.getEnv()->GetMethodID(mListenerClass, "onCameraHdrImageCaptureProgress", "(I)V");
+        if(callbackMethod)
+            env.getEnv()->CallVoidMethod(mListenerInstance, callbackMethod, progress);
+    }
+
+    void NativeCameraBridgeListener::onCameraHdrImageCaptureCompleted() {
+        JavaEnv env(mJavaVm);
+        if (!env.getEnv()) {
+            LOGE("Dropped onCameraHdrImageCaptureCompleted()");
+            return;
+        }
+
+        jmethodID callbackMethod = env.getEnv()->GetMethodID(mListenerClass, "onCameraHdrImageCaptureCompleted", "()V");
+        if(callbackMethod)
+            env.getEnv()->CallVoidMethod(mListenerInstance, callbackMethod);
+    }
+
+    void NativeCameraBridgeListener::onCameraHdrImageCaptureFailed() {
+        JavaEnv env(mJavaVm);
+        if (!env.getEnv()) {
+            LOGE("Dropped onCameraHdrImageCaptureFailed()");
+            return;
+        }
+
+        jmethodID callbackMethod = env.getEnv()->GetMethodID(mListenerClass, "onCameraHdrImageCaptureFailed", "()V");
+        if(callbackMethod)
+            env.getEnv()->CallVoidMethod(mListenerInstance, callbackMethod);
+    }
 }

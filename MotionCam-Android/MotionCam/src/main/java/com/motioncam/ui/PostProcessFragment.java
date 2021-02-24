@@ -1,9 +1,6 @@
 package com.motioncam.ui;
 
-import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
@@ -34,11 +31,9 @@ import com.motioncam.camera.PostProcessSettings;
 import com.motioncam.databinding.PreviewSettingsBinding;
 import com.motioncam.model.CameraProfile;
 import com.motioncam.model.PostProcessViewModel;
-import com.motioncam.model.SettingsViewModel;
 import com.motioncam.processor.ProcessorReceiver;
 import com.motioncam.processor.ProcessorService;
 
-import java.io.File;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -391,7 +386,7 @@ public class PostProcessFragment extends Fragment implements
                         numMergeImages,
                         mViewModel.getWriteDng(),
                         mViewModel.getPostProcessSettings(),
-                        CameraProfile.generateCaptureFile().getPath(),
+                        CameraProfile.generateCaptureFile(getContext()).getPath(),
                         this);
             }
         }
@@ -456,21 +451,21 @@ public class PostProcessFragment extends Fragment implements
                 .findViewById(R.id.saveBtn).setEnabled(true);
 
         // In debug mode we don't want to delete the intermediate file
-        SharedPreferences sharedPrefs = getActivity().getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
-        boolean debugMode = sharedPrefs.getBoolean(SettingsViewModel.PREFS_KEY_DEBUG_MODE, false);
+        //SharedPreferences sharedPrefs = getActivity().getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
+        //boolean debugMode = sharedPrefs.getBoolean(SettingsViewModel.PREFS_KEY_DEBUG_MODE, false);
 
         // Start service to process the image
         Intent intent = new Intent(getActivity(), ProcessorService.class);
 
-        intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath().getPath());
-        intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, !debugMode);
+        intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath(getContext()).getPath());
+        intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, true);
         intent.putExtra(ProcessorService.RECEIVER_KEY, mProgressReceiver);
 
         Objects.requireNonNull(getActivity()).startService(intent);
     }
 
     @Override
-    public void onProcessingStarted(File filePath) {
+    public void onProcessingStarted() {
         View v = getView();
         if(v != null) {
             v.findViewById(R.id.saveProgressBar).setVisibility(View.VISIBLE);
@@ -479,7 +474,7 @@ public class PostProcessFragment extends Fragment implements
     }
 
     @Override
-    public void onProcessingProgress(File filePath, int progress) {
+    public void onProcessingProgress(int progress) {
         View v = getView();
         if(v != null) {
             v.findViewById(R.id.saveProgressBar).setVisibility(View.VISIBLE);
@@ -488,14 +483,11 @@ public class PostProcessFragment extends Fragment implements
     }
 
     @Override
-    public void onProcessingCompleted(File file) {
+    public void onProcessingCompleted() {
         View v = getView();
         if(v != null) {
             v.findViewById(R.id.saveProgressBar).setVisibility(View.INVISIBLE);
         }
-
-        Uri uri = Uri.fromFile(file);
-        Objects.requireNonNull(getActivity()).sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, uri));
     }
 
     @Override
