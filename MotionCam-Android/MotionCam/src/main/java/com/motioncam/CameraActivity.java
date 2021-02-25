@@ -281,9 +281,6 @@ public class CameraActivity extends AppCompatActivity implements
 
         mSensorEventManager = new SensorEventManager(this, this);
 
-        // Kick off image processor in case there are images we have not processed
-        startImageProcessor();
-
         requestPermissions();
     }
 
@@ -837,6 +834,9 @@ public class CameraActivity extends AppCompatActivity implements
 
     private void onPermissionsGranted() {
         mHavePermissions = true;
+
+        // Kick off image processor in case there are images we have not processed
+        startImageProcessor();
     }
 
     private void onPermissionsDenied() {

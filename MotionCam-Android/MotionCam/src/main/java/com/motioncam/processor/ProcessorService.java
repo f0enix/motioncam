@@ -30,6 +30,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.Objects;
 import java.util.concurrent.Callable;
 
 public class ProcessorService extends IntentService {
@@ -124,12 +125,12 @@ public class ProcessorService extends IntentService {
             // Copy to media store
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 if (mTempFileDng.exists()) {
-                    saveToMediaStore(mTempFileDng);
+                    saveToMediaStore(mTempFileDng, "image/x-adobe-dng");
                     mTempFileDng.delete();
                 }
 
                 if (mTempFileJpeg.exists()) {
-                    saveToMediaStore(mTempFileJpeg);
+                    saveToMediaStore(mTempFileJpeg, "image/jpeg");
                     mTempFileJpeg.delete();
                 }
             }
@@ -158,6 +159,9 @@ public class ProcessorService extends IntentService {
 
                     FileUtils.copyFile(mTempFileJpeg, outputFileJpeg);
                     mTempFileJpeg.delete();
+
+                    Uri uri = Uri.fromFile(outputFileJpeg);
+                    mContext.sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, uri));
                 }
             }
 
@@ -165,7 +169,7 @@ public class ProcessorService extends IntentService {
         }
 
         @RequiresApi(api = Build.VERSION_CODES.Q)
-        private void saveToMediaStore(File inputFile) throws IOException {
+        private void saveToMediaStore(File inputFile, String mimeType) throws IOException {
             ContentResolver resolver = mContext.getApplicationContext().getContentResolver();
 
             Uri imageCollection;
@@ -179,7 +183,7 @@ public class ProcessorService extends IntentService {
             ContentValues imageDetails = new ContentValues();
 
             imageDetails.put(MediaStore.Images.Media.DISPLAY_NAME,  inputFile.getName());
-            imageDetails.put(MediaStore.Images.Media.MIME_TYPE,     "image/jpeg");
+            imageDetails.put(MediaStore.Images.Media.MIME_TYPE,     mimeType);
             imageDetails.put(MediaStore.Images.Media.DATE_ADDED,    System.currentTimeMillis());
             imageDetails.put(MediaStore.Images.Media.DATE_TAKEN,    System.currentTimeMillis());
             imageDetails.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_DCIM);
