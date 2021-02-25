@@ -5,6 +5,7 @@ import android.animation.ObjectAnimator;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
@@ -255,6 +256,24 @@ public class CameraActivity extends AppCompatActivity implements
         mBinding.tintBtn.setOnClickListener(this::onPreviewModeClicked);
         mBinding.warmthBtn.setOnClickListener(this::onPreviewModeClicked);
 
+        mBinding.hintText.setOnClickListener(this::onHintClicked);
+
+        // Hide hint if already clicked
+        int versionCode = -1;
+
+        try {
+            PackageInfo packageInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
+            versionCode = packageInfo.versionCode;
+        }
+        catch (PackageManager.NameNotFoundException e) {
+            e.printStackTrace();
+        }
+
+        SharedPreferences prefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
+        int hintVersion = prefs.getInt(SettingsViewModel.PREFS_KEY_UI_HINT_VERSION, 0);
+        if(hintVersion >= versionCode)
+            mBinding.hintText.setVisibility(View.GONE);
+
         ((SeekBar) findViewById(R.id.manualControlIsoSeekBar)).setOnSeekBarChangeListener(mManualControlsSeekBar);
         ((SeekBar) findViewById(R.id.manualControlShutterSpeedSeekBar)).setOnSeekBarChangeListener(mManualControlsSeekBar);
 
@@ -266,6 +285,26 @@ public class CameraActivity extends AppCompatActivity implements
         startImageProcessor();
 
         requestPermissions();
+    }
+
+    private void onHintClicked(View v) {
+        int versionCode = 0;
+
+        try {
+            PackageInfo packageInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
+            versionCode = packageInfo.versionCode;
+        }
+        catch (PackageManager.NameNotFoundException e) {
+            e.printStackTrace();
+        }
+
+        SharedPreferences prefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
+        prefs.edit().putInt(SettingsViewModel.PREFS_KEY_UI_HINT_VERSION, versionCode).commit();
+
+        // Hide the hint
+        mBinding.hintText.setVisibility(View.GONE);
+
+        onSettingsClicked();
     }
 
     private void onHighlightsSeekBarChanged(int progress) {
@@ -298,12 +337,12 @@ public class CameraActivity extends AppCompatActivity implements
         if(mManualControlsEnabled) {
             findViewById(R.id.cameraManualControlFrame).setVisibility(View.VISIBLE);
             findViewById(R.id.infoFrame).setVisibility(View.GONE);
-            mBinding.exposureSeekBar.setVisibility(View.GONE);
+            mBinding.exposureLayout.setVisibility(View.GONE);
         }
         else {
             findViewById(R.id.cameraManualControlFrame).setVisibility(View.GONE);
             findViewById(R.id.infoFrame).setVisibility(View.VISIBLE);
-            mBinding.exposureSeekBar.setVisibility(View.VISIBLE);
+            mBinding.exposureLayout.setVisibility(View.VISIBLE);
 
             if(mSelectedCamera.supportsLinearPreview)
                 findViewById(R.id.exposureCompFrame).setVisibility(View.VISIBLE);
@@ -1042,6 +1081,7 @@ public class CameraActivity extends AppCompatActivity implements
             mBinding.previewControls.setVisibility(View.VISIBLE);
             mBinding.captureModeSelection.setVisibility(View.VISIBLE);
             mBinding.rawCameraPreview.setVisibility(View.VISIBLE);
+            mBinding.shadowsLayout.setVisibility(View.VISIBLE);
 
             mTextureView.setAlpha(0);
 
@@ -1051,6 +1091,7 @@ public class CameraActivity extends AppCompatActivity implements
             mBinding.previewControls.setVisibility(View.GONE);
             mBinding.captureModeSelection.setVisibility(View.GONE);
             mBinding.rawCameraPreview.setVisibility(View.GONE);
+            mBinding.shadowsLayout.setVisibility(View.GONE);
 
             mTextureView.setAlpha(1);
         }

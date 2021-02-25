@@ -24,6 +24,7 @@ public class SettingsViewModel extends ViewModel {
     public static final String PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET      = "ui_preview_temperature_offset";
     public static final String PREFS_KEY_UI_PREVIEW_TINT_OFFSET             = "ui_preview_tint_offset";
     public static final String PREFS_KEY_UI_CAPTURE_MODE                    = "ui_capture_mode";
+    public static final String PREFS_KEY_UI_HINT_VERSION                    = "ui_hint_version";
 
     final public MutableLiveData<Integer> memoryUseMb = new MutableLiveData<>();
     final public MutableLiveData<Integer> cameraPreviewQuality = new MutableLiveData<>();

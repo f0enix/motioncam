@@ -56,4 +56,5 @@
     <string name="dual_exposure">Dual Exposure Controls</string>
     <string name="dual_exposure_help">Enable an accurate preview of the camera output. This enables dual exposure control.</string>
     <string name="enable_dual_exposure">Enable dual exposure controls</string>
+    <string name="hint_text">NEW! Enable dual exposure controls in the settings.</string>
 </resources>
