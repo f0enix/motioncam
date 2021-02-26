@@ -66,7 +66,7 @@ public class CameraActivity extends AppCompatActivity implements
     private static final int PERMISSION_REQUEST_CODE = 1;
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
     private static final float MAX_SHADOWS_EV_VALUE = 3.0f;
-    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 4;
+    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 16;
     public static final int SHADOW_UPDATE_FREQUENCY_MS = 500;
 
     private enum FocusState {
@@ -635,11 +635,15 @@ public class CameraActivity extends AppCompatActivity implements
 
         // If very dark, use more images
         if(exposureTime >= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_10.getExposureTime()) {
-            numImages = 9;
+            numImages = 7;
         }
 
         // If shadows are increased by a significant amount, use more images
         if(shadows >= 3.99) {
+            numImages += 2;
+        }
+
+        if(shadows >= 7.99) {
             numImages += 2;
         }
 

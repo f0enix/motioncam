@@ -1263,6 +1263,9 @@ namespace motioncam {
                                    *(*underexposedFrameIt));
                     
                     if(hdrMetadata->error < MAX_HDR_ERROR) {
+                        // Reduce the shadows slightly if applying HDR to avoid the image looking too flat
+                        settings.shadows = 0.5f * settings.shadows;
+                        
                         estimateWhitePoint(*(*underexposedFrameIt),
                                            rawContainer.getCameraMetadata(),
                                            settings.shadows * (1.0/hdrMetadata->exposureScale),
