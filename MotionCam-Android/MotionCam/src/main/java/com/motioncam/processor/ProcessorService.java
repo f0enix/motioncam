@@ -30,14 +30,12 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.Objects;
 import java.util.concurrent.Callable;
 
 public class ProcessorService extends IntentService {
     static final String TAG = "MotionCamService";
 
     public static final String METADATA_PATH_KEY                = "metadataPath";
-    public static final String DELETE_AFTER_PROCESSING_KEY      = "deleteAfterProcessing";
     public static final String RECEIVER_KEY                     = "receiver";
 
     public static final int NOTIFICATION_ID                     = 1;
@@ -54,7 +52,6 @@ public class ProcessorService extends IntentService {
         private final NotificationCompat.Builder mBuilder;
         private final ResultReceiver mReceiver;
         private final NativeProcessor mNativeProcessor;
-        private final boolean mDeleteAfterProcessing;
 
         static private String fileNoExtension(String filename) {
             int pos = filename.lastIndexOf(".");
@@ -65,12 +62,11 @@ public class ProcessorService extends IntentService {
             return filename;
         }
 
-        ProcessFile(Context context, File pendingFile, File tempPath, boolean deleteAfterProcessing, ResultReceiver receiver) {
+        ProcessFile(Context context, File pendingFile, File tempPath, ResultReceiver receiver) {
             mContext = context;
             mNativeProcessor = new NativeProcessor();
             mReceiver = receiver;
             mPendingFile = pendingFile;
-            mDeleteAfterProcessing = deleteAfterProcessing;
             mNotifyManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
 
             mOutputFileNameJpeg = fileNoExtension(pendingFile.getName()) + ".jpg";
@@ -117,20 +113,18 @@ public class ProcessorService extends IntentService {
 
             mNativeProcessor.processFile(mPendingFile.getPath(), mTempFileJpeg.getPath(), this);
 
-            if(mDeleteAfterProcessing)
-                mPendingFile.delete();
-            else
-                mPendingFile.renameTo(new File(mPendingFile.getPath() + ".complete"));
-
             // Copy to media store
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // TODO: debug mode only
+                //saveToFiles(mPendingFile, "application/zip", Environment.DIRECTORY_DOCUMENTS);
+
                 if (mTempFileDng.exists()) {
-                    saveToMediaStore(mTempFileDng, "image/x-adobe-dng");
+                    saveToMediaStore(mTempFileDng, "image/x-adobe-dng", Environment.DIRECTORY_DCIM);
                     mTempFileDng.delete();
                 }
 
                 if (mTempFileJpeg.exists()) {
-                    saveToMediaStore(mTempFileJpeg, "image/jpeg");
+                    saveToMediaStore(mTempFileJpeg, "image/jpeg", Environment.DIRECTORY_DCIM);
                     mTempFileJpeg.delete();
                 }
             }
@@ -165,11 +159,41 @@ public class ProcessorService extends IntentService {
                 }
             }
 
+            mPendingFile.delete();
+
             return null;
         }
 
         @RequiresApi(api = Build.VERSION_CODES.Q)
-        private void saveToMediaStore(File inputFile, String mimeType) throws IOException {
+        private void saveToFiles(File inputFile, String mimeType, String relativePath) throws IOException {
+            ContentResolver resolver = mContext.getApplicationContext().getContentResolver();
+
+            Uri collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+            ContentValues details = new ContentValues();
+
+            details.put(MediaStore.Files.FileColumns.DISPLAY_NAME,  inputFile.getName());
+            details.put(MediaStore.Files.FileColumns.MIME_TYPE,     mimeType);
+            details.put(MediaStore.Files.FileColumns.DATE_ADDED,    System.currentTimeMillis());
+            details.put(MediaStore.Files.FileColumns.DATE_TAKEN,    System.currentTimeMillis());
+            details.put(MediaStore.Files.FileColumns.RELATIVE_PATH, relativePath);
+            details.put(MediaStore.Files.FileColumns.IS_PENDING,    1);
+
+            Uri imageContentUri = resolver.insert(collection, details);
+
+            try (ParcelFileDescriptor pfd = resolver.openFileDescriptor(imageContentUri, "w", null)) {
+                FileOutputStream outStream = new FileOutputStream(pfd.getFileDescriptor());
+
+                IOUtil.copy(new FileInputStream(inputFile), outStream);
+            }
+
+            details.clear();
+            details.put(MediaStore.Images.Media.IS_PENDING, 0);
+
+            resolver.update(imageContentUri, details, null, null);
+        }
+
+        @RequiresApi(api = Build.VERSION_CODES.Q)
+        private void saveToMediaStore(File inputFile, String mimeType, String relativePath) throws IOException {
             ContentResolver resolver = mContext.getApplicationContext().getContentResolver();
 
             Uri imageCollection;
@@ -186,7 +210,7 @@ public class ProcessorService extends IntentService {
             imageDetails.put(MediaStore.Images.Media.MIME_TYPE,     mimeType);
             imageDetails.put(MediaStore.Images.Media.DATE_ADDED,    System.currentTimeMillis());
             imageDetails.put(MediaStore.Images.Media.DATE_TAKEN,    System.currentTimeMillis());
-            imageDetails.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_DCIM);
+            imageDetails.put(MediaStore.Images.Media.RELATIVE_PATH, relativePath);
             imageDetails.put(MediaStore.Images.Media.IS_PENDING,    1);
 
             Uri imageContentUri = resolver.insert(imageCollection, imageDetails);
@@ -253,8 +277,6 @@ public class ProcessorService extends IntentService {
             return;
         }
 
-        boolean deleteAfterProcessing = intent.getBooleanExtra(DELETE_AFTER_PROCESSING_KEY, true);
-
         // Set receiver if we get one
         ResultReceiver receiver = intent.getParcelableExtra(RECEIVER_KEY);
 
@@ -279,13 +301,14 @@ public class ProcessorService extends IntentService {
 
         // Process all files
         for(File file : pendingFiles) {
-            ProcessFile processFile = new ProcessFile(getApplicationContext(), file, tmpDirectory, deleteAfterProcessing, receiver);
+            ProcessFile processFile = new ProcessFile(getApplicationContext(), file, tmpDirectory, receiver);
 
             try {
                 processFile.call();
             }
-            catch (IOException e) {
+            catch (Exception e) {
                 e.printStackTrace();
+                file.delete();
             }
         }
     }

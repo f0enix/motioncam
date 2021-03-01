@@ -369,11 +369,11 @@ namespace motioncam {
         return std::log2(m);
     }
 
-    cv::Mat ImageProcessor::estimateWhitePoint(const RawImageBuffer& rawBuffer,
-                                               const RawCameraMetadata& cameraMetadata,
-                                               float shadows,
-                                               float& outBlacks,
-                                               float& outWhitePoint) {
+    cv::Mat ImageProcessor::estimateBlacks(const RawImageBuffer& rawBuffer,
+                                           const RawCameraMetadata& cameraMetadata,
+                                           float shadows,
+                                           float& outBlacks) {
+        
         PostProcessSettings settings;
         
         settings.shadows = shadows;
@@ -382,9 +382,9 @@ namespace motioncam {
         
         cv::Mat preview(previewBuffer.height(), previewBuffer.width(), CV_8UC4, previewBuffer.data());
         cv::Mat histogram;
-
-        cv::cvtColor(preview, preview, cv::COLOR_RGBA2GRAY);
         
+        cv::cvtColor(preview, preview, cv::COLOR_RGBA2GRAY);
+
         vector<cv::Mat> inputImages     = { preview };
         const vector<int> channels      = { 0 };
         const vector<int> histBins      = { 255 };
@@ -400,8 +400,8 @@ namespace motioncam {
         }
         
         // Estimate blacks
-        const float maxDehazePercent = 0.02f; // Max 2% pixels
-        const int maxEndBin = 15; // Max bin
+        const float maxDehazePercent = 0.01f; // Max 1% pixels
+        const int maxEndBin = 20; // Max bin
 
         int endBin = 0;
 
@@ -414,11 +414,44 @@ namespace motioncam {
 
         outBlacks = static_cast<float>(endBin) / static_cast<float>(histogram.rows - 1);
 
+        return preview;
+    }
+
+    cv::Mat ImageProcessor::estimateWhitePoint(const RawImageBuffer& rawBuffer,
+                                               const RawCameraMetadata& cameraMetadata,
+                                               float shadows,
+                                               float& outWhitePoint) {
+        PostProcessSettings settings;
+        
+        settings.shadows = shadows;
+        
+        auto previewBuffer = createPreview(rawBuffer, 4, cameraMetadata, settings);
+        
+        cv::Mat preview(previewBuffer.height(), previewBuffer.width(), CV_8UC4, previewBuffer.data());
+        cv::Mat histogram;
+        
+        cv::cvtColor(preview, preview, cv::COLOR_RGBA2GRAY);
+
+        vector<cv::Mat> inputImages     = { preview };
+        const vector<int> channels      = { 0 };
+        const vector<int> histBins      = { 255 };
+        const vector<float> histRange   = { 0, 256 };
+
+        cv::calcHist(inputImages, channels, cv::Mat(), histogram, histBins, histRange);
+        
+        histogram = histogram / (preview.rows * preview.cols);
+        
+        // Cumulative histogram
+        for(int i = 1; i < histogram.rows; i++) {
+            histogram.at<float>(i) += histogram.at<float>(i - 1);
+        }
+
         // Estimate white point
-        for(endBin = histogram.rows - 1; endBin >= 210; endBin--) {
+        int endBin = 0;
+        for(endBin = histogram.rows - 1; endBin >= 128; endBin--) {
             float binPx = histogram.at<float>(endBin);
 
-            if(binPx < 0.999)
+            if(binPx < 0.995)
                 break;
         }
 
@@ -448,10 +481,14 @@ namespace motioncam {
         settings.shadows        = estimateShadows(histogram);
         settings.exposure       = estimateExposureCompensation(histogram);
 
+        estimateBlacks(rawBuffer,
+                       cameraMetadata,
+                       settings.shadows,
+                       settings.blacks);
+
         estimateWhitePoint(rawBuffer,
                            cameraMetadata,
                            settings.shadows,
-                           settings.blacks,
                            settings.whitePoint);
 
         // Update estimated settings
@@ -495,7 +532,8 @@ namespace motioncam {
         settings.shadows        = estimateShadows(histogram);
         settings.exposure       = estimateExposureCompensation(histogram);
         
-        auto preview = estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, settings.blacks, settings.whitePoint);
+        auto preview = estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, settings.whitePoint);
+        estimateBlacks(rawBuffer, cameraMetadata, settings.shadows, settings.blacks);
         
         //
         // Scene luminance
@@ -1244,13 +1282,17 @@ namespace motioncam {
 
             // Check if there's any point even using the underexposed image (less than 0.5% in the >95% bins)
             float p = (sum / totalPixels) * 100.0f;
-            if(p < 1.0f) {
+            if(p < 0.5f) {
                 logger::log("Skipping HDR processing (" + std::to_string(p) + ")");
                 
+                estimateBlacks(*referenceRawBuffer,
+                               rawContainer.getCameraMetadata(),
+                               settings.shadows,
+                               settings.blacks);
+
                 estimateWhitePoint(*referenceRawBuffer,
                                    rawContainer.getCameraMetadata(),
                                    settings.shadows,
-                                   settings.blacks,
                                    settings.whitePoint);
             }
             // Try each underexposed image
@@ -1263,15 +1305,20 @@ namespace motioncam {
                                    *(*underexposedFrameIt));
                     
                     if(hdrMetadata->error < MAX_HDR_ERROR) {
-                        // Reduce the shadows slightly if applying HDR to avoid the image looking too flat
-                        settings.shadows = 0.5f * settings.shadows;
-                        
+                        // Reduce the shadows if applying HDR to avoid the image looking too flat due to
+                        // extreme dynamic range compression
+                        settings.shadows = 0.65f * settings.shadows;
+
+                        estimateBlacks(*referenceRawBuffer,
+                                       rawContainer.getCameraMetadata(),
+                                       settings.shadows,
+                                       settings.blacks);
+
                         estimateWhitePoint(*(*underexposedFrameIt),
                                            rawContainer.getCameraMetadata(),
-                                           settings.shadows * (1.0/hdrMetadata->exposureScale),
-                                           settings.blacks,
+                                           settings.shadows * (1.0f/hdrMetadata->exposureScale),
                                            settings.whitePoint);
-                        
+
                         break;
                     }
                     else {

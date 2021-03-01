@@ -76,10 +76,14 @@ namespace motioncam {
                                          float& outG,
                                          float& outB);
 
+        static cv::Mat estimateBlacks(const RawImageBuffer& rawBuffer,
+                                      const RawCameraMetadata& cameraMetadata,
+                                      float shadows,
+                                      float& outBlacks);
+        
         static cv::Mat estimateWhitePoint(const RawImageBuffer& rawBuffer,
                                           const RawCameraMetadata& cameraMetadata,
                                           float shadows,
-                                          float& outBlacks,
                                           float& outWhitePoint);
 
         static double measureSharpness(const RawImageBuffer& rawBuffer);

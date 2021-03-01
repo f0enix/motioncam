@@ -66,7 +66,7 @@ public class CameraActivity extends AppCompatActivity implements
     private static final int PERMISSION_REQUEST_CODE = 1;
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
     private static final float MAX_SHADOWS_EV_VALUE = 3.0f;
-    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 16;
+    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 8;
     public static final int SHADOW_UPDATE_FREQUENCY_MS = 500;
 
     private enum FocusState {
@@ -653,7 +653,7 @@ public class CameraActivity extends AppCompatActivity implements
     static private float getChromaEps(int numImages) {
         if(numImages <= 0)
             return 8.0f;
-        else if(numImages <= 3)
+        else if(numImages <= 5)
             return 16.0f;
         else
             return 32.0f;
@@ -1212,7 +1212,6 @@ public class CameraActivity extends AppCompatActivity implements
         Intent intent = new Intent(this, ProcessorService.class);
 
         intent.putExtra(ProcessorService.METADATA_PATH_KEY, CameraProfile.getRootOutputPath(this).getPath());
-        intent.putExtra(ProcessorService.DELETE_AFTER_PROCESSING_KEY, true);
         intent.putExtra(ProcessorService.RECEIVER_KEY, mProgressReceiver);
 
         Objects.requireNonNull(startService(intent));
