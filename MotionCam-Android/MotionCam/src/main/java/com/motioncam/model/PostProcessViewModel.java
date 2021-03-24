@@ -174,6 +174,7 @@ public class PostProcessViewModel extends ViewModel {
         SharedPreferences prefs = context.getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
 
         jpegQuality.setValue(prefs.getInt(SettingsViewModel.PREFS_KEY_JPEG_QUALITY, CameraProfile.DEFAULT_JPEG_QUALITY));
+        saveDng.setValue(prefs.getBoolean(SettingsViewModel.PREFS_KEY_SAVE_DNG, false));
     }
 
     public LiveData<PostProcessSettings> estimateSettings(
@@ -237,6 +238,7 @@ public class PostProcessViewModel extends ViewModel {
         contrast.setValue(Math.round(settings.contrast * 100));
         blacks.setValue(Math.round(settings.blacks * 400));
 //        exposure.setValue(Math.round(settings.exposure * 4 + 16)); // Ignore this for now
+        exposure.setValue(16);
 
         // Saturation
         saturation.setValue(Math.round(settings.saturation * 100) / 2);

@@ -1,6 +1,8 @@
 package com.motioncam.ui;
 
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
@@ -31,6 +33,7 @@ import com.motioncam.camera.PostProcessSettings;
 import com.motioncam.databinding.PreviewSettingsBinding;
 import com.motioncam.model.CameraProfile;
 import com.motioncam.model.PostProcessViewModel;
+import com.motioncam.model.SettingsViewModel;
 import com.motioncam.processor.ProcessorReceiver;
 import com.motioncam.processor.ProcessorService;
 
@@ -169,6 +172,13 @@ public class PostProcessFragment extends Fragment implements
                 dataBinding.spatialNoiseText.setText(
                         Objects.requireNonNull(getActivity()).getString(R.string.denoise_aggressive));
             }
+        });
+
+        mViewModel.saveDng.observe(getViewLifecycleOwner(), (value) -> {
+            SharedPreferences prefs = getContext().getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
+            prefs.edit()
+                .putBoolean(SettingsViewModel.PREFS_KEY_SAVE_DNG, value)
+                .commit();
         });
 
         mPreviousPreviewUpdateTime = 0;

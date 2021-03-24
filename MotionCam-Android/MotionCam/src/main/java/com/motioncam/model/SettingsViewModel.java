@@ -15,6 +15,7 @@ public class SettingsViewModel extends ViewModel {
 
     public static final String PREFS_KEY_MEMORY_USE_MBYTES          = "memory_use_megabytes";
     public static final String PREFS_KEY_JPEG_QUALITY               = "jpeg_quality";
+    public static final String PREFS_KEY_SAVE_DNG                   = "save_dng";
     public static final String PREFS_KEY_CAMERA_PREVIEW_QUALITY     = "camera_preview_quality";
     public static final String PREFS_KEY_DUAL_EXPOSURE_CONTROLS     = "dual_exposure_controls";
 
