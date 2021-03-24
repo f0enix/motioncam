@@ -7,6 +7,7 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 
+import com.motioncam.CameraActivity;
 import com.motioncam.camera.AsyncNativeCameraOps;
 import com.motioncam.camera.NativeCameraBuffer;
 import com.motioncam.camera.NativeCameraInfo;
@@ -235,7 +236,7 @@ public class PostProcessViewModel extends ViewModel {
         whitePoint.setValue(Math.round(-200.0f * settings.whitePoint + 250.0f));
         contrast.setValue(Math.round(settings.contrast * 100));
         blacks.setValue(Math.round(settings.blacks * 400));
-        exposure.setValue(Math.round(settings.exposure * 4 + 16));
+//        exposure.setValue(Math.round(settings.exposure * 4 + 16)); // Ignore this for now
 
         // Saturation
         saturation.setValue(Math.round(settings.saturation * 100) / 2);
@@ -250,41 +251,13 @@ public class PostProcessViewModel extends ViewModel {
         sharpness.setValue(Math.round((settings.sharpen0 - 1.0f) * 25.0f));
         detail.setValue(Math.round((settings.sharpen1 - 1.0f) * 50.0f));
 
-        float noiseSigma = settings.noiseSigma;
-        float sceneLuminance = settings.sceneLuminance;
-
-        // Move into next category if shadows are boosted a lot
-        if(settings.shadows > 7.99)
-            noiseSigma += 2.0f;
-
         // Denoise settings
-        PostProcessViewModel.SpatialDenoiseAggressiveness spatialNoise;
+        PostProcessViewModel.SpatialDenoiseAggressiveness spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
 
-        if(iso <= 200 && shutterSpeed <= 10000000 && sceneLuminance > 0.25) {
-            numMergeImages.setValue(0);
-            spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
-            chromaEps.setValue(8.0f);
-        }
-        else if (noiseSigma < 4.0f) {
-            numMergeImages.setValue(2);
-            spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
-            chromaEps.setValue(8.0f);
-        }
-        else if (noiseSigma < 6.0f) {
-            numMergeImages.setValue(3);
-            spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
-            chromaEps.setValue(16.0f);
-        }
-        else if (noiseSigma < 8.0f) {
-            numMergeImages.setValue(5);
-            spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
-            chromaEps.setValue(32.0f);
-        }
-        else {
-            numMergeImages.setValue(7);
-            spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
-            chromaEps.setValue(32.0f);
-        }
+        int n = CameraActivity.getNumImagesToMerge(iso, shutterSpeed, settings.shadows);
+
+        numMergeImages.setValue(n);
+        chromaEps.setValue(CameraActivity.getChromaEps(n));
 
         spatialDenoiseAggressiveness.setValue(spatialNoise.getOptionValue());
     }

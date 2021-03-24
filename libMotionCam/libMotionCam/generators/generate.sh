@@ -27,6 +27,9 @@ function build_denoise() {
 	ARCH=$2
 	FLAGS="no_runtime"
 
+	echo "[$ARCH] Building denoise_generator"
+	./tmp/denoise_generator -g denoise_generator -f fuse_denoise -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} input0.type=uint16 input1.type=uint16 pendingOutput.type=float32 output.type=float32
+
 	echo "[$ARCH] Building forward_transform_generator"
 	./tmp/denoise_generator -g forward_transform_generator -f forward_transform -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} input.type=uint16 levels=6
 

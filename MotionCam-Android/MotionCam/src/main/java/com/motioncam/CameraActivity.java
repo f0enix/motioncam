@@ -620,7 +620,7 @@ public class CameraActivity extends AppCompatActivity implements
         updatePreviewTabUi(false);
     }
 
-    static private int getNumImagesToMerge(int iso, long exposureTime, float shadows) {
+    static public int getNumImagesToMerge(int iso, long exposureTime, float shadows) {
         int numImages;
 
         if(iso <= 200 && exposureTime <= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_100.getExposureTime()) {
@@ -635,7 +635,7 @@ public class CameraActivity extends AppCompatActivity implements
 
         // If very dark, use more images
         if(exposureTime >= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_10.getExposureTime()) {
-            numImages = 7;
+            numImages = 8;
         }
 
         // If shadows are increased by a significant amount, use more images
@@ -650,7 +650,7 @@ public class CameraActivity extends AppCompatActivity implements
         return numImages;
     }
 
-    static private float getChromaEps(int numImages) {
+    static public float getChromaEps(int numImages) {
         if(numImages <= 0)
             return 8.0f;
         else if(numImages <= 5)
