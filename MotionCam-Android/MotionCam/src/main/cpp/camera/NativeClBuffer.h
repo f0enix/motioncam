@@ -1,6 +1,8 @@
 #ifndef MOTIONCAM_ANDROID_NATIVECLBUFFER_H
 #define MOTIONCAM_ANDROID_NATIVECLBUFFER_H
 
+#ifdef GPU_CAMERA_PREVIEW
+
 #include <motioncam/RawImageMetadata.h>
 
 #ifdef __ANDROID__
@@ -36,5 +38,7 @@ namespace motioncam {
         std::vector<uint8_t> mHostBuffer;
     };
 }
+
+#endif //GPU_CAMERA_PREVIEW
 
 #endif //MOTIONCAM_ANDROID_NATIVECLBUFFER_H

@@ -37,7 +37,7 @@ function build_denoise() {
 	./tmp/denoise_generator -g fuse_image_generator -f fuse_image -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} input.type=uint16 reference.size=6 reference.type=float32 intermediate.size=6 intermediate.type=float32
 
 	echo "[$ARCH] Building inverse_transform_generator"
-	./tmp/denoise_generator -g inverse_transform_generator -f inverse_transform -e static_library,schedule,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} input.size=6
+	./tmp/denoise_generator -g inverse_transform_generator -f inverse_transform -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} input.size=6
 }
 
 function build_postprocess() {
@@ -124,19 +124,33 @@ function build_camera_preview() {
 
 	echo "[$ARCH] Building camera_preview_generator4_raw16"
 	./tmp/camera_preview_generator -g camera_preview_generator -f camera_preview4_raw16 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} tonemap_levels=6 downscale_factor=4 pixel_format=1
+}
 
-	echo "[$ARCH] Building halide_runtime"
+function build_runtime() {
+	TARGET=$1
+	ARCH=$2
+
+	echo "[$ARCH] Building halide_runtime_base"
 	./tmp/camera_preview_generator -r halide_runtime -e static_library,h -o ../halide/${ARCH} target=${TARGET}
+
+	mv ../halide/${ARCH}/halide_runtime.a ../halide/${ARCH}/halide_runtime_host.a
+
+	echo "[$ARCH] Building halide_runtime_opencl"
+	./tmp/camera_preview_generator -r halide_runtime -e static_library,h -o ../halide/${ARCH} target=${TARGET}-opencl-cl_half
+
+	mv ../halide/${ARCH}/halide_runtime.a ../halide/${ARCH}/halide_runtime_opencl.a
 }
 
 mkdir -p ../halide/host
 
 build_denoise host host
 build_postprocess host host
-build_camera_preview host-opencl-cl_half host
+build_camera_preview host host
+build_runtime host host
 
 mkdir -p ../halide/arm64-v8a
 
 build_denoise arm-64-android arm64-v8a
 build_postprocess arm-64-android arm64-v8a
 build_camera_preview arm-64-android-opencl-cl_half arm64-v8a
+build_runtime arm-64-android arm64-v8a

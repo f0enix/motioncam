@@ -11,11 +11,6 @@ import com.squareup.moshi.Moshi;
 import java.io.IOException;
 
 public class NativeCameraSessionBridge implements NativeCameraSessionListener, NativeCameraRawPreviewListener {
-    // Load our native camera library
-    static {
-        System.loadLibrary("native-camera");
-    }
-
     public final static long INVALID_NATIVE_HANDLE = -1;
 
     // Camera states

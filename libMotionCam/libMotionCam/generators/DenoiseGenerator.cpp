@@ -52,6 +52,8 @@ public:
     Input<int32_t> height{"height"};
     Input<int32_t> whiteLevel{"whiteLevel"};
     
+    Input<float> motionVectorsWeight{"motionVectorsWeight"};
+
     Output<Func> output{"output", 3};
 
     void generate();
@@ -223,7 +225,7 @@ void DenoiseGenerator::generate() {
 
     Expr M = sqrt(flowMap(v_x, v_y, 0)*flowMap(v_x, v_y, 0) + flowMap(v_x, v_y, 1)*flowMap(v_x, v_y, 1));
 
-    w(v_x, v_y, v_c, v_i) = exp(-M/8.0f) * 15*exp(-256.0f * D) + 1.0f;
+    w(v_x, v_y, v_c, v_i) = exp(-M/motionVectorsWeight) * 15*exp(-256.0f * D) + 1.0f;
 
     Func outMean{"outMean"}, outHigh{"outHigh"};
 

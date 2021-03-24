@@ -65,11 +65,13 @@ namespace motioncam {
         void doMatchMetadata();
         void doPreprocess();
 
+#ifdef GPU_CAMERA_PREVIEW
         static Halide::Runtime::Buffer<uint8_t> createCameraPreviewOutputBuffer(const RawImageBuffer& buffer, const int downscaleFactor);
         static void releaseCameraPreviewOutputBuffer(Halide::Runtime::Buffer<uint8_t>& buffer);
 
         static Halide::Runtime::Buffer<uint8_t> wrapCameraPreviewInputBuffer(const RawImageBuffer& buffer);
         static void unwrapCameraPreviewInputBuffer(Halide::Runtime::Buffer<uint8_t>& buffer);
+#endif
 
     private:
         size_t mMaximumMemoryUsageBytes;

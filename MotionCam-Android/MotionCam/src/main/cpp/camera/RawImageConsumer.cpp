@@ -6,7 +6,10 @@
 #include "NativeClBuffer.h"
 #include "Exceptions.h"
 
-#include <HalideRuntimeOpenCL.h>
+#ifdef GPU_CAMERA_PREVIEW
+    #include <HalideRuntimeOpenCL.h>
+    #include <motioncam/CameraPreview.h>
+#endif
 
 #include <chrono>
 #include <memory>
@@ -20,17 +23,18 @@
 #include "motioncam/CameraProfile.h"
 #include "motioncam/Temperature.h"
 
-#include <motioncam/ImageProcessor.h>
 #include <camera/NdkCameraMetadata.h>
 
 namespace motioncam {
     static const int COPY_THREADS = 1; // More than one copy thread breaks RAW preview
 
+#ifdef GPU_CAMERA_PREVIEW
     void VERIFY_RESULT(int32_t errCode, const std::string& errString)
     {
         if(errCode != 0)
             throw RawPreviewException(errString);
     }
+#endif
 
     //
 
@@ -431,6 +435,7 @@ namespace motioncam {
 
         LOGI("Setting up buffers");
 
+#ifdef GPU_CAMERA_PREVIEW
         {
             // Make sure the OpenCL library is loaded/symbols looked up in Halide
             Halide::Runtime::Buffer<int32_t> buf(32);
@@ -439,11 +444,18 @@ namespace motioncam {
             // Use relaxed math
             halide_opencl_set_build_options("-cl-fast-relaxed-math");
         }
+#endif
 
         while(mRunning && memoryUseBytes + bufferLength < mMaximumMemoryUsageBytes) {
             std::vector<std::shared_ptr<RawImageBuffer>> buffers;
 
-            std::shared_ptr<RawImageBuffer> buffer = std::make_shared<RawImageBuffer>(std::make_unique<NativeClBuffer>(bufferLength));
+            std::shared_ptr<RawImageBuffer> buffer;
+
+#ifdef GPU_CAMERA_PREVIEW
+            buffer = std::make_shared<RawImageBuffer>(std::make_unique<NativeClBuffer>(bufferLength));
+#else
+            buffer = std::make_shared<RawImageBuffer>(std::make_unique<NativeHostBuffer>(bufferLength));
+#endif
             buffers.push_back(buffer);
 
             // Lock buffer manager and add the buffers
@@ -462,6 +474,7 @@ namespace motioncam {
         LOGD("Finished setting up %d buffers", numBuffers);
     }
 
+#ifdef GPU_CAMERA_PREVIEW
     Halide::Runtime::Buffer<uint8_t> RawImageConsumer::createCameraPreviewOutputBuffer(const RawImageBuffer& buffer, const int downscaleFactor) {
         const int width = buffer.width / 2 / downscaleFactor;
         const int height = buffer.height / 2 / downscaleFactor;
@@ -538,10 +551,10 @@ namespace motioncam {
                 halide_opencl_detach_cl_mem(nullptr, buffer.raw_buffer()),
                 "Failed to unwrap camera preview buffer");
     }
+#endif
 
     void RawImageConsumer::doPreprocess() {
-        ImageProcessor processor;
-
+#ifdef GPU_CAMERA_PREVIEW
         Halide::Runtime::Buffer<uint8_t> outputBuffer;
         std::shared_ptr<RawImageBuffer> buffer;
 
@@ -573,7 +586,7 @@ namespace motioncam {
 
             previewTimestamp = std::chrono::steady_clock::now();
 
-            motioncam::ImageProcessor::cameraPreview(
+            motioncam::CameraPreview::generate(
                     *buffer,
                     mCameraDesc->metadata,
                     downscaleFactor,
@@ -639,6 +652,7 @@ namespace motioncam {
         if(outputCreated)
             releaseCameraPreviewOutputBuffer(outputBuffer);
 
+#endif
         LOGD("Exiting preprocess thread");
     }
 
