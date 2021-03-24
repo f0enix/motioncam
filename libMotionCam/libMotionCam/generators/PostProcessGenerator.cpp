@@ -1754,7 +1754,7 @@ public:
     Input<Buffer<float>> inShadingMap2{"inShadingMap2", 2 };
     Input<Buffer<float>> inShadingMap3{"inShadingMap3", 2 };
 
-    Input<int16_t> range{"range"};
+    Input<uint16_t> range{"range"};
     Input<int> sensorArrangement{"sensorArrangement"};
     
     Input<float> gamma{"gamma"};

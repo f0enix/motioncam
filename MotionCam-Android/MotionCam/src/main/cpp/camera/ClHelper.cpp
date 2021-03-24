@@ -1,6 +1,8 @@
 #include "ClHelper.h"
 #include "Exceptions.h"
 
+#ifdef GPU_CAMERA_PREVIEW
+
 extern "C" int halide_acquire_cl_context(void *user_context, cl_context *ctx, cl_command_queue *q, bool create = true);
 extern "C" int halide_release_cl_context(void *user_context);
 extern "C" void* halide_opencl_get_symbol(void *user_context, const char *name);
@@ -64,3 +66,5 @@ namespace motioncam {
                 command_queue, memobj, mapped_ptr, num_events_in_wait_list, event_wait_list, event);
     }
 }
+
+#endif

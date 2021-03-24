@@ -126,7 +126,11 @@ namespace motioncam {
         NativeHostBuffer()
         {
         }
-        
+
+        NativeHostBuffer(size_t length) : data(length)
+        {
+        }
+
         uint8_t* lock(bool write) {
             return data.data();
         }

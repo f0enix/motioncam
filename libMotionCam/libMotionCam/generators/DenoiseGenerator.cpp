@@ -40,6 +40,243 @@ static Func transpose(Func f) {
     return fT;
 }
 
+class DenoiseGenerator : public Generator<DenoiseGenerator> {
+public:
+    Input<Func> input0{"input0", 3};
+    Input<Func> input1{"input1", 3};
+    Input<Func> pendingOutput{"pendingOutput", 3};
+
+    Input<Buffer<float>> flowMap{"flowMap", 3};
+
+    Input<int32_t> width{"width"};
+    Input<int32_t> height{"height"};
+    Input<int32_t> whiteLevel{"whiteLevel"};
+    
+    Input<float> motionVectorsWeight{"motionVectorsWeight"};
+
+    Output<Func> output{"output", 3};
+
+    void generate();
+
+private:
+    Func blockMean(Func in);
+    void cmpSwap(Expr& a, Expr& b);
+    Expr median(Expr A, Expr B, Expr C, Expr D);
+    Func registeredInput();
+
+    Var v_i{"i"};
+    Var v_x{"x"};
+    Var v_y{"y"};
+    Var v_c{"c"};
+    
+    Var v_xo{"xo"};
+    Var v_xi{"xi"};
+    Var v_yo{"yo"};
+    Var v_yi{"yi"};
+
+    Var v_xio{"xio"};
+    Var v_xii{"xii"};
+    Var v_yio{"yio"};
+    Var v_yii{"yii"};
+
+    Var subtile_idx{"subtile_idx"};
+    Var tile_idx{"tile_idx"};
+};
+
+Func DenoiseGenerator::blockMean(Func in) {
+    Expr M0 =
+        (in(v_x - 1,  v_y - 1,    v_c) + 
+         in(v_x,      v_y - 1,    v_c) + 
+         in(v_x,      v_y,        v_c) +
+         in(v_x - 1,  v_y,        v_c)) / 4;
+
+    Expr M1 =
+        (in(v_x,      v_y - 1,    v_c) + 
+         in(v_x + 1,  v_y - 1,    v_c) + 
+         in(v_x + 1,  v_y,        v_c) +
+         in(v_x,      v_y,        v_c)) / 4;
+
+    Expr M2 =
+        (in(v_x,      v_y,        v_c) + 
+         in(v_x + 1,  v_y,        v_c) + 
+         in(v_x,      v_y + 1,    v_c) +
+         in(v_x + 1,  v_y + 1,    v_c)) / 4;
+
+    Expr M3 =
+        (in(v_x - 1,  v_y,        v_c) + 
+         in(v_x,      v_y,        v_c) + 
+         in(v_x,      v_y + 1,    v_c) +
+         in(v_x - 1,  v_y + 1,    v_c)) / 4;
+
+    Func out;
+
+    out(v_x, v_y, v_c, v_i) =
+        select( v_i == 0, M0,
+                v_i == 1, M1,
+                v_i == 2, M2,
+                          M3);
+
+    return out;
+}
+
+void DenoiseGenerator::cmpSwap(Expr& a, Expr& b) {
+    Expr tmp = min(a, b);
+    b = max(a, b);
+    a = tmp;
+}
+
+Expr DenoiseGenerator::median(Expr A, Expr B, Expr C, Expr D) {
+    cmpSwap(A, B);
+    cmpSwap(C, D);
+    cmpSwap(A, C);
+    cmpSwap(B, D);
+    cmpSwap(B, C);
+
+    return (B + C) / 2;
+}
+
+Func DenoiseGenerator::registeredInput() {
+    Func result{"registeredInput"};
+    Func inputF32{"inputF32"};
+
+    flowMap
+        .dim(0).set_stride(2)
+        .dim(2).set_stride(1);
+
+    Func clamped = BoundaryConditions::repeat_edge(input1, { {0, width}, {0, height}, {0, 4} } );
+    inputF32(v_x, v_y, v_c) = cast<float>(clamped(v_x, v_y, v_c));
+    
+    Expr flowX = clamp(v_x, 0, flowMap.width() - 1);
+    Expr flowY = clamp(v_y, 0, flowMap.height() - 1);
+    
+    Expr fx = v_x + flowMap(flowX, flowY, 0);
+    Expr fy = v_y + flowMap(flowX, flowY, 1);
+    
+    Expr x = cast<int16_t>(fx);
+    Expr y = cast<int16_t>(fy);
+    
+    Expr a = fx - x;
+    Expr b = fy - y;
+    
+    Expr p0 = lerp(inputF32(x, y, v_c), inputF32(x + 1, y, v_c), a);
+    Expr p1 = lerp(inputF32(x, y + 1, v_c), inputF32(x + 1, y + 1, v_c), a);
+    
+    result(v_x, v_y, v_c) = saturating_cast<uint16_t>(lerp(p0, p1, b));
+
+    return result;
+}
+
+void DenoiseGenerator::generate() {    
+    Func inRepeated0 = BoundaryConditions::repeat_edge(input0, { {0, width}, {0, height} } );
+    Func inRepeated1 = registeredInput();
+
+    Func inSigned0{"inSigned0"}, inSigned1{"inSigned1"};
+
+    inSigned0(v_x, v_y, v_c) = cast<float>(inRepeated0(v_x, v_y, v_c));
+    inSigned1(v_x, v_y, v_c) = cast<float>(inRepeated1(v_x, v_y, v_c));
+
+    Func inMean0{"inMean0"}, inMean1{"inMean1"};
+    Func inHigh0{"inHigh0"}, inHigh1{"inHigh1"};
+
+    inMean0 = blockMean(inSigned0);
+    inMean1 = blockMean(inSigned1);
+
+    inHigh0(v_x, v_y, v_c, v_i) = inSigned0(v_x, v_y, v_c) - inMean0(v_x, v_y, v_c, v_i);
+    inHigh1(v_x, v_y, v_c, v_i) = inSigned1(v_x, v_y, v_c) - inMean1(v_x, v_y, v_c, v_i);
+
+    Func T{"T"};
+
+    Expr T0 = median(
+        abs(inHigh0(v_x-1,  v_y-1,  v_c, v_i)),
+        abs(inHigh0(v_x,    v_y-1,  v_c, v_i)),
+        abs(inHigh0(v_x,    v_y,    v_c, v_i)),
+        abs(inHigh0(v_x-1,  v_y,    v_c, v_i ))
+    );
+
+    Expr T1 = median(
+        abs(inHigh0(v_x,    v_y-1,  v_c, v_i)),
+        abs(inHigh0(v_x+1,  v_y-1,  v_c, v_i)),
+        abs(inHigh0(v_x+1,  v_y,    v_c, v_i)),
+        abs(inHigh0(v_x,    v_y,    v_c, v_i))
+    );
+
+    Expr T2 = median(
+        abs(inHigh0(v_x,    v_y,    v_c, v_i)),
+        abs(inHigh0(v_x+1,  v_y,    v_c, v_i)),
+        abs(inHigh0(v_x,    v_y+1,  v_c, v_i)),
+        abs(inHigh0(v_x+1,  v_y+1,  v_c, v_i))
+    );
+
+    Expr T3 = median(
+        abs(inHigh0(v_x-1,  v_y,    v_c, v_i)),
+        abs(inHigh0(v_x,    v_y,    v_c, v_i)),
+        abs(inHigh0(v_x,    v_y+1,  v_c, v_i)),
+        abs(inHigh0(v_x-1,  v_y+1,  v_c, v_i))
+    );
+
+    T(v_x, v_y, v_c, v_i) =
+        select( v_i == 0, 1.0f/0.6745f * T0,
+                v_i == 1, 1.0f/0.6745f * T1,
+                v_i == 2, 1.0f/0.6745f * T2,
+                          1.0f/0.6745f * T3 );
+
+    Expr D = (abs(inMean0(v_x, v_y, v_c, v_i) - inMean1(v_x, v_y, v_c, v_i))) / cast<float>(whiteLevel);
+    Func w{"w"};
+
+    Expr M = sqrt(flowMap(v_x, v_y, 0)*flowMap(v_x, v_y, 0) + flowMap(v_x, v_y, 1)*flowMap(v_x, v_y, 1));
+
+    w(v_x, v_y, v_c, v_i) = exp(-M/motionVectorsWeight) * 15*exp(-256.0f * D) + 1.0f;
+
+    Func outMean{"outMean"}, outHigh{"outHigh"};
+
+    Expr d0 = inHigh0(v_x, v_y, v_c, v_i) - inHigh1(v_x, v_y, v_c, v_i);
+    Expr m0 = abs(d0) / (abs(d0) + w(v_x, v_y, v_c, v_i)*T(v_x, v_y, v_c, v_i) + 1e-5f);
+
+    outHigh(v_x, v_y, v_c, v_i) = inHigh1(v_x, v_y, v_c, v_i) + m0*d0;
+
+    Expr d1 = inMean0(v_x, v_y, v_c, v_i) - inMean1(v_x, v_y, v_c, v_i);
+    Expr m1 = abs(d1) / (abs(d1) + w(v_x, v_y, v_c, v_i)*T(v_x, v_y, v_c, v_i) + 1e-5f);
+
+    outMean(v_x, v_y, v_c, v_i) = inMean1(v_x, v_y, v_c, v_i) + m1*d1;
+
+    output(v_x, v_y, v_c) = pendingOutput(v_x, v_y, v_c) + 0.25f *
+    (
+        (outMean(v_x, v_y, v_c, 0) + outHigh(v_x, v_y, v_c, 0)) +
+        (outMean(v_x, v_y, v_c, 1) + outHigh(v_x, v_y, v_c, 1)) +
+        (outMean(v_x, v_y, v_c, 2) + outHigh(v_x, v_y, v_c, 2)) +
+        (outMean(v_x, v_y, v_c, 3) + outHigh(v_x, v_y, v_c, 3))
+    );
+
+    input0.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
+    width.set_estimate(2000);
+    height.set_estimate(1500);
+    input1.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
+    pendingOutput.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
+    flowMap.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
+
+    output.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
+        
+    if (!auto_schedule) {
+
+        inRepeated0
+            .compute_at(output, v_c)
+            .split(_0, v_yo, v_yi, 16)
+            .vectorize(v_yi);
+
+        inRepeated1
+            .compute_root()
+            .split(v_x, v_xo, v_xi, 16)
+            .vectorize(v_xi)
+            .parallel(v_c);
+
+        output
+            .compute_root()
+            .split(v_x, v_xo, v_xi, 16)
+            .vectorize(v_xi)
+            .parallel(v_c);
+    }
+}
+
 class ForwardTransformGenerator : public Generator<ForwardTransformGenerator> {
 public:
     GeneratorParam<int> levels{"levels", 6};
@@ -902,6 +1139,7 @@ void FuseImageGenerator::schedule_for_cpu() {
     }
 }
 
+HALIDE_REGISTER_GENERATOR(DenoiseGenerator, denoise_generator)
 HALIDE_REGISTER_GENERATOR(ForwardTransformGenerator, forward_transform_generator)
 HALIDE_REGISTER_GENERATOR(FuseImageGenerator, fuse_image_generator)
 HALIDE_REGISTER_GENERATOR(InverseTransformGenerator, inverse_transform_generator)

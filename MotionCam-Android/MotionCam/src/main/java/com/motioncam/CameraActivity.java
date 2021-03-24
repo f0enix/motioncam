@@ -620,7 +620,7 @@ public class CameraActivity extends AppCompatActivity implements
         updatePreviewTabUi(false);
     }
 
-    static private int getNumImagesToMerge(int iso, long exposureTime, float shadows) {
+    static public int getNumImagesToMerge(int iso, long exposureTime, float shadows) {
         int numImages;
 
         if(iso <= 200 && exposureTime <= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_100.getExposureTime()) {
@@ -635,7 +635,7 @@ public class CameraActivity extends AppCompatActivity implements
 
         // If very dark, use more images
         if(exposureTime >= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_10.getExposureTime()) {
-            numImages = 7;
+            numImages = 8;
         }
 
         // If shadows are increased by a significant amount, use more images
@@ -650,7 +650,7 @@ public class CameraActivity extends AppCompatActivity implements
         return numImages;
     }
 
-    static private float getChromaEps(int numImages) {
+    static public float getChromaEps(int numImages) {
         if(numImages <= 0)
             return 8.0f;
         else if(numImages <= 5)
@@ -856,10 +856,26 @@ public class CameraActivity extends AppCompatActivity implements
         long nativeCameraMemoryUseMb = sharedPrefs.getInt(SettingsViewModel.PREFS_KEY_MEMORY_USE_MBYTES, 256);
         nativeCameraMemoryUseMb = Math.min(nativeCameraMemoryUseMb, SettingsViewModel.MAXIMUM_MEMORY_USE_MB);
 
+        boolean enableRawPreview = sharedPrefs.getBoolean(SettingsViewModel.PREFS_KEY_DUAL_EXPOSURE_CONTROLS, false);
+
         // Create camera bridge
         long nativeCameraMemoryUseBytes = nativeCameraMemoryUseMb * 1024 * 1024;
 
         if (mNativeCamera == null) {
+
+            // Load our native camera library
+            if(enableRawPreview) {
+                try {
+                    System.loadLibrary("native-camera-opencl");
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    System.loadLibrary("native-camera-host");
+                }
+            }
+            else {
+                System.loadLibrary("native-camera-host");
+            }
+
             mNativeCamera = new NativeCameraSessionBridge(this, nativeCameraMemoryUseBytes, null);
             mAsyncNativeCameraOps = new AsyncNativeCameraOps(mNativeCamera);
 
@@ -1042,7 +1058,6 @@ public class CameraActivity extends AppCompatActivity implements
             // Use small preview window since we're not using the camera preview.
             displayWidth = 240;
             displayHeight = 480;
-
         }
         else {
             // Get display size
@@ -1371,7 +1386,7 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private float calculateShadows() {
-        return (float) Math.pow(2.0, Math.log(mShadowEstimated) / Math.log(2.0) + mShadowOffset);
+        return (float) Math.min(32.0f, Math.pow(2.0, Math.log(mShadowEstimated) / Math.log(2.0) + mShadowOffset));
     }
 
     private void updatePreviewSettings() {

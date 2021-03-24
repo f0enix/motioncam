@@ -1,6 +1,8 @@
 #include "NativeClBuffer.h"
 #include "ClHelper.h"
 
+#ifdef GPU_CAMERA_PREVIEW
+
 #include <HalideRuntimeOpenCL.h>
 
 namespace motioncam {
@@ -96,3 +98,5 @@ namespace motioncam {
         }
     }
 }
+
+#endif

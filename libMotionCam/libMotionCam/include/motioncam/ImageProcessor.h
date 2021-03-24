@@ -41,21 +41,6 @@ namespace motioncam {
                             const std::string& outputPath,
                             const ImageProcessorProgress& progressListener);
 
-        static void cameraPreview(const RawImageBuffer& rawBuffer,
-                                  const RawCameraMetadata& cameraMetadata,
-                                  const int downscaleFactor,
-                                  const bool flipped,
-                                  const float shadows,
-                                  const float contrast,
-                                  const float saturation,
-                                  const float blacks,
-                                  const float whitePoint,
-                                  const float temperatureOffset,
-                                  const float tintOffset,
-                                  const float tonemapVariance,
-                                  Halide::Runtime::Buffer<uint8_t>& inputBuffer,
-                                  Halide::Runtime::Buffer<uint8_t>& outputBuffer);
-
         static Halide::Runtime::Buffer<uint8_t> createPreview(const RawImageBuffer& rawBuffer,
                                                        const int downscaleFactor,
                                                        const RawCameraMetadata& cameraMetadata,
@@ -90,7 +75,6 @@ namespace motioncam {
 
         static void measureImage(RawImageBuffer& rawImage, const RawCameraMetadata& cameraMetadata, float& outSceneLuminosity);
         
-    private:
         static cv::Mat registerImage(const Halide::Runtime::Buffer<uint8_t>& referenceBuffer,
                                      const Halide::Runtime::Buffer<uint8_t>& toAlignBuffer,
                                      int scale=1);

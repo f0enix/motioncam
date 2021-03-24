@@ -235,36 +235,48 @@ Func CameraPreviewGenerator::tonemap(Func input, Expr gain, Expr gamma, Expr var
     tonemapPyramid = buildPyramid(exposures, tonemap_levels);
     weightsPyramid = buildPyramid(weightsNormalized, tonemap_levels);
 
-    tonemapPyramid[0].first.in(tonemapPyramid[1].first)
-        .compute_at(tonemapPyramid[1].second, v_x)
-        .reorder(v_c, v_x, v_y)
-        .gpu_threads(v_x, v_y);
-    
-    weightsPyramid[0].first.in(weightsPyramid[1].first)
-        .compute_at(weightsPyramid[1].second, v_x)
-        .reorder(v_c, v_x, v_y)
-        .gpu_threads(v_x, v_y);
-
-    for(int level = 1; level < tonemap_levels; level++) {
-        tonemapPyramid[level].first
+    if (get_target().has_gpu_feature()) {
+        tonemapPyramid[0].first.in(tonemapPyramid[1].first)
+            .compute_at(tonemapPyramid[1].second, v_x)
             .reorder(v_c, v_x, v_y)
-            .compute_at(tonemapPyramid[level].second, v_x)
+            .gpu_threads(v_x, v_y);
+        
+        weightsPyramid[0].first.in(weightsPyramid[1].first)
+            .compute_at(weightsPyramid[1].second, v_x)
+            .reorder(v_c, v_x, v_y)
             .gpu_threads(v_x, v_y);
 
-        tonemapPyramid[level].second                
-            .compute_root()
-            .reorder(v_c, v_x, v_y)
-            .gpu_tile(v_x, v_y, v_xi, v_yi, 4, 4);
+        for(int level = 1; level < tonemap_levels; level++) {
+            tonemapPyramid[level].first
+                .reorder(v_c, v_x, v_y)
+                .compute_at(tonemapPyramid[level].second, v_x)
+                .gpu_threads(v_x, v_y);
 
-        weightsPyramid[level].first
-            .reorder(v_c, v_x, v_y)
-            .compute_at(weightsPyramid[level].second, v_x)
-            .gpu_threads(v_x, v_y);
+            tonemapPyramid[level].second                
+                .compute_root()
+                .reorder(v_c, v_x, v_y)
+                .gpu_tile(v_x, v_y, v_xi, v_yi, 4, 4);
 
-        weightsPyramid[level].second
-            .compute_root()
-            .reorder(v_c, v_x, v_y)
-            .gpu_tile(v_x, v_y, v_xi, v_yi, 4, 4);
+            weightsPyramid[level].first
+                .reorder(v_c, v_x, v_y)
+                .compute_at(weightsPyramid[level].second, v_x)
+                .gpu_threads(v_x, v_y);
+
+            weightsPyramid[level].second
+                .compute_root()
+                .reorder(v_c, v_x, v_y)
+                .gpu_tile(v_x, v_y, v_xi, v_yi, 4, 4);
+        }
+    }
+    else {
+        // TODO: Better schedule
+        for(int level = 0; level < tonemap_levels; level++) {
+            tonemapPyramid[level].first.compute_root();
+            tonemapPyramid[level].second.compute_root();
+
+            weightsPyramid[level].first.compute_root();
+            weightsPyramid[level].second.compute_root();
+        }
     }
 
     vector<Func> laplacianPyramid, combinedPyramid;
@@ -283,23 +295,29 @@ Func CameraPreviewGenerator::tonemap(Func input, Expr gain, Expr gamma, Expr var
         laplacian(v_x, v_y, v_c) = tonemapPyramid[level].second(v_x, v_y, v_c) - up(v_x, v_y, v_c);
 
         // Skip first level
-        if(level > 0) {
-            up
-                .reorder(v_c, v_x, v_y)
-                .compute_at(laplacian, v_x)
-                .gpu_threads(v_x, v_y);
+        if (get_target().has_gpu_feature()) {
+            if(level > 0) {
+                up
+                    .reorder(v_c, v_x, v_y)
+                    .compute_at(laplacian, v_x)
+                    .gpu_threads(v_x, v_y);
 
-            upIntermediate
-                .reorder(v_c, v_x, v_y)
-                .compute_at(laplacian, v_x)
-                .gpu_threads(v_x, v_y);
+                upIntermediate
+                    .reorder(v_c, v_x, v_y)
+                    .compute_at(laplacian, v_x)
+                    .gpu_threads(v_x, v_y);
 
-            laplacian
-                .compute_root()
-                .reorder(v_c, v_x, v_y)
-                .gpu_tile(v_x, v_y, v_xi, v_yi, 4, 4);
+                laplacian
+                    .compute_root()
+                    .reorder(v_c, v_x, v_y)
+                    .gpu_tile(v_x, v_y, v_xi, v_yi, 4, 4);
+            }
         }
-        
+        else {
+            // TODO: Better schedule
+            laplacian.compute_root();
+        }
+
         laplacianPyramid.push_back(laplacian);
     }
 
@@ -341,24 +359,30 @@ Func CameraPreviewGenerator::tonemap(Func input, Expr gain, Expr gamma, Expr var
         outputLvl(v_x, v_y, v_c) = combinedPyramid[level - 1](v_x, v_y, v_c) + up(v_x, v_y, v_c);
 
         // Skip last level
-        upIntermediate
-            .reorder(v_c, v_x, v_y)
-            .compute_at(outputLvl, v_x)
-            .unroll(v_c)
-            .gpu_threads(v_x, v_y);
+        if (get_target().has_gpu_feature()) {
+            upIntermediate
+                .reorder(v_c, v_x, v_y)
+                .compute_at(outputLvl, v_x)
+                .unroll(v_c)
+                .gpu_threads(v_x, v_y);
 
-        up
-            .reorder(v_c, v_x, v_y)
-            .compute_at(outputLvl, v_x)
-            .unroll(v_c)
-            .gpu_threads(v_x, v_y);
+            up
+                .reorder(v_c, v_x, v_y)
+                .compute_at(outputLvl, v_x)
+                .unroll(v_c)
+                .gpu_threads(v_x, v_y);
 
-        outputLvl
-            .compute_root()
-            .reorder(v_c, v_x, v_y)
-            .unroll(v_c)
-            .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
-    
+            outputLvl
+                .compute_root()
+                .reorder(v_c, v_x, v_y)
+                .unroll(v_c)
+                .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
+        }
+        else {
+            // TODO: Better schedule
+            outputLvl.compute_root();
+        }
+
         outputPyramid.push_back(outputLvl);
     }
 
@@ -589,33 +613,41 @@ void CameraPreviewGenerator::generate() {
         .dim(0).set_stride(4)
         .dim(2).set_stride(1);
 
-    rawInput
-        .reorder(v_c, v_x, v_y)
-        .compute_at(downscaled, v_x)
-        .gpu_threads(v_x, v_y);
+    if (get_target().has_gpu_feature()) {
+        rawInput
+            .reorder(v_c, v_x, v_y)
+            .compute_at(downscaled, v_x)
+            .gpu_threads(v_x, v_y);
 
-    downscaledTemp
-        .reorder(v_c, v_x, v_y)
-        .compute_at(downscaled, v_x)
-        .vectorize(v_c)
-        .gpu_threads(v_x, v_y);
+        downscaledTemp
+            .reorder(v_c, v_x, v_y)
+            .compute_at(downscaled, v_x)
+            .vectorize(v_c)
+            .gpu_threads(v_x, v_y);
 
-    downscaled
-        .compute_root()
-        .reorder(v_c, v_x, v_y)        
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 4, 4);
- 
-    yuvOutput
-        .compute_root()
-        .reorder(v_c, v_x, v_y)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
+        downscaled
+            .compute_root()
+            .reorder(v_c, v_x, v_y)        
+            .gpu_tile(v_x, v_y, v_xi, v_yi, 4, 4);
+     
+        yuvOutput
+            .compute_root()
+            .reorder(v_c, v_x, v_y)
+            .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
 
-    output
-        .bound(v_c, 0, 4)
-        .compute_root()
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
+        output
+            .bound(v_c, 0, 4)
+            .compute_root()
+            .reorder(v_c, v_x, v_y)
+            .unroll(v_c)
+            .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
+    }
+    else {
+        // TODO: Better schedule
+        downscaled.compute_root();
+        yuvOutput.compute_root();
+        output.compute_root();
+    }
 }
 
 HALIDE_REGISTER_GENERATOR(CameraPreviewGenerator, camera_preview_generator)
