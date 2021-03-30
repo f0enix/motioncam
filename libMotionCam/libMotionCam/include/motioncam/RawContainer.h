@@ -9,19 +9,21 @@
 #include <json11/json11.hpp>
 
 #include "motioncam/RawImageMetadata.h"
+#include "motioncam/RawBufferManager.h"
 
 namespace motioncam {
 
     class RawContainer {
     public:
         RawContainer(const std::string& inputPath);
-        RawContainer(RawCameraMetadata  cameraMetadata,
+        RawContainer(RawCameraMetadata& cameraMetadata,
                      const PostProcessSettings& postProcessSettings,
                      const int64_t referenceTimestamp,
                      const bool isHdr,
                      const bool writeDNG,
-                     std::vector<std::string>  frames,
-                     std::map<std::string, std::shared_ptr<RawImageBuffer>>  frameBuffers);
+                     std::vector<std::string> frames,
+                     std::map<std::string, std::shared_ptr<RawImageBuffer>> frameBuffers,
+                     std::unique_ptr<RawBufferManager::LockedBuffers>&& lockedBuffers);
         
         const RawCameraMetadata& getCameraMetadata() const;
         const PostProcessSettings& getPostProcessSettings() const;
@@ -65,6 +67,7 @@ namespace motioncam {
         bool mIsHdr{};
         std::vector<std::string> mFrames;
         std::map<std::string, std::shared_ptr<RawImageBuffer>> mFrameBuffers;
+        std::unique_ptr<RawBufferManager::LockedBuffers> mLockedBuffers;
     };
 }
 

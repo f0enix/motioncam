@@ -159,7 +159,7 @@ public class PostProcessViewModel extends ViewModel {
     }
 
     public float getDetailSetting() {
-        return 1.0f + getSetting(detail, CameraProfile.DEFAULT_DETAIL) / 50.0f;
+        return 1.0f + getSetting(detail, CameraProfile.DEFAULT_DETAIL) / 25.0f;
     }
 
     public SpatialDenoiseAggressiveness getSpatialDenoiseAggressivenessSetting() {
@@ -204,9 +204,12 @@ public class PostProcessViewModel extends ViewModel {
         final int iso = images.get(0).iso;
         final long shutterSpeed = images.get(0).exposureTime;
 
-        asyncNativeCameraOps.estimateSettings(images.get(0), false, (settings) -> {
+        asyncNativeCameraOps.estimateSettings(false, (settings) -> {
             // Load user settings
             load(context);
+
+            if(settings == null)
+                settings = new PostProcessSettings();
 
             // Set estimated settings to whatever we received
             mEstimatedSettings.setValue(settings.clone());
@@ -237,7 +240,7 @@ public class PostProcessViewModel extends ViewModel {
         whitePoint.setValue(Math.round(-200.0f * settings.whitePoint + 250.0f));
         contrast.setValue(Math.round(settings.contrast * 100));
         blacks.setValue(Math.round(settings.blacks * 400));
-//        exposure.setValue(Math.round(settings.exposure * 4 + 16)); // Ignore this for now
+        exposure.setValue(Math.round(settings.exposure * 4 + 16)); // Ignore this for now
         exposure.setValue(16);
 
         // Saturation
@@ -251,7 +254,7 @@ public class PostProcessViewModel extends ViewModel {
 
         // Detail
         sharpness.setValue(Math.round((settings.sharpen0 - 1.0f) * 25.0f));
-        detail.setValue(Math.round((settings.sharpen1 - 1.0f) * 50.0f));
+        detail.setValue(Math.round((settings.sharpen1 - 1.0f) * 25.0f));
 
         // Denoise settings
         PostProcessViewModel.SpatialDenoiseAggressiveness spatialNoise = SpatialDenoiseAggressiveness.NORMAL;

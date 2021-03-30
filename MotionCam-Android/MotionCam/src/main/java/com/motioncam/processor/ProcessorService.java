@@ -21,7 +21,9 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
 
+import com.motioncam.BuildConfig;
 import com.motioncam.R;
+import com.motioncam.model.CameraProfile;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtil;
@@ -41,9 +43,10 @@ public class ProcessorService extends IntentService {
     public static final int NOTIFICATION_ID                     = 1;
     public static final String NOTIFICATION_CHANNEL_ID          = "MotionCamNotification";
 
-    static class ProcessFile implements Callable<Void>, NativeProcessorProgressListener {
+    static class ProcessFile implements Callable<Boolean>, NativeProcessorProgressListener {
         private final Context mContext;
-        private final File mPendingFile;
+        private final File mRawContainerPath;
+        private final boolean mProcessInMemory;
         private final File mTempFileJpeg;
         private final File mTempFileDng;
         private final String mOutputFileNameJpeg;
@@ -62,15 +65,16 @@ public class ProcessorService extends IntentService {
             return filename;
         }
 
-        ProcessFile(Context context, File pendingFile, File tempPath, ResultReceiver receiver) {
+        ProcessFile(Context context, File rawContainerPath, File tempPath, boolean processInMemory, ResultReceiver receiver) {
             mContext = context;
             mNativeProcessor = new NativeProcessor();
             mReceiver = receiver;
-            mPendingFile = pendingFile;
+            mRawContainerPath = rawContainerPath;
+            mProcessInMemory = processInMemory;
             mNotifyManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
 
-            mOutputFileNameJpeg = fileNoExtension(pendingFile.getName()) + ".jpg";
-            mOutputFileNameDng = fileNoExtension(pendingFile.getName()) + ".dng";
+            mOutputFileNameJpeg = fileNoExtension(rawContainerPath.getName()) + ".jpg";
+            mOutputFileNameDng = fileNoExtension(rawContainerPath.getName()) + ".dng";
 
             mTempFileJpeg = new File(tempPath, mOutputFileNameJpeg);
             mTempFileDng = new File(tempPath, mOutputFileNameDng);
@@ -78,11 +82,11 @@ public class ProcessorService extends IntentService {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 NotificationChannel notificationChannel = new NotificationChannel(
                         NOTIFICATION_CHANNEL_ID,
-                        "Motion Cam Notification",
+                        "MotionCam Notification",
                         NotificationManager.IMPORTANCE_MIN);
 
                 // Configure the notification channel.
-                notificationChannel.setDescription("Motion Cam process service");
+                notificationChannel.setDescription("MotionCam process service");
                 notificationChannel.enableLights(false);
                 notificationChannel.enableVibration(false);
                 notificationChannel.setImportance(NotificationManager.IMPORTANCE_MIN);
@@ -91,7 +95,7 @@ public class ProcessorService extends IntentService {
             }
 
             mBuilder = new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID);
-            mBuilder.setContentTitle("Motion Cam")
+            mBuilder.setContentTitle("MotionCam")
                     .setContentText("Processing Image")
                     .setLargeIcon(BitmapFactory.decodeResource(context.getResources(), R.mipmap.icon))
                     .setSmallIcon(R.drawable.ic_processing_notification);
@@ -101,22 +105,28 @@ public class ProcessorService extends IntentService {
         }
 
         @Override
-        public Void call() throws IOException {
+        public Boolean call() throws IOException {
+            if(mProcessInMemory) {
+                if (!mNativeProcessor.processInMemory(mTempFileJpeg.getPath(), this))
+                    return false;
+            }
+            else {
+                mNativeProcessor.processFile(mRawContainerPath.getPath(), mTempFileJpeg.getPath(), this);
+            }
+
             if(mReceiver != null) {
                 Bundle bundle = new Bundle();
 
                 bundle.putInt(ProcessorReceiver.PROCESS_CODE_PROGRESS_VALUE_KEY, 0);
-                bundle.putString(ProcessorReceiver.PROCESS_CODE_OUTPUT_FILE_PATH_KEY, mPendingFile.getPath());
+                bundle.putString(ProcessorReceiver.PROCESS_CODE_OUTPUT_FILE_PATH_KEY, mRawContainerPath.getPath());
 
                 mReceiver.send(ProcessorReceiver.PROCESS_CODE_STARTED, Bundle.EMPTY);
             }
 
-            mNativeProcessor.processFile(mPendingFile.getPath(), mTempFileJpeg.getPath(), this);
-
             // Copy to media store
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // TODO: debug mode only
-                //saveToFiles(mPendingFile, "application/zip", Environment.DIRECTORY_DOCUMENTS);
+                if(BuildConfig.DEBUG && !mProcessInMemory)
+                    saveToFiles(mRawContainerPath, "application/zip", Environment.DIRECTORY_DOCUMENTS);
 
                 if (mTempFileDng.exists()) {
                     saveToMediaStore(mTempFileDng, "image/x-adobe-dng", Environment.DIRECTORY_DCIM);
@@ -159,9 +169,10 @@ public class ProcessorService extends IntentService {
                 }
             }
 
-            mPendingFile.delete();
+            if(!mProcessInMemory)
+                mRawContainerPath.delete();
 
-            return null;
+            return true;
         }
 
         @RequiresApi(api = Build.VERSION_CODES.Q)
@@ -280,15 +291,6 @@ public class ProcessorService extends IntentService {
         // Set receiver if we get one
         ResultReceiver receiver = intent.getParcelableExtra(RECEIVER_KEY);
 
-        // Find all pending files and process them
-        File root = new File(metadataPath);
-        File[] pendingFiles = root.listFiles((dir, name) -> name.toLowerCase().endsWith("zip"));
-
-        if(pendingFiles == null)
-            return;
-
-        Log.i(TAG, "Found " + pendingFiles.length + " images to process");
-
         File tmpDirectory = new File(getFilesDir(), "tmp");
 
         // Create temporary directory
@@ -299,9 +301,34 @@ public class ProcessorService extends IntentService {
             }
         }
 
+        File root = new File(metadataPath);
+
+        // Process all in-memory requests first
+        boolean moreToProcess = true;
+
+        while(moreToProcess) {
+            File inMemoryTmp = CameraProfile.generateCaptureFile(getApplicationContext());
+            ProcessFile inMemoryProcess = new ProcessFile(getApplicationContext(), inMemoryTmp, tmpDirectory, true, receiver);
+
+            try {
+                moreToProcess = inMemoryProcess.call();
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+                moreToProcess = false;
+            }
+        }
+
+        // Find all pending files and process them
+        File[] pendingFiles = root.listFiles((dir, name) -> name.toLowerCase().endsWith("zip"));
+        if(pendingFiles == null)
+            return;
+
+        Log.i(TAG, "Found " + pendingFiles.length + " images to process");
+
         // Process all files
         for(File file : pendingFiles) {
-            ProcessFile processFile = new ProcessFile(getApplicationContext(), file, tmpDirectory, receiver);
+            ProcessFile processFile = new ProcessFile(getApplicationContext(), file, tmpDirectory, false, receiver);
 
             try {
                 processFile.call();

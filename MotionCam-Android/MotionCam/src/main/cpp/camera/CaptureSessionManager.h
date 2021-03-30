@@ -57,12 +57,6 @@ namespace motioncam {
 
         void updateOrientation(ScreenOrientation orientation);
 
-        std::vector<std::shared_ptr<RawImageBuffer>> getBuffers();
-        std::shared_ptr<RawImageBuffer> getBuffer(int64_t timestamp);
-        std::shared_ptr<RawImageBuffer> lockLatest();
-        void lockBuffers();
-        void unlockBuffers();
-        void captureImage(const long handle, const int numSaveImages, const bool writeDNG, const motioncam::PostProcessSettings& settings, const std::string& outputPath);
         void captureHdrImage(
             const int numImages,
             const int baseIso,

@@ -227,7 +227,7 @@ namespace motioncam {
         }
     }
 
-    CameraSession::CameraSession(std::shared_ptr<CameraSessionListener> listener, const std::shared_ptr<CameraDescription>& cameraDescription, std::shared_ptr<RawImageConsumer> rawImageConsumer) :
+    CameraSession::CameraSession(std::shared_ptr<CameraSessionListener> listener, std::shared_ptr<CameraDescription>  cameraDescription, std::shared_ptr<RawImageConsumer> rawImageConsumer) :
         mState(CameraCaptureSessionState::CLOSED),
         mIsPaused(false),
         mMode(CameraMode::AUTO),
@@ -235,7 +235,7 @@ namespace motioncam {
         mLastExposureTime(0),
         mLastFocusState(CameraFocusState::INACTIVE),
         mLastExposureState(CameraExposureState::INACTIVE),
-        mCameraDescription(cameraDescription),
+        mCameraDescription(std::move(cameraDescription)),
         mImageConsumer(std::move(rawImageConsumer)),
         mSessionListener(std::move(listener)),
         mScreenOrientation(ScreenOrientation::PORTRAIT),
@@ -445,8 +445,8 @@ namespace motioncam {
         if (ACaptureRequest_addTarget(mSessionContext->afCaptureRequest->captureRequest, outputTarget) != ACAMERA_OK)
             throw CameraSessionException("Failed to add AF RAW output target");
 
-        for(int i = 0; i < 2; i++)
-            if (ACaptureRequest_addTarget(mSessionContext->hdrCaptureRequests[i]->captureRequest, outputTarget) != ACAMERA_OK)
+        for(auto & hdrCaptureRequest : mSessionContext->hdrCaptureRequests)
+            if (ACaptureRequest_addTarget(hdrCaptureRequest->captureRequest, outputTarget) != ACAMERA_OK)
                 throw CameraSessionException("Failed to add HDR RAW output target");
     }
 
@@ -654,8 +654,6 @@ namespace motioncam {
         if (mState == CameraCaptureSessionState::ACTIVE) {
             ACameraCaptureSession_stopRepeating(mSessionContext->captureSession.get());
             mIsPaused = true;
-
-            mImageConsumer->lockBuffers();
         }
     }
 
@@ -669,7 +667,6 @@ namespace motioncam {
             doRepeatCapture();
 
             mIsPaused = false;
-            mImageConsumer->unlockBuffers();
         }
     }
 
@@ -891,7 +888,7 @@ namespace motioncam {
         mHdrCaptureInProgress = false;
 
         LOGI("HDR capture completed. Saving data.");
-        mImageConsumer->save(RawType::HDR, mHdrCaptureSettings, mHdrCaptureOutputPath);
+//        mImageConsumer->save(RawType::HDR, mHdrCaptureSettings, mHdrCaptureOutputPath);
 
         mSessionListener->onCameraHdrImageCaptureCompleted();
     }

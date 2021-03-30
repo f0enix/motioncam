@@ -507,48 +507,6 @@ namespace motioncam {
         }
     }
 
-    std::vector<std::shared_ptr<RawImageBuffer>> CaptureSessionManager::getBuffers() {
-        if(mImageConsumer)
-            return mImageConsumer->getBuffers();
-
-        return std::vector<std::shared_ptr<RawImageBuffer>>();
-    }
-
-    std::shared_ptr<RawImageBuffer> CaptureSessionManager::getBuffer(int64_t timestamp) {
-        if(mImageConsumer)
-            return mImageConsumer->getBuffer(timestamp);
-
-        return nullptr;
-    }
-
-    std::shared_ptr<RawImageBuffer> CaptureSessionManager::lockLatest() {
-        if(mImageConsumer)
-            return mImageConsumer->lockLatest();
-
-        return nullptr;
-    }
-
-    void CaptureSessionManager::lockBuffers() {
-        if(mImageConsumer)
-            mImageConsumer->lockBuffers();
-    }
-
-    void CaptureSessionManager::unlockBuffers() {
-        if(mImageConsumer)
-            mImageConsumer->unlockBuffers();
-    }
-
-    void CaptureSessionManager::captureImage(
-            const long handle,
-            const int numSaveImages,
-            const bool writeDNG,
-            const motioncam::PostProcessSettings& settings,
-            const std::string &outputPath)
-    {
-        if(mImageConsumer)
-            mImageConsumer->save(handle, numSaveImages, writeDNG, settings, outputPath);
-    }
-
     void CaptureSessionManager::captureHdrImage(
             const int numImages,
             const int baseIso,
@@ -578,9 +536,9 @@ namespace motioncam {
     }
 
     void CaptureSessionManager::enableRawPreview(std::shared_ptr<RawPreviewListener> listener, const int previewQuality, bool overrideWb) {
-        if(mImageConsumer)
-            mImageConsumer->setWhiteBalanceOverride(overrideWb);
+        if(mImageConsumer) {
             mImageConsumer->enableRawPreview(std::move(listener), previewQuality);
+        }
     }
 
     void CaptureSessionManager::updateRawPreviewSettings(

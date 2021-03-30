@@ -53,6 +53,7 @@ public:
     Input<int32_t> whiteLevel{"whiteLevel"};
     
     Input<float> motionVectorsWeight{"motionVectorsWeight"};
+    Input<float> differenceWeight{"differenceWeight"};
 
     Output<Func> output{"output", 3};
 
@@ -132,7 +133,7 @@ Expr DenoiseGenerator::median(Expr A, Expr B, Expr C, Expr D) {
     cmpSwap(B, D);
     cmpSwap(B, C);
 
-    return (B + C) / 2;
+    return 0.5f * (B + C);
 }
 
 Func DenoiseGenerator::registeredInput() {
@@ -161,18 +162,17 @@ Func DenoiseGenerator::registeredInput() {
     Expr p0 = lerp(inputF32(x, y, v_c), inputF32(x + 1, y, v_c), a);
     Expr p1 = lerp(inputF32(x, y + 1, v_c), inputF32(x + 1, y + 1, v_c), a);
     
-    result(v_x, v_y, v_c) = saturating_cast<uint16_t>(lerp(p0, p1, b));
+    result(v_x, v_y, v_c) = saturating_cast<uint16_t>(lerp(p0, p1, b) + 0.5f);
 
     return result;
 }
 
 void DenoiseGenerator::generate() {    
-    Func inRepeated0 = BoundaryConditions::repeat_edge(input0, { {0, width}, {0, height} } );
     Func inRepeated1 = registeredInput();
 
     Func inSigned0{"inSigned0"}, inSigned1{"inSigned1"};
 
-    inSigned0(v_x, v_y, v_c) = cast<float>(inRepeated0(v_x, v_y, v_c));
+    inSigned0(v_x, v_y, v_c) = cast<float>(input0(clamp(v_x, 0, width - 1), clamp(v_y, 0, height - 1), v_c));
     inSigned1(v_x, v_y, v_c) = cast<float>(inRepeated1(v_x, v_y, v_c));
 
     Func inMean0{"inMean0"}, inMean1{"inMean1"};
@@ -215,27 +215,27 @@ void DenoiseGenerator::generate() {
     );
 
     T(v_x, v_y, v_c, v_i) =
-        select( v_i == 0, 1.0f/0.6745f * T0,
-                v_i == 1, 1.0f/0.6745f * T1,
-                v_i == 2, 1.0f/0.6745f * T2,
-                          1.0f/0.6745f * T3 );
+        select( v_i == 0, T0,
+                v_i == 1, T1,
+                v_i == 2, T2,
+                          T3 );
 
-    Expr D = (abs(inMean0(v_x, v_y, v_c, v_i) - inMean1(v_x, v_y, v_c, v_i))) / cast<float>(whiteLevel);
+    Expr D = (abs(inMean0(v_x, v_y, v_c, v_i) - inMean1(v_x, v_y, v_c, v_i))) * (1.0f/ cast<float>(whiteLevel));
     Func w{"w"};
 
-    Expr M = sqrt(flowMap(v_x, v_y, 0)*flowMap(v_x, v_y, 0) + flowMap(v_x, v_y, 1)*flowMap(v_x, v_y, 1));
+    Expr M = flowMap(v_x, v_y, 0)*flowMap(v_x, v_y, 0) + flowMap(v_x, v_y, 1)*flowMap(v_x, v_y, 1);
 
-    w(v_x, v_y, v_c, v_i) = exp(-M/motionVectorsWeight) * 15*exp(-256.0f * D) + 1.0f;
+    w(v_x, v_y, v_c, v_i) = exp(-M/motionVectorsWeight) * differenceWeight*exp(-256.0f * D) + 1.0f;
 
     Func outMean{"outMean"}, outHigh{"outHigh"};
 
     Expr d0 = inHigh0(v_x, v_y, v_c, v_i) - inHigh1(v_x, v_y, v_c, v_i);
-    Expr m0 = abs(d0) / (abs(d0) + w(v_x, v_y, v_c, v_i)*T(v_x, v_y, v_c, v_i) + 1e-5f);
+    Expr m0 = abs(d0) / (1e-15f + abs(d0) + w(v_x, v_y, v_c, v_i)*T(v_x, v_y, v_c, v_i));
 
     outHigh(v_x, v_y, v_c, v_i) = inHigh1(v_x, v_y, v_c, v_i) + m0*d0;
 
     Expr d1 = inMean0(v_x, v_y, v_c, v_i) - inMean1(v_x, v_y, v_c, v_i);
-    Expr m1 = abs(d1) / (abs(d1) + w(v_x, v_y, v_c, v_i)*T(v_x, v_y, v_c, v_i) + 1e-5f);
+    Expr m1 = abs(d1) / (1e-15f + abs(d1) + w(v_x, v_y, v_c, v_i)*T(v_x, v_y, v_c, v_i));
 
     outMean(v_x, v_y, v_c, v_i) = inMean1(v_x, v_y, v_c, v_i) + m1*d1;
 
@@ -250,6 +250,8 @@ void DenoiseGenerator::generate() {
     input0.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
     width.set_estimate(2000);
     height.set_estimate(1500);
+    whiteLevel.set_estimate(1023);
+    motionVectorsWeight.set_estimate(32);
     input1.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
     pendingOutput.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
     flowMap.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
@@ -257,23 +259,26 @@ void DenoiseGenerator::generate() {
     output.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
         
     if (!auto_schedule) {
-
-        inRepeated0
-            .compute_at(output, v_c)
-            .split(_0, v_yo, v_yi, 16)
-            .vectorize(v_yi);
+        inSigned0
+            .compute_at(output, v_yo)
+            .vectorize(v_x, 8);
 
         inRepeated1
             .compute_root()
-            .split(v_x, v_xo, v_xi, 16)
-            .vectorize(v_xi)
-            .parallel(v_c);
+            .reorder(v_c, v_x, v_y)
+            .bound(v_c, 0, 4)
+            .split(v_y, v_yo, v_yi, 32)
+            .vectorize(v_x, 8)
+            .unroll(v_c)
+            .parallel(v_yo);
 
         output
             .compute_root()
-            .split(v_x, v_xo, v_xi, 16)
-            .vectorize(v_xi)
-            .parallel(v_c);
+            .reorder(v_x, v_y, v_c)
+            .bound(v_c, 0, 4)
+            .split(v_y, v_yo, v_yi, 32)
+            .vectorize(v_x, 8)
+            .parallel(v_yo);
     }
 }
 
@@ -645,9 +650,6 @@ class InverseTransformGenerator : public Generator<InverseTransformGenerator> {
 public:
     Input<Buffer<float>[]> input{"input", 4};
 
-    Input<uint16_t> blackLevel{"blackLevel"};
-    Input<uint16_t> whiteLevel{"whiteLevel"};
-    Input<uint16_t> outputRange{"outputRange"};
     Input<float> noiseSigma{"noiseSigma"};
     Input<bool> softThresholding{"softThresholding"};
 
@@ -761,7 +763,35 @@ void InverseTransformGenerator::inverse(Func& inverseOutput, Func& intermediateO
 
 Func InverseTransformGenerator::threshold(Func in) {
     Expr x = in(v_x, v_y, v_c, v_i);
-    Expr T = denoiseAggressiveness*noiseSigma;
+    Expr T = 1e-5f+denoiseAggressiveness*noiseSigma;
+
+    // Func S, mean, var;
+
+    // S(v_x, v_y, v_c, v_i) = x*x;
+
+    // mean(v_x, v_y, v_c, v_i) = sqrt(1.0f/9.0f*(
+    //     S(v_x - 1, v_y - 1, v_c, v_i) +
+    //     S(v_x - 0, v_y - 1, v_c, v_i) +
+    //     S(v_x + 1, v_y - 1, v_c, v_i) +
+    //     S(v_x - 1, v_y - 0, v_c, v_i) +
+    //     S(v_x - 0, v_y - 0, v_c, v_i) +
+    //     S(v_x - 0, v_y - 0, v_c, v_i) +
+    //     S(v_x - 1, v_y + 1, v_c, v_i) +
+    //     S(v_x - 0, v_y + 1, v_c, v_i) +
+    //     S(v_x + 1, v_y + 1, v_c, v_i) ));
+
+    // var(v_x, v_y, v_c, v_i) = 1.0f/9.0f * (
+    //     abs(S(v_x - 1, v_y - 1, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
+    //     abs(S(v_x - 0, v_y - 1, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
+    //     abs(S(v_x + 1, v_y - 1, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
+    //     abs(S(v_x - 1, v_y - 0, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
+    //     abs(S(v_x - 0, v_y - 0, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
+    //     abs(S(v_x + 1, v_y - 0, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
+    //     abs(S(v_x - 1, v_y + 1, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
+    //     abs(S(v_x - 0, v_y + 1, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
+    //     abs(S(v_x + 1, v_y + 1, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) );
+
+    // Expr w2 = 31*exp(-var(v_x, v_y, v_c, v_i) / 1024) + 1;
 
     // Shrink
     Expr m = abs(x);
@@ -846,9 +876,7 @@ void InverseTransformGenerator::generate() {
                  (  inverseResult(v_x, v_y, 0) +
                     inverseResult(v_x, v_y, 1) ) / 2.0f;
 
-            Expr linearOutput = clamp((inverseAvg - blackLevel) / (whiteLevel - blackLevel), 0.0f, 1.0f);
-
-            output(v_x, v_y) = saturating_cast<uint16_t>(linearOutput * outputRange + 0.5f);
+            output(v_x, v_y) = saturating_cast<uint16_t>(inverseAvg + 0.5f);
             
             if(get_target().has_gpu_feature()) {
                 output

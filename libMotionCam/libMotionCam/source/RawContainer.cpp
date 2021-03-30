@@ -163,21 +163,42 @@ namespace motioncam {
         initialise();
     }
 
-    RawContainer::RawContainer(RawCameraMetadata cameraMetadata,
+    RawContainer::RawContainer(RawCameraMetadata& cameraMetadata,
                                const PostProcessSettings& postProcessSettings,
                                const int64_t referenceTimestamp,
                                const bool isHdr,
                                const bool writeDNG,
                                std::vector<string> frames,
-                               std::map<string, std::shared_ptr<RawImageBuffer>>  frameBuffers) :
-        mCameraMetadata(std::move(cameraMetadata)),
+                               std::map<string, std::shared_ptr<RawImageBuffer>> frameBuffers,
+                               std::unique_ptr<RawBufferManager::LockedBuffers>&& lockedBuffers) :
+        mCameraMetadata(cameraMetadata),
         mPostProcessSettings(postProcessSettings),
         mReferenceTimestamp(referenceTimestamp),
         mIsHdr(isHdr),
         mWriteDNG(writeDNG),
         mFrames(std::move(frames)),
-        mFrameBuffers(std::move(frameBuffers))
+        mFrameBuffers(std::move(frameBuffers)),
+        mLockedBuffers(std::move(lockedBuffers))
     {
+        if(mFrameBuffers.empty() || mFrames.empty()) {
+            throw InvalidState("No frames");
+        }
+        
+        // Associate reference
+        auto it = mFrameBuffers.begin();
+        while(it != mFrameBuffers.end()) {
+            if(it->second->metadata.timestampNs == referenceTimestamp) {
+                mReferenceImage = it->first;
+                break;
+            }
+
+            ++it;
+        }
+        
+        if(mReferenceImage.empty()) {
+            mReferenceImage = mFrameBuffers.begin()->first;
+            mReferenceTimestamp = mFrameBuffers.begin()->second->metadata.timestampNs;
+        }
     }
 
     void RawContainer::saveContainer(const std::string& outputPath) {

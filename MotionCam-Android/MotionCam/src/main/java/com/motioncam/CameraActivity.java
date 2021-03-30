@@ -65,8 +65,7 @@ public class CameraActivity extends AppCompatActivity implements
 
     private static final int PERMISSION_REQUEST_CODE = 1;
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
-    private static final float MAX_SHADOWS_EV_VALUE = 3.0f;
-    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 8;
+    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 6;
     public static final int SHADOW_UPDATE_FREQUENCY_MS = 500;
 
     private enum FocusState {
@@ -131,6 +130,8 @@ public class CameraActivity extends AppCompatActivity implements
                     return;
 
                 float shadows = mNativeCamera.estimateShadows(12.0f);
+                if(shadows <= 0)
+                    return;
 
                 if(mShadowsAnimator != null)
                     mShadowsAnimator.cancel();
@@ -365,10 +366,10 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.saturation = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, 1.0f);
         mPostProcessSettings.greenSaturation = 1.0f;
         mPostProcessSettings.blueSaturation = 1.0f;
-        mPostProcessSettings.sharpen0 = 4.5f;
-        mPostProcessSettings.sharpen1 = 1.15f;
-        mPostProcessSettings.whitePoint = 1.0f;
-        mPostProcessSettings.blacks = 0.05f;
+        mPostProcessSettings.sharpen0 = 3.5f;
+        mPostProcessSettings.sharpen1 = 2.5f;
+        mPostProcessSettings.whitePoint = -1;
+        mPostProcessSettings.blacks = -1;
         mPostProcessSettings.tonemapVariance = 0.25f;
         mPostProcessSettings.jpegQuality = jpegQuality;
 
@@ -623,19 +624,19 @@ public class CameraActivity extends AppCompatActivity implements
     static public int getNumImagesToMerge(int iso, long exposureTime, float shadows) {
         int numImages;
 
-        if(iso <= 200 && exposureTime <= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_100.getExposureTime()) {
+        if(iso <= 320 && exposureTime <= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_100.getExposureTime()) {
             numImages = 1;
         }
-        else if (iso <= 800) {
-            numImages = 3;
+        else if (iso <= 400) {
+            numImages = 4;
         }
         else {
-            numImages = 5;
+            numImages = 7;
         }
 
         // If very dark, use more images
-        if(exposureTime >= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_10.getExposureTime()) {
-            numImages = 8;
+        if(iso >= 1600 && exposureTime >= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_30.getExposureTime()) {
+            numImages = 9;
         }
 
         // If shadows are increased by a significant amount, use more images
@@ -651,9 +652,11 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     static public float getChromaEps(int numImages) {
-        if(numImages <= 0)
+        if(numImages <= 3)
+            return 1.0f;
+        else if(numImages <= 4)
             return 8.0f;
-        else if(numImages <= 5)
+        else if(numImages <= 7)
             return 16.0f;
         else
             return 32.0f;
@@ -690,8 +693,8 @@ public class CameraActivity extends AppCompatActivity implements
             settings.chromaEps = getChromaEps(numMergeImages);
             settings.exposure = 0.0f;
 
-            if(numMergeImages < 3)
-                settings.spatialDenoiseAggressiveness = 0.5f;
+            if(mIso <= 320 && mExposureTime <= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_100.getExposureTime())
+                settings.spatialDenoiseAggressiveness = 0.0f;
             else
                 settings.spatialDenoiseAggressiveness = 1.0f;
 
@@ -704,8 +707,9 @@ public class CameraActivity extends AppCompatActivity implements
                     settings,
                     CameraProfile.generateCaptureFile(this).getPath(),
                     handle -> {
-                        mBinding.captureBtn.setEnabled(true);
+                        Log.i(TAG, "Image captured");
 
+                        mBinding.captureBtn.setEnabled(true);
                         startImageProcessor();
                     }
             );
@@ -719,7 +723,7 @@ public class CameraActivity extends AppCompatActivity implements
                     .setDuration(250)
                     .start();
 
-            mAsyncNativeCameraOps.estimateSettings(null, true, estimatedSettings ->
+            mAsyncNativeCameraOps.estimateSettings(true, estimatedSettings ->
                 {
                     if(estimatedSettings == null || mNativeCamera == null)
                         return;
@@ -763,8 +767,8 @@ public class CameraActivity extends AppCompatActivity implements
                     settings.temperature = estimatedSettings.temperature + mTemperatureOffset;
                     settings.tint = estimatedSettings.tint + mTintOffset;
 
-                    if(numMergeImages < 3)
-                        settings.spatialDenoiseAggressiveness = 0.5f;
+                    if(mIso <= 320 && mExposureTime <= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_100.getExposureTime())
+                        settings.spatialDenoiseAggressiveness = 0.0f;
                     else
                         settings.spatialDenoiseAggressiveness = 1.0f;
 
@@ -862,7 +866,6 @@ public class CameraActivity extends AppCompatActivity implements
         long nativeCameraMemoryUseBytes = nativeCameraMemoryUseMb * 1024 * 1024;
 
         if (mNativeCamera == null) {
-
             // Load our native camera library
             if(enableRawPreview) {
                 try {
@@ -1092,13 +1095,7 @@ public class CameraActivity extends AppCompatActivity implements
 
         // Schedule timer to update shadows
         if(enableRawPreview) {
-            mShadowsUpdateTimer = new Timer("ShadowsUpdateTimer");
-
-            mShadowUpdateTimerTask = new ShadowTimerTask();
-            mShadowsUpdateTimer.scheduleAtFixedRate(mShadowUpdateTimerTask, 0, SHADOW_UPDATE_FREQUENCY_MS);
-
             mBinding.previewControls.setVisibility(View.VISIBLE);
-            mBinding.captureModeSelection.setVisibility(View.VISIBLE);
             mBinding.rawCameraPreview.setVisibility(View.VISIBLE);
             mBinding.shadowsLayout.setVisibility(View.VISIBLE);
 
@@ -1108,12 +1105,16 @@ public class CameraActivity extends AppCompatActivity implements
         }
         else {
             mBinding.previewControls.setVisibility(View.GONE);
-            mBinding.captureModeSelection.setVisibility(View.GONE);
             mBinding.rawCameraPreview.setVisibility(View.GONE);
             mBinding.shadowsLayout.setVisibility(View.GONE);
 
             mTextureView.setAlpha(1);
         }
+
+        mShadowsUpdateTimer = new Timer("ShadowsUpdateTimer");
+
+        mShadowUpdateTimerTask = new ShadowTimerTask();
+        mShadowsUpdateTimer.scheduleAtFixedRate(mShadowUpdateTimerTask, 0, SHADOW_UPDATE_FREQUENCY_MS);
     }
 
     @Override
@@ -1397,8 +1398,8 @@ public class CameraActivity extends AppCompatActivity implements
                     shadows,
                     mPostProcessSettings.contrast,
                     mPostProcessSettings.saturation,
-                    mPostProcessSettings.blacks,
-                    mPostProcessSettings.whitePoint,
+                    0.03f,
+                    1.0f,
                     mTemperatureOffset,
                     mTintOffset);
         }

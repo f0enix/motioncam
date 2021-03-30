@@ -116,9 +116,6 @@ extern "C" int extern_denoise(halide_buffer_t *in, int32_t width, int32_t height
                           inputBuffers[3],
                           inputBuffers[4],
                           inputBuffers[5],
-                          0,
-                          65535,
-                          65535,
                           weight*noiseSigma,
                           true,
                           1,
@@ -223,8 +220,8 @@ namespace motioncam {
 
     cv::Mat ImageProcessor::postProcess(std::vector<Halide::Runtime::Buffer<uint16_t>>& inputBuffers,
                                         const shared_ptr<HdrMetadata>& hdrMetadata,
-                                        const int offsetX,
-                                        const int offsetY ,
+                                        int offsetX,
+                                        int offsetY,
                                         const RawImageMetadata& metadata,
                                         const RawCameraMetadata& cameraMetadata,
                                         const PostProcessSettings& settings)
@@ -250,11 +247,15 @@ namespace motioncam {
 
         Halide::Runtime::Buffer<float> cameraToSrgbBuffer = ToHalideBuffer<float>(cameraToSrgb);
 
+        // Trim a bit more from the edges to compensate from issues when registering/fusing
+        offsetX += 8;
+        offsetY += 8;
+        
         cv::Mat output((inputBuffers[0].height() - offsetY)*2, (inputBuffers[0].width() - offsetX)*2, CV_8UC3);
         
         Halide::Runtime::Buffer<uint8_t> outputBuffer(
             Halide::Runtime::Buffer<uint8_t>::make_interleaved(output.data, output.cols, output.rows, 3));
-        
+
         // Edges are garbage, don't process them
         outputBuffer.translate(0, offsetX);
         outputBuffer.translate(1, offsetY);
@@ -395,8 +396,8 @@ namespace motioncam {
         }
         
         // Estimate blacks
-        const float maxDehazePercent = 0.005f; // Max 0.5% pixels
-        const int maxEndBin = 20; // Max bin
+        const float maxDehazePercent = 0.02f; // Max 2% pixels
+        const int maxEndBin = 15; // Max bin
 
         int endBin = 0;
 
@@ -446,7 +447,7 @@ namespace motioncam {
         for(endBin = histogram.rows - 1; endBin >= 128; endBin--) {
             float binPx = histogram.at<float>(endBin);
 
-            if(binPx < 0.995)
+            if(binPx < 0.999f)
                 break;
         }
 
@@ -742,6 +743,7 @@ namespace motioncam {
             settings.blueSaturation,
             settings.saturation,
             settings.greenSaturation,
+            settings.sharpen0,
             settings.sharpen1,
             settings.flipped,
             outputBuffer);
@@ -1004,20 +1006,7 @@ namespace motioncam {
         return exposureScale;
     }
 
-    void ImageProcessor::process(const std::string& inputPath,
-                                 const std::string& outputPath,
-                                 const ImageProcessorProgress& progressListener)
-    {
-        Measure measure("process()");
-
-        // Open RAW container
-        RawContainer rawContainer(inputPath);
-        
-        if(rawContainer.getFrames().empty()) {
-            progressListener.onError("No frames found");
-            return;
-        }
-                                
+    void ImageProcessor::process(RawContainer& rawContainer, const std::string& outputPath, const ImageProcessorProgress& progressListener) {
         // If this is a HDR capture then find the underexposed images.
         std::vector<std::shared_ptr<RawImageBuffer>> underexposedImages;
         
@@ -1074,15 +1063,15 @@ namespace motioncam {
             }
         }
 
-        auto referenceRawBuffer = rawContainer.getFrame(rawContainer.getReferenceImage());
-        
+        auto referenceRawBuffer = rawContainer.loadFrame(rawContainer.getReferenceImage());
+                
         //
         // Denoise
         //
         
         ImageProgressHelper progressHelper(progressListener, static_cast<int>(rawContainer.getFrames().size()), 0);
         
-        std::vector<Halide::Runtime::Buffer<uint16_t>> denoiseOutput;        
+        std::vector<Halide::Runtime::Buffer<uint16_t>> denoiseOutput;
         denoiseOutput = denoise(rawContainer, progressHelper);
         
         progressHelper.denoiseCompleted();
@@ -1160,6 +1149,8 @@ namespace motioncam {
 
         cv::Mat outputImage;
         shared_ptr<HdrMetadata> hdrMetadata;
+        shared_ptr<RawImageBuffer> underExposedImage;
+        
         PostProcessSettings settings = rawContainer.getPostProcessSettings();
 
         if(!underexposedImages.empty()) {
@@ -1177,18 +1168,8 @@ namespace motioncam {
 
             // Check if there's any point even using the underexposed image (less than 0.5% in the >95% bins)
             float p = (sum / totalPixels) * 100.0f;
-            if(p < 0.5f) {
+            if(p < 0.1f) {
                 logger::log("Skipping HDR processing (" + std::to_string(p) + ")");
-
-                estimateBlacks(*referenceRawBuffer,
-                               rawContainer.getCameraMetadata(),
-                               settings.shadows,
-                               settings.blacks);
-
-                estimateWhitePoint(*referenceRawBuffer,
-                                   rawContainer.getCameraMetadata(),
-                                   settings.shadows,
-                                   settings.whitePoint);
             }
             // Try each underexposed image
             else {
@@ -1202,18 +1183,9 @@ namespace motioncam {
                     if(hdrMetadata->error < MAX_HDR_ERROR) {
                         // Reduce the shadows if applying HDR to avoid the image looking too flat due to
                         // extreme dynamic range compression
-                        settings.shadows = std::max(0.65f * settings.shadows, 2.0f);
-
-                        estimateBlacks(*referenceRawBuffer,
-                                       rawContainer.getCameraMetadata(),
-                                       settings.shadows,
-                                       settings.blacks);
-
-                        estimateWhitePoint(*(*underexposedFrameIt),
-                                           rawContainer.getCameraMetadata(),
-                                           settings.shadows * (1.0f/hdrMetadata->exposureScale),
-                                           settings.whitePoint);
-
+                        settings.shadows = std::max(0.85f * settings.shadows, 2.0f);
+                        underExposedImage = *underexposedFrameIt;
+                        
                         break;
                     }
                     else {
@@ -1225,7 +1197,30 @@ namespace motioncam {
                 }
             }
         }
-       
+                
+        // Estimate settings if not supplied
+        if(settings.blacks < 0) {
+            estimateBlacks(*referenceRawBuffer,
+                           rawContainer.getCameraMetadata(),
+                           settings.shadows,
+                           settings.blacks);
+        }
+
+        if(settings.whitePoint < 0) {
+            if(!underExposedImage) {
+                estimateWhitePoint(*referenceRawBuffer,
+                                   rawContainer.getCameraMetadata(),
+                                   settings.shadows,
+                                   settings.whitePoint);
+            }
+            else {
+                estimateWhitePoint(*underExposedImage,
+                                   rawContainer.getCameraMetadata(),
+                                   settings.shadows * (1.0f/hdrMetadata->exposureScale),
+                                   settings.whitePoint);
+            }
+        }
+
         outputImage = postProcess(
             denoiseOutput,
             hdrMetadata,
@@ -1257,6 +1252,23 @@ namespace motioncam {
                         outputPath);
         
         progressHelper.imageSaved();
+    }
+
+    void ImageProcessor::process(const std::string& inputPath,
+                                 const std::string& outputPath,
+                                 const ImageProcessorProgress& progressListener)
+    {
+        Measure measure("process()");
+
+        // Open RAW container
+        RawContainer rawContainer(inputPath);
+        
+        if(rawContainer.getFrames().empty()) {
+            progressListener.onError("No frames found");
+            return;
+        }
+        
+        process(rawContainer, outputPath, progressListener);
     }
     
     void ImageProcessor::addExifMetadata(const RawImageMetadata& metadata,
@@ -1368,6 +1380,25 @@ namespace motioncam {
         auto processFrames = rawContainer.getFrames();
         auto it = processFrames.begin();
         
+        auto other = processFrames;
+
+        float motionVectorsWeight;
+        float differenceWeight;
+        
+        // Set up weights depending on exposure time
+        if(reference->metadata.exposureTime >= 1.0/60.0*1e9 + 1) {
+            motionVectorsWeight = 64;
+            differenceWeight = 31;
+        }
+        else if(reference->metadata.exposureTime >= 1.0/100.0*1e9) {
+            motionVectorsWeight = 32;
+            differenceWeight = 15;
+        }
+        else {
+            motionVectorsWeight = 16;
+            differenceWeight = 7;
+        }
+        
         while(it != processFrames.end()) {
             if(rawContainer.getReferenceImage() == *it) {
                 ++it;
@@ -1386,10 +1417,13 @@ namespace motioncam {
             cv::Ptr<cv::DISOpticalFlow> opticalFlow =
                 cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_ULTRAFAST);
             
+            opticalFlow->setPatchSize(16);
+            opticalFlow->setPatchStride(8);
             opticalFlow->calc(referenceFlowImage, currentFlowImage, flow);
             
             Halide::Runtime::Buffer<float> flowBuffer =
                 Halide::Runtime::Buffer<float>::make_interleaved((float*) flow.data, flow.cols, flow.rows, 2);
+            
                         
             fuse_denoise(reference->rawBuffer,
                          current->rawBuffer,
@@ -1398,7 +1432,8 @@ namespace motioncam {
                          reference->rawBuffer.width(),
                          reference->rawBuffer.height(),
                          rawContainer.getCameraMetadata().whiteLevel,
-                         8,
+                         motionVectorsWeight,
+                         differenceWeight,
                          fuseOutput);
             
             progressHelper.nextFusedImage();
@@ -1425,7 +1460,7 @@ namespace motioncam {
                 float p = fuseOutput(x, y, c) / n - rawContainer.getCameraMetadata().blackLevel[c];
                 float s = EXPANDED_RANGE / (float) (rawContainer.getCameraMetadata().whiteLevel-rawContainer.getCameraMetadata().blackLevel[c]);
                 
-                denoiseInput(x, y, c) = static_cast<uint16_t>( std::max(0.0f, std::min(p * s, (float) EXPANDED_RANGE) )) ;
+                denoiseInput(x, y, c) = static_cast<uint16_t>( std::max(0.0f, std::min(p * s, (float) EXPANDED_RANGE) ) ) ;
             });
         }
         
@@ -1472,9 +1507,6 @@ namespace motioncam {
                               refWavelet[c][3],
                               refWavelet[c][4],
                               refWavelet[c][5],
-                              0,
-                              EXPANDED_RANGE,
-                              EXPANDED_RANGE,
                               noiseSigma[c],
                               false,
                               1,

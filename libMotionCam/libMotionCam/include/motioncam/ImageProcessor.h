@@ -41,6 +41,8 @@ namespace motioncam {
                             const std::string& outputPath,
                             const ImageProcessorProgress& progressListener);
 
+        static void process(RawContainer& rawContainer, const std::string& outputPath, const ImageProcessorProgress& progressListener);
+
         static Halide::Runtime::Buffer<uint8_t> createPreview(const RawImageBuffer& rawBuffer,
                                                        const int downscaleFactor,
                                                        const RawCameraMetadata& cameraMetadata,
@@ -106,8 +108,8 @@ namespace motioncam {
 
         static cv::Mat postProcess(std::vector<Halide::Runtime::Buffer<uint16_t>>& inputBuffers,
                                    const std::shared_ptr<HdrMetadata>& hdrMetadata,
-                                   const int offsetX,
-                                   const int offsetY,
+                                   int offsetX,
+                                   int offsetY,
                                    const RawImageMetadata& metadata,
                                    const RawCameraMetadata& cameraMetadata,
                                    const PostProcessSettings& settings);

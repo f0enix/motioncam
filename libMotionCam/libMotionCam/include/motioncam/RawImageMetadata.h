@@ -54,6 +54,7 @@ namespace motioncam {
             exposureTime(0),
             iso(0),
             timestampNs(0),
+            recvdTimestampMs(0),
             exposureCompensation(0),
             screenOrientation(ScreenOrientation::PORTRAIT),
             rawType(RawType::ZSL)
@@ -67,6 +68,7 @@ namespace motioncam {
             iso(other.iso),
             exposureCompensation(other.exposureCompensation),
             timestampNs(other.timestampNs),
+            recvdTimestampMs(other.recvdTimestampMs),
             screenOrientation(other.screenOrientation),
             rawType(other.rawType)
         {
@@ -79,6 +81,7 @@ namespace motioncam {
             iso(other.iso),
             exposureCompensation(other.exposureCompensation),
             timestampNs(other.timestampNs),
+            recvdTimestampMs(other.recvdTimestampMs),
             screenOrientation(other.screenOrientation),
             rawType(other.rawType)
         {
@@ -91,6 +94,7 @@ namespace motioncam {
             iso = obj.iso;
             exposureCompensation = obj.exposureCompensation;
             timestampNs = obj.timestampNs;
+            recvdTimestampMs = obj.recvdTimestampMs;
             screenOrientation = obj.screenOrientation;
             rawType = obj.rawType;
 
@@ -103,6 +107,7 @@ namespace motioncam {
         int32_t iso;
         int32_t exposureCompensation;
         int64_t timestampNs;
+        int64_t recvdTimestampMs;
         ScreenOrientation screenOrientation;
         RawType rawType;
     };

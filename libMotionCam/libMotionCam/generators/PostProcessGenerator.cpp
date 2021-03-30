@@ -104,10 +104,12 @@ void GuidedFilter::generate() {
     
     output(v_x, v_y) = saturating_cast(output_type, (mean_a(v_x, v_y) * I(v_x, v_y)) + mean_b(v_x, v_y));
 
-    if(get_target().has_gpu_feature())
-        schedule_for_gpu();
-    else
-        schedule_for_cpu();
+    if(!auto_schedule) {
+        if(get_target().has_gpu_feature())
+            schedule_for_gpu();
+        else
+            schedule_for_cpu();
+    } 
 }
 
 void GuidedFilter::schedule() {    
@@ -731,16 +733,18 @@ void TonemapGenerator::generate() {
 
     gammaLut(v_i) = cast(output_type, pow(v_i / cast<float>(type_max), 1.0f / gamma) * type_max);
     inverseGammaLut(v_i) = cast(output_type, pow(v_i / cast<float>(type_max), gamma) * type_max);
-    
-    if(get_target().has_gpu_feature()) {
-        gammaLut.compute_root().gpu_tile(v_i, v_xi, 16);
-        inverseGammaLut.compute_root().gpu_tile(v_i, v_xi, 16);
+
+    if(!auto_schedule) {
+        if(get_target().has_gpu_feature()) {
+            gammaLut.compute_root().gpu_tile(v_i, v_xi, 16);
+            inverseGammaLut.compute_root().gpu_tile(v_i, v_xi, 16);
+        }
+        else {
+            gammaLut.compute_root().vectorize(v_i, 8);
+            inverseGammaLut.compute_root().vectorize(v_i, 8);
+        }
     }
-    else {
-        gammaLut.compute_root().vectorize(v_i, 8);
-        inverseGammaLut.compute_root().vectorize(v_i, 8);
-    }
-    
+
     // Create two exposures
     Func exposures, weightsLut, weights, weightsNormalized;
     
@@ -756,11 +760,13 @@ void TonemapGenerator::generate() {
     
     weightsLut(v_i) = cast<int16_t>(clamp(exp(wb) * 32767, -32767, 32767));
     
-    if(get_target().has_gpu_feature()) {
-        weightsLut.compute_root().gpu_tile(v_i, v_xi, 16);
-    }
-    else {
-        weightsLut.compute_root().vectorize(v_i, 8);
+    if(!auto_schedule) {
+        if(get_target().has_gpu_feature()) {
+            weightsLut.compute_root().gpu_tile(v_i, v_xi, 16);
+        }
+        else {
+            weightsLut.compute_root().vectorize(v_i, 8);
+        }
     }
 
     weights(v_x, v_y, v_c) = weightsLut(cast<uint16_t>(exposures(v_x, v_y, v_c))) / 32767.0f;
@@ -770,88 +776,90 @@ void TonemapGenerator::generate() {
     tonemapPyramid = buildPyramid(exposures, tonemap_levels);
     weightsPyramid = buildPyramid(weightsNormalized, tonemap_levels);
 
-    if(get_target().has_gpu_feature()) {
-        tonemapPyramid[0].first.in(tonemapPyramid[1].first)
-            .compute_at(tonemapPyramid[1].second, v_x)
-            .reorder(v_c, v_x, v_y)
-            .unroll(v_c)
-            .gpu_threads(v_x, v_y);
-        
-        weightsPyramid[0].first.in(weightsPyramid[1].first)
-            .compute_at(weightsPyramid[1].second, v_x)
-            .reorder(v_c, v_x, v_y)
-            .unroll(v_c)
-            .gpu_threads(v_x, v_y);
-    }
-    else {
-        tonemapPyramid[0].first.in(tonemapPyramid[1].first)
-            .compute_at(tonemapPyramid[1].second, v_yi)
-            .reorder(v_c, v_x, v_y)
-            .unroll(v_c);
-        
-        weightsPyramid[0].first.in(weightsPyramid[1].first)
-            .compute_at(weightsPyramid[1].second, v_yi)
-            .reorder(v_c, v_x, v_y)
-            .unroll(v_c);
-    }
-
-    if(get_target().has_gpu_feature()) {
-        for(int level = 1; level < tonemap_levels; level++) {
-            tonemapPyramid[level].first
+    if(!auto_schedule) {
+        if(get_target().has_gpu_feature()) {
+            tonemapPyramid[0].first.in(tonemapPyramid[1].first)
+                .compute_at(tonemapPyramid[1].second, v_x)
                 .reorder(v_c, v_x, v_y)
-                .compute_at(tonemapPyramid[level].second, v_x)
                 .unroll(v_c)
                 .gpu_threads(v_x, v_y);
-
-            tonemapPyramid[level].second                
-                .compute_root()
+            
+            weightsPyramid[0].first.in(weightsPyramid[1].first)
+                .compute_at(weightsPyramid[1].second, v_x)
                 .reorder(v_c, v_x, v_y)
-                .unroll(v_c)
-                .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
-
-            weightsPyramid[level].first
-                .reorder(v_c, v_x, v_y)
-                .compute_at(weightsPyramid[level].second, v_x)
                 .unroll(v_c)
                 .gpu_threads(v_x, v_y);
-
-            weightsPyramid[level].second
-                .compute_root()
-                .reorder(v_c, v_x, v_y)
-                .unroll(v_c)
-                .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
         }
-    }
-    else {
-        for(int level = 1; level < tonemap_levels; level++) {
-            tonemapPyramid[level].first
-                .compute_at(tonemapPyramid[level].second, v_yi)
-                .store_at(tonemapPyramid[level].second, v_yo)
-                .vectorize(v_x, 4);
-
-            tonemapPyramid[level].second
-                .compute_root()
-                .reorder(v_x, v_y)
-                .split(v_y, v_yo, v_yi, 64)
-                .vectorize(v_x, 4)
-                .parallel(v_yo);
+        else {
+            tonemapPyramid[0].first.in(tonemapPyramid[1].first)
+                .compute_at(tonemapPyramid[1].second, v_yi)
+                .reorder(v_c, v_x, v_y)
+                .unroll(v_c);
+            
+            weightsPyramid[0].first.in(weightsPyramid[1].first)
+                .compute_at(weightsPyramid[1].second, v_yi)
+                .reorder(v_c, v_x, v_y)
+                .unroll(v_c);
         }
 
-        for(int level = 1; level < tonemap_levels; level++) {
-            weightsPyramid[level].first
-                .compute_at(weightsPyramid[level].second, v_yi)
-                .store_at(weightsPyramid[level].second, v_yo)
-                .unroll(v_c)
-                .vectorize(v_x, 4);
+        if(get_target().has_gpu_feature()) {
+            for(int level = 1; level < tonemap_levels; level++) {
+                tonemapPyramid[level].first
+                    .reorder(v_c, v_x, v_y)
+                    .compute_at(tonemapPyramid[level].second, v_x)
+                    .unroll(v_c)
+                    .gpu_threads(v_x, v_y);
 
-            weightsPyramid[level].second
-                .compute_root()
-                .reorder(v_c, v_x, v_y)
-                .unroll(v_c)
-                .split(v_y, v_yo, v_yi, 64)
-                .vectorize(v_x, 4)
-                .parallel(v_yo);
-        }        
+                tonemapPyramid[level].second                
+                    .compute_root()
+                    .reorder(v_c, v_x, v_y)
+                    .unroll(v_c)
+                    .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
+
+                weightsPyramid[level].first
+                    .reorder(v_c, v_x, v_y)
+                    .compute_at(weightsPyramid[level].second, v_x)
+                    .unroll(v_c)
+                    .gpu_threads(v_x, v_y);
+
+                weightsPyramid[level].second
+                    .compute_root()
+                    .reorder(v_c, v_x, v_y)
+                    .unroll(v_c)
+                    .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
+            }
+        }
+        else {
+            for(int level = 1; level < tonemap_levels; level++) {
+                tonemapPyramid[level].first
+                    .compute_at(tonemapPyramid[level].second, v_yi)
+                    .store_at(tonemapPyramid[level].second, v_yo)
+                    .vectorize(v_x, 4);
+
+                tonemapPyramid[level].second
+                    .compute_root()
+                    .reorder(v_x, v_y)
+                    .split(v_y, v_yo, v_yi, 64)
+                    .vectorize(v_x, 4)
+                    .parallel(v_yo);
+            }
+
+            for(int level = 1; level < tonemap_levels; level++) {
+                weightsPyramid[level].first
+                    .compute_at(weightsPyramid[level].second, v_yi)
+                    .store_at(weightsPyramid[level].second, v_yo)
+                    .unroll(v_c)
+                    .vectorize(v_x, 4);
+
+                weightsPyramid[level].second
+                    .compute_root()
+                    .reorder(v_c, v_x, v_y)
+                    .unroll(v_c)
+                    .split(v_y, v_yo, v_yi, 64)
+                    .vectorize(v_x, 4)
+                    .parallel(v_yo);
+            }        
+        }
     }
 
     vector<Func> laplacianPyramid, combinedPyramid;
@@ -870,56 +878,58 @@ void TonemapGenerator::generate() {
         laplacian(v_x, v_y, v_c) = cast<int32_t>(tonemapPyramid[level].second(v_x, v_y, v_c)) - up(v_x, v_y, v_c);
 
         // Skip first level
-        if(level > 0) {
-            if(get_target().has_gpu_feature()) {
-                up
-                    .reorder(v_c, v_x, v_y)
-                    .unroll(v_c)
-                    .compute_at(laplacian, tile_idx)
-                    .store_at(laplacian, tile_idx)
-                    .gpu_threads(v_x, v_y);
+        if(!auto_schedule) {
+            if(level > 0) {
+                if(get_target().has_gpu_feature()) {
+                    up
+                        .reorder(v_c, v_x, v_y)
+                        .unroll(v_c)
+                        .compute_at(laplacian, tile_idx)
+                        .store_at(laplacian, tile_idx)
+                        .gpu_threads(v_x, v_y);
 
-                upIntermediate
-                    .reorder(v_c, v_x, v_y)
-                    .unroll(v_c)
-                    .compute_at(laplacian, tile_idx)
-                    .store_at(laplacian, tile_idx)
-                    .gpu_threads(v_x, v_y);
+                    upIntermediate
+                        .reorder(v_c, v_x, v_y)
+                        .unroll(v_c)
+                        .compute_at(laplacian, tile_idx)
+                        .store_at(laplacian, tile_idx)
+                        .gpu_threads(v_x, v_y);
 
-                laplacian
-                    .compute_root()
-                    .reorder(v_c, v_x, v_y)
-                    .tile(v_x, v_y, v_xo, v_yo, v_xi, v_yi, 16, 16)
-                    .fuse(v_xo, v_yo, tile_idx)
-                    .tile(v_xi, v_yi, v_xio, v_yio, v_xii, v_yii, 4, 4)
-                    .fuse(v_xio, v_yio, subtile_idx)
-                    .unroll(v_c)
-                    .gpu_blocks(tile_idx)
-                    .gpu_threads(subtile_idx);
-            }
-            else {
-                up
-                    .compute_at(laplacian, v_yi)
-                    .store_at(laplacian, v_yo)
-                    .unroll(v_c)
-                    .vectorize(v_x, 12);
+                    laplacian
+                        .compute_root()
+                        .reorder(v_c, v_x, v_y)
+                        .tile(v_x, v_y, v_xo, v_yo, v_xi, v_yi, 16, 16)
+                        .fuse(v_xo, v_yo, tile_idx)
+                        .tile(v_xi, v_yi, v_xio, v_yio, v_xii, v_yii, 4, 4)
+                        .fuse(v_xio, v_yio, subtile_idx)
+                        .unroll(v_c)
+                        .gpu_blocks(tile_idx)
+                        .gpu_threads(subtile_idx);
+                }
+                else {
+                    up
+                        .compute_at(laplacian, v_yi)
+                        .store_at(laplacian, v_yo)
+                        .unroll(v_c)
+                        .vectorize(v_x, 12);
 
-                upIntermediate
-                    .compute_at(laplacian, v_yi)
-                    .store_at(laplacian, v_yo)
-                    .unroll(v_c)
-                    .vectorize(v_x, 12);
+                    upIntermediate
+                        .compute_at(laplacian, v_yi)
+                        .store_at(laplacian, v_yo)
+                        .unroll(v_c)
+                        .vectorize(v_x, 12);
 
-                laplacian
-                    .compute_root()
-                    .reorder(v_c, v_x, v_y)
-                    .split(v_y, v_yo, v_yi, 32)
-                    .vectorize(v_x, 12)
-                    .unroll(v_c)
-                    .parallel(v_yo);
+                    laplacian
+                        .compute_root()
+                        .reorder(v_c, v_x, v_y)
+                        .split(v_y, v_yo, v_yi, 32)
+                        .vectorize(v_x, 12)
+                        .unroll(v_c)
+                        .parallel(v_yo);
+                }
             }
         }
-        
+
         laplacianPyramid.push_back(laplacian);
     }
 
@@ -961,49 +971,50 @@ void TonemapGenerator::generate() {
 
         outputLvl(v_x, v_y, v_c) = combinedPyramid[level - 1](v_x, v_y, v_c) + up(v_x, v_y, v_c);
 
-        // Skip last level
-        if(get_target().has_gpu_feature()) {
-            upIntermediate
-                .reorder(v_c, v_x, v_y)
-                .compute_at(outputLvl, v_x)
-                .unroll(v_c)
-                .gpu_threads(v_x, v_y);
+        if(!auto_schedule) {
+            if(get_target().has_gpu_feature()) {
+                upIntermediate
+                    .reorder(v_c, v_x, v_y)
+                    .compute_at(outputLvl, v_x)
+                    .unroll(v_c)
+                    .gpu_threads(v_x, v_y);
 
-            up
-                .reorder(v_c, v_x, v_y)
-                .compute_at(outputLvl, v_x)
-                .unroll(v_c)
-                .gpu_threads(v_x, v_y);
+                up
+                    .reorder(v_c, v_x, v_y)
+                    .compute_at(outputLvl, v_x)
+                    .unroll(v_c)
+                    .gpu_threads(v_x, v_y);
 
-            outputLvl
-                .compute_root()
-                .reorder(v_c, v_x, v_y)
-                .unroll(v_c)
-                .gpu_tile(v_x, v_y, v_xi, v_yi, 16, 8);
+                outputLvl
+                    .compute_root()
+                    .reorder(v_c, v_x, v_y)
+                    .unroll(v_c)
+                    .gpu_tile(v_x, v_y, v_xi, v_yi, 16, 8);
+            }
+            else {
+                upIntermediate
+                    .compute_at(outputLvl, subtile_idx)
+                    .store_at(outputLvl, tile_idx)
+                    .vectorize(v_x, 8);
+
+                up
+                    .compute_at(outputLvl, subtile_idx)
+                    .store_at(outputLvl, tile_idx)
+                    .vectorize(v_x, 8);
+
+                outputLvl
+                    .compute_root()
+                    .reorder(v_c, v_x, v_y)
+                    .unroll(v_c)
+                    .tile(v_x, v_y, v_xo, v_yo, v_xi, v_yi, 64, 64)
+                    .fuse(v_xo, v_yo, tile_idx)
+                    .tile(v_xi, v_yi, v_xio, v_yio, v_xii, v_yii, 32, 32)
+                    .fuse(v_xio, v_yio, subtile_idx)
+                    .parallel(tile_idx)
+                    .vectorize(v_xii, 16);
+            }
         }
-        else {
-            upIntermediate
-                .compute_at(outputLvl, subtile_idx)
-                .store_at(outputLvl, tile_idx)
-                .vectorize(v_x, 8);
 
-            up
-                .compute_at(outputLvl, subtile_idx)
-                .store_at(outputLvl, tile_idx)
-                .vectorize(v_x, 8);
-
-            outputLvl
-                .compute_root()
-                .reorder(v_c, v_x, v_y)
-                .unroll(v_c)
-                .tile(v_x, v_y, v_xo, v_yo, v_xi, v_yi, 64, 64)
-                .fuse(v_xo, v_yo, tile_idx)
-                .tile(v_xi, v_yi, v_xio, v_yio, v_xii, v_yii, 32, 32)
-                .fuse(v_xio, v_yio, subtile_idx)
-                .parallel(tile_idx)
-                .vectorize(v_xii, 16);
-        }
-    
         outputPyramid.push_back(outputLvl);
     }
 
@@ -1036,6 +1047,10 @@ protected:
 
     void rearrange(Func& output, Func input, Expr sensorArrangement);
     void rearrange(Func& output, Func in0, Func in1, Func in2, Func in3, Expr sensorArrangement);
+
+    void blur(Func& output, Func input);
+    void blur2(Func& output, Func& outputTmp, Func input);
+    void blur3(Func& output, Func& outputTmp, Func input);
 
     Func downsample(Func f, Func& temp);
     Func upsample(Func f, Func& temp);
@@ -1160,6 +1175,88 @@ Func PostProcessBase::deinterleaveRaw10(Func in, int c, Expr stride) {
     }
 
     return result;
+}
+
+
+void PostProcessBase::blur(Func& output, Func input) {
+    Func in32;
+    Func blurX;
+
+    in32(v_x, v_y) = cast<int32_t>(input(v_x, v_y));
+    
+    blurX(v_x, v_y) = (
+        1 * in32(v_x - 1, v_y) +
+        2 * in32(v_x    , v_y) +
+        1 * in32(v_x + 1, v_y)
+    ) / 4;
+
+    output(v_x, v_y) =
+        cast<uint16_t> (
+            (
+              1 * blurX(v_x, v_y - 1) +
+              2 * blurX(v_x, v_y)     +
+              1 * blurX(v_x, v_y + 1)             
+            ) / 4
+        );
+}
+
+void PostProcessBase::blur2(Func& output, Func& outputTmp, Func input) {
+    Func in32;
+    Func blurX;
+
+    in32(v_x, v_y) = cast<int32_t>(input(v_x, v_y));
+    
+    outputTmp(v_x, v_y) = (
+        1 * in32(v_x - 2, v_y) +
+        4 * in32(v_x - 1, v_y) +
+        6 * in32(v_x,     v_y) +
+        4 * in32(v_x + 1, v_y) +
+        1 * in32(v_x + 2, v_y)
+    ) / 16;
+
+    output(v_x, v_y) =
+        cast<uint16_t> (
+            (
+              1 * outputTmp(v_x, v_y - 2) +
+              4 * outputTmp(v_x, v_y - 1) +
+              6 * outputTmp(v_x, v_y)     +
+              4 * outputTmp(v_x, v_y + 1) +
+              1 * outputTmp(v_x, v_y + 2)             
+            ) / 16
+        );
+}
+
+void PostProcessBase::blur3(Func& output, Func& outputTmp, Func input) {
+    Func in32;
+    Func blurX;
+
+    in32(v_x, v_y) = cast<int32_t>(input(v_x, v_y));
+
+    outputTmp(v_x, v_y) = (
+        1  * in32(v_x - 4, v_y) +
+        8  * in32(v_x - 3, v_y) +
+        28 * in32(v_x - 2, v_y) +
+        56 * in32(v_x - 1, v_y) +
+        70 * in32(v_x,     v_y) +
+        56 * in32(v_x + 1, v_y) +
+        28 * in32(v_x + 2, v_y) +
+        8  * in32(v_x + 3, v_y) +
+        1  * in32(v_x + 4, v_y)
+    ) / 256;
+
+    output(v_x, v_y) =
+        cast<uint16_t> ((
+            1  * outputTmp(v_x, v_y - 4) +
+            8  * outputTmp(v_x, v_y - 3) +
+            28 * outputTmp(v_x, v_y - 2) +
+            56 * outputTmp(v_x, v_y - 1) +
+            70 * outputTmp(v_x, v_y)     +
+            56 * outputTmp(v_x, v_y + 1) +
+            28 * outputTmp(v_x, v_y + 2) +
+            8  * outputTmp(v_x, v_y + 3) +
+            1  * outputTmp(v_x, v_y + 4)
+            ) / 256
+        );
 }
 
 Func PostProcessBase::downsample(Func f, Func& temp) {
@@ -1800,6 +1897,10 @@ public:
     Func saturationApplied{"saturationApplied"};
     Func finalRgb{"finalRgb"};
     Func gammaContrastLut{"gammaContrastLut"};
+    Func blurOutput{"blurOutput"};
+    Func blurOutputTmp{"blurOutputTmp"};
+    Func blurOutput2{"blurOutput2"};
+    Func blurOutput2Tmp{"blurOutput2Tmp"};
 
     Func shaded{"shaded"};
     Func shadingMap0{"shadingMap0"}, shadingMap1{"shadingMap1"}, shadingMap2{"shadingMap2"}, shadingMap3{"shadingMap3"};
@@ -1807,107 +1908,14 @@ public:
 
     std::unique_ptr<Demosaic> demosaic;
     std::unique_ptr<TonemapGenerator> tonemap;
-    std::unique_ptr<GuidedFilter> guidedFilter0;
-    std::unique_ptr<GuidedFilter> guidedFilter1;
-
-    std::unique_ptr<GuidedFilter> sharpenGf0;
-    std::unique_ptr<GuidedFilter> sharpenGf1;
-
-    Func gaussianOne, gaussianTwo, gaussianThree;
     
     void generate();
     void schedule_for_gpu();
     void schedule_for_cpu();
     
 private:
-    void blur(Func& output, Func input);
-    void blur2(Func& output, Func input);
-    void blur3(Func& output, Func input);
     void fixColorArtifacts(Func& output, Func input);
 };
-
-void PostProcessGenerator::blur(Func& output, Func input) {
-    Func in32;
-    Func blurX;
-
-    in32(v_x, v_y) = cast<int32_t>(input(v_x, v_y));
-    
-    blurX(v_x, v_y) = (
-        1 * in32(v_x - 1, v_y) +
-        2 * in32(v_x    , v_y) +
-        1 * in32(v_x + 1, v_y)
-    ) / 4;
-
-    output(v_x, v_y) =
-        cast<uint16_t> (
-            (
-              1 * blurX(v_x, v_y - 1) +
-              2 * blurX(v_x, v_y)     +
-              1 * blurX(v_x, v_y + 1)             
-            ) / 4
-        );
-}
-
-void PostProcessGenerator::blur2(Func& output, Func input) {
-    Func in32;
-    Func blurX;
-
-    in32(v_x, v_y) = cast<int32_t>(input(v_x, v_y));
-    
-    blurX(v_x, v_y) = (
-        1 * in32(v_x - 2, v_y) +
-        4 * in32(v_x - 1, v_y) +
-        6 * in32(v_x,     v_y) +
-        4 * in32(v_x + 1, v_y) +
-        1 * in32(v_x + 2, v_y)
-    ) / 16;
-
-    output(v_x, v_y) =
-        cast<uint16_t> (
-            (
-              1 * blurX(v_x, v_y - 2) +
-              4 * blurX(v_x, v_y - 1) +
-              6 * blurX(v_x, v_y)     +
-              4 * blurX(v_x, v_y + 1) +
-              1 * blurX(v_x, v_y + 2)             
-            ) / 16
-        );
-}
-
-void PostProcessGenerator::blur3(Func& output, Func input) {
-    Func in32;
-    Func blurX;
-
-    in32(v_x, v_y) = cast<int32_t>(input(v_x, v_y));
-    
-    // 1+8+28+56+70+56+28+8+1 = 256
-
-    blurX(v_x, v_y) = (
-        1  * in32(v_x - 4, v_y) +
-        8  * in32(v_x - 3, v_y) +
-        28 * in32(v_x - 2, v_y) +
-        56 * in32(v_x - 1, v_y) +
-        70 * in32(v_x,     v_y) +
-        56 * in32(v_x + 1, v_y) +
-        28 * in32(v_x + 2, v_y) +
-        8  * in32(v_x + 3, v_y) +
-        1  * in32(v_x + 4, v_y)
-    ) / 256;
-
-    output(v_x, v_y) =
-        cast<uint16_t> ((
-            1  * in32(v_x, v_y - 4) +
-            8  * in32(v_x, v_y - 3) +
-            28 * in32(v_x, v_y - 2) +
-            56 * in32(v_x, v_y - 1) +
-            70 * in32(v_x, v_y)     +
-            56 * in32(v_x, v_y + 1) +
-            28 * in32(v_x, v_y + 2) +
-            8  * in32(v_x, v_y + 3) +
-            1  * in32(v_x, v_y + 4)
-            ) / 256
-        );
-}
 
 // TODO: This needs some work.
 void PostProcessGenerator::fixColorArtifacts(Func& output, Func input) {
@@ -1955,27 +1963,29 @@ void PostProcessGenerator::fixColorArtifacts(Func& output, Func input) {
         1 * blurX(v_x, v_y + 1)             
     ) / 4;
 
-    mask
-        .compute_at(blurY, v_yi)
-        .store_at(blurY, v_yo)
-        .vectorize(v_x, 8);
+    if(!auto_schedule) {
+        mask
+            .compute_at(blurY, v_yi)
+            .store_at(blurY, v_yo)
+            .vectorize(v_x, 8);
 
-    maskErodedTmp
-        .compute_at(blurY, v_yi)
-        .store_at(blurY, v_yo)
-        .vectorize(v_x, 8);
+        maskErodedTmp
+            .compute_at(blurY, v_yi)
+            .store_at(blurY, v_yo)
+            .vectorize(v_x, 8);
 
-    blurX
-        .compute_at(blurY, v_yi)
-        .store_at(blurY, v_yo)
-        .vectorize(v_x, 8);
+        blurX
+            .compute_at(blurY, v_yi)
+            .store_at(blurY, v_yo)
+            .vectorize(v_x, 8);
 
-    blurY
-        .compute_root()
-        .reorder(v_x, v_y)
-        .split(v_y, v_yo, v_yi, 32)
-        .parallel(v_yo)
-        .vectorize(v_x, 8);
+        blurY
+            .compute_root()
+            .reorder(v_x, v_y)
+            .split(v_y, v_yo, v_yi, 32)
+            .parallel(v_yo)
+            .vectorize(v_x, 8);
+    }
 
     Expr H = input(v_x, v_y, 0);
     Expr S = input(v_x, v_y, 1);
@@ -2088,10 +2098,12 @@ void PostProcessGenerator::generate()
     Func UdenoiseTemp{"UdenoiseTemp"}, VdenoiseTemp{"VdenoiseTemp"};
     
     Udenoise.define_extern("extern_denoise", { uvDownsampled, in0.width(), in0.height(), 0, chromaFilterWeight}, UInt(16), 2);
-    Udenoise.compute_root();
+    if(!auto_schedule)
+        Udenoise.compute_root();
 
     Vdenoise.define_extern("extern_denoise", { uvDownsampled, in0.width(), in0.height(), 1, chromaFilterWeight}, UInt(16), 2);
-    Vdenoise.compute_root();
+    if(!auto_schedule)
+        Vdenoise.compute_root();
 
     tonemapIn(v_x, v_y, v_c) = select(v_c == 0, cast<uint16_t>(Yfiltered(v_x, v_y)),
                                       v_c == 1, cast<uint16_t>(clamp(upsample(Udenoise, UdenoiseTemp)(v_x, v_y), 0, 65535)),
@@ -2109,22 +2121,17 @@ void PostProcessGenerator::generate()
 
     sharpenInputY(v_x, v_y) = tonemap->output(v_x, v_y, 0);
 
-    sharpenGf0 = create<GuidedFilter>();
-    sharpenGf0->radius.set(SHARPEN_FILTER_RADIUS);
-    sharpenGf0->apply(sharpenInputY, 0.1f*0.1f * 65535*65535);
-
-    sharpenGf1 = create<GuidedFilter>();
-    sharpenGf1->radius.set(DETAIL_FILTER_RADIUS);
-    sharpenGf1->apply(sharpenGf0->output, 0.1f*0.1f * 65535*65535);
+    blur2(blurOutput, blurOutputTmp, sharpenInputY);
+    blur3(blurOutput2, blurOutput2Tmp, blurOutput);
     
-    Func gaussianDiff0, gaussianDiff1;
+    Func gaussianDiff0{"gaussianDiff0"}, gaussianDiff1{"gaussianDiff1"};
     
-    gaussianDiff0(v_x, v_y) = cast<int32_t>(sharpenInputY(v_x, v_y)) - sharpenGf0->output(v_x, v_y);
-    gaussianDiff1(v_x, v_y) = cast<int32_t>(sharpenGf0->output(v_x, v_y))  - sharpenGf1->output(v_x, v_y);
+    gaussianDiff0(v_x, v_y) = cast<int32_t>(sharpenInputY(v_x, v_y)) - blurOutput(v_x, v_y);
+    gaussianDiff1(v_x, v_y) = cast<int32_t>(blurOutput(v_x, v_y))  - blurOutput2(v_x, v_y);
     
     sharpened(v_x, v_y) =
         saturating_cast<int32_t>(
-            sharpenGf1->output(v_x, v_y) +
+            blurOutput2(v_x, v_y) +
             sharpen0Param*gaussianDiff0(v_x, v_y) +
             sharpen1Param*gaussianDiff1(v_x, v_y)
         );
@@ -2165,10 +2172,12 @@ void PostProcessGenerator::generate()
 
     gammaContrastLut(v_i) = cast<uint16_t>(clamp(h1*65535.0f+0.5f, 0.0f, 65535.0f));
 
-    if(get_target().has_gpu_feature())
-        gammaContrastLut.compute_root().gpu_tile(v_i, v_xi, 16);
-    else
-        gammaContrastLut.compute_root().vectorize(v_i, 8);
+    if(!auto_schedule) {
+        if(get_target().has_gpu_feature())
+            gammaContrastLut.compute_root().gpu_tile(v_i, v_xi, 16);
+        else
+            gammaContrastLut.compute_root().vectorize(v_i, 8);
+    }
 
     // Gamma/contrast/black adjustment
     gammaCorrected(v_x, v_y, v_c) = gammaContrastLut(cast<uint16_t>(clamp(finalRgb(v_x, v_y, v_c) * 65535, 0, 65535))) / 65535.0f;
@@ -2184,10 +2193,52 @@ void PostProcessGenerator::generate()
         .dim(0).set_stride(3)
         .dim(2).set_stride(1);
     
-    if(get_target().has_gpu_feature())
-        schedule_for_gpu();
-    else
-        schedule_for_cpu();
+    range.set_estimate(32767);
+    sensorArrangement.set_estimate(0);
+
+    gamma.set_estimate(2.2f);
+    contrast.set_estimate(1.5f);
+    shadows.set_estimate(2.0f);
+    tonemapVariance.set_estimate(0.25f);
+    blacks.set_estimate(0.1f);
+    exposure.set_estimate(0.05f);
+    whitePoint.set_estimate(0.95f);
+    blueSaturation.set_estimate(1.0f);
+    saturation.set_estimate(1.0f);
+    greenSaturation.set_estimate(1.0f);
+    sharpen0.set_estimate(2.0f);
+    sharpen1.set_estimate(2.0f);
+    chromaFilterWeight.set_estimate(8.0f);
+    
+
+    in0.set_estimates({{0, 2048}, {0, 1536}});
+    in1.set_estimates({{0, 2048}, {0, 1536}});
+    in2.set_estimates({{0, 2048}, {0, 1536}});
+    in3.set_estimates({{0, 2048}, {0, 1536}});
+
+    hdrInput.set_estimates({{0, 4000}, {0, 3000}, {0, 3}});
+    hdrMask.set_estimates({{0, 4000}, {0, 3000}});
+    hdrScale.set_estimate(2.0f);
+
+    inShadingMap0.set_estimates({{0, 17}, {0, 13}});
+    inShadingMap1.set_estimates({{0, 17}, {0, 13}});
+    inShadingMap2.set_estimates({{0, 17}, {0, 13}});
+    inShadingMap3.set_estimates({{0, 17}, {0, 13}});
+
+    asShotVector.set_estimate(0, 1.0f);
+    asShotVector.set_estimate(1, 1.0f);
+    asShotVector.set_estimate(2, 1.0f);
+
+    cameraToSrgb.set_estimates({{0, 4}, {0, 4}});
+
+    output.set_estimates({{0, 4000}, {0, 3000}, {0, 3}});
+
+    if(!auto_schedule) {
+        if(get_target().has_gpu_feature())
+            schedule_for_gpu();
+        else
+            schedule_for_cpu();
+    }
 }
 
 void PostProcessGenerator::schedule_for_gpu() {
@@ -2328,35 +2379,10 @@ void PostProcessGenerator::schedule_for_cpu() {
     int vector_size_u32 = natural_vector_size<uint32_t>();
     int vector_size_f32 = natural_vector_size<float>();
 
-    shadingMap0
-        .reorder(v_x, v_y)
-        .compute_at(combinedInput, v_yi)
-        .store_at(combinedInput, v_yo)
-        .vectorize(v_x, vector_size_u16);
-
-    shadingMap1
-        .reorder(v_x, v_y)
-        .compute_at(combinedInput, v_yi)
-        .store_at(combinedInput, v_yo)
-        .vectorize(v_x, vector_size_u16);
-
-    shadingMap2
-        .reorder(v_x, v_y)
-        .compute_at(combinedInput, v_yi)
-        .store_at(combinedInput, v_yo)
-        .vectorize(v_x, vector_size_u16);
-
-    shadingMap3
-        .reorder(v_x, v_y)
-        .compute_at(combinedInput, v_yi)
-        .store_at(combinedInput, v_yo)
-        .vectorize(v_x, vector_size_u16);
-
     shaded
         .reorder(v_c, v_x, v_y)
         .unroll(v_c)
-        .compute_at(combinedInput, v_yi)
-        .store_at(combinedInput, v_yo)
+        .compute_at(combinedInput, v_yo)
         .vectorize(v_x, vector_size_u16);
 
     combinedInput
@@ -2429,6 +2455,30 @@ void PostProcessGenerator::schedule_for_cpu() {
         .unroll(v_c)
         .parallel(v_yo);
 
+    blurOutputTmp
+        .compute_at(blurOutput, v_yi)
+        .store_at(blurOutput, v_yo)
+        .vectorize(v_x, vector_size_u32);
+
+    blurOutput
+        .compute_root()
+        .reorder(v_x, v_y)
+        .split(v_y, v_yo, v_yi, 32)
+        .parallel(v_yo)
+        .vectorize(v_x, 8);
+
+    blurOutput2Tmp
+        .compute_at(blurOutput2, v_yi)
+        .store_at(blurOutput2, v_yo)
+        .vectorize(v_x, vector_size_u32);
+
+    blurOutput2
+        .compute_root()
+        .reorder(v_x, v_y)
+        .split(v_y, v_yo, v_yi, 32)
+        .parallel(v_yo)
+        .vectorize(v_x, 8);
+
     sharpened
         .compute_at(hsvInput, v_yi)
         .store_at(hsvInput, v_yo)
@@ -2441,6 +2491,8 @@ void PostProcessGenerator::schedule_for_cpu() {
 
     tonemapOutputRgb
         .compute_at(hsvInput, v_yi)
+        .reorder(v_c, v_x, v_y)
+        .unroll(v_c)
         .store_at(hsvInput, v_yo)
         .vectorize(v_x, vector_size_u16);
 
@@ -2511,7 +2563,8 @@ public:
     Input<float> blueSaturation{"blueSaturation"};
     Input<float> saturation{"saturation"};
     Input<float> greenSaturation{"greenSaturation"};
-    Input<float> detail{"detail"};
+    Input<float> sharpen0{"sharpen0"};
+    Input<float> sharpen1{"sharpen1"};
 
     Input<bool> flipped{"flipped"};
 
@@ -2527,28 +2580,32 @@ private:
     Func downscale(Func f, Func& downx, Expr factor);
 
 private:
-    Func inputRepeated;
+    Func inputRepeated{"inputRepeated"};
     Func in[4];
     Func shadingMap[4];
-    Func deinterleaved;
-    Func downscaled;
-    Func downscaledTemp;
-    Func demosaicInput;
-    Func downscaledInput;
-    Func adjustExposure;
-    Func yuvOutput;
-    Func colorCorrected;
-    Func colorCorrectedYuv;
-    Func sharpenInputY;
-    Func sharpened;
-    Func finalTonemap;
+    Func deinterleaved{"deinterleaved"};
+    Func downscaled{"downscaled"};
+    Func downscaledTemp{"downscaledTemp"};
+    Func demosaicInput{"demosaicInput"};
+    Func downscaledInput{"downscaledInput"};
+    Func adjustExposure{"adjustExposure"};
+    Func yuvOutput{"yuvOutput"};
+    Func colorCorrected{"colorCorrected"};
+    Func colorCorrectedYuv{"colorCorrectedYuv"};
+    Func sharpenInputY{"sharpenInputY"};
+    Func sharpened{"sharpened"};
+    Func finalTonemap{"finalTonemap"};
+    Func blurOutput{"blurOutput"};
+    Func blurOutputTmp{"blurOutputTmp"};
+    Func blurOutput2{"blurOutput2"};
+    Func blurOutput2Tmp{"blurOutput2Tmp"};
 
-    Func tonemapOutputRgb;
-    Func gammaContrastLut;
-    Func gammaCorrected;
-    Func hsvInput;
-    Func saturationApplied;
-    Func finalRgb;
+    Func tonemapOutputRgb{"tonemapOutputRgb"};
+    Func gammaContrastLut{"gammaContrastLut"};
+    Func gammaCorrected{"gammaCorrected"};
+    Func hsvInput{"hsvInput"};
+    Func saturationApplied{"saturationApplied"};
+    Func finalRgb{"finalRgb"};
 
     std::unique_ptr<GuidedFilter> sharpenGf0;
 };
@@ -2568,6 +2625,8 @@ Func PreviewGenerator::downscale(Func f, Func& downx, Expr factor) {
 }
 
 void PreviewGenerator::generate() {
+    Expr sharpen0Param = sharpen0;
+    Expr sharpen1Param = sharpen1;
     Expr shadowsParam  = shadows;
     Expr blacksParam   = blacks;
     Expr exposureParam = pow(2.0f, exposure);
@@ -2632,18 +2691,23 @@ void PreviewGenerator::generate() {
 
     sharpenInputY(v_x, v_y) = tonemap->output(v_x, v_y, 0);
 
-    sharpenGf0 = create<GuidedFilter>();
-    sharpenGf0->radius.set(detail_radius);
-    sharpenGf0->apply(sharpenInputY, 0.1f*0.1f * 65535*65535);
+    //
+    // Sharpen
+    //
+
+    blur2(blurOutput, blurOutputTmp, sharpenInputY);
+    blur3(blurOutput2, blurOutput2Tmp, blurOutput);
     
-    Func gaussianDiff0;
+    Func gaussianDiff0{"gaussianDiff0"}, gaussianDiff1{"gaussianDiff1"};
     
-    gaussianDiff0(v_x, v_y) = cast<int32_t>(sharpenInputY(v_x, v_y)) - cast<int32_t>(sharpenGf0->output(v_x, v_y));
+    gaussianDiff0(v_x, v_y) = cast<int32_t>(sharpenInputY(v_x, v_y)) - blurOutput(v_x, v_y);
+    gaussianDiff1(v_x, v_y) = cast<int32_t>(blurOutput(v_x, v_y))  - blurOutput2(v_x, v_y);
     
     sharpened(v_x, v_y) =
         saturating_cast<int32_t>(
-            sharpenGf0->output(v_x, v_y) +
-            detail*gaussianDiff0(v_x, v_y)
+            blurOutput2(v_x, v_y) +
+            sharpen0Param*gaussianDiff0(v_x, v_y) +
+            sharpen1Param*gaussianDiff1(v_x, v_y)
         );
 
     // Back to RGB
@@ -2795,14 +2859,6 @@ void PreviewGenerator::schedule_for_cpu() {
     int vector_size_u8 = natural_vector_size<uint8_t>();
     int vector_size_u16 = natural_vector_size<uint16_t>();    
 
-    for(int c = 0; c < 4; c++) {
-        shadingMap[c]
-            .reorder(v_x, v_y)
-            .compute_at(downscaledInput, v_yi)
-            .store_at(downscaledInput, v_yo)
-            .vectorize(v_x, vector_size_u16);
-    }
-
     downscaled
         .reorder(v_c, v_x, v_y)
         .unroll(v_c)
@@ -2824,6 +2880,30 @@ void PreviewGenerator::schedule_for_cpu() {
         .split(v_y, v_yo, v_yi, 32)
         .parallel(v_yo)
         .vectorize(v_x, vector_size_u16);
+
+    blurOutputTmp
+        .compute_at(blurOutput, v_yi)
+        .store_at(blurOutput, v_yo)
+        .vectorize(v_x, 8);
+
+    blurOutput
+        .compute_root()
+        .reorder(v_x, v_y)
+        .split(v_y, v_yo, v_yi, 32)
+        .parallel(v_yo)
+        .vectorize(v_x, 8);
+
+    blurOutput2Tmp
+        .compute_at(blurOutput2, v_yi)
+        .store_at(blurOutput2, v_yo)
+        .vectorize(v_x, 8);
+
+    blurOutput2
+        .compute_root()
+        .reorder(v_x, v_y)
+        .split(v_y, v_yo, v_yi, 32)
+        .parallel(v_yo)
+        .vectorize(v_x, 8);
 
     colorCorrectedYuv
         .compute_root()
@@ -2868,7 +2948,190 @@ public:
 
     void generate();
     void schedule_for_cpu();
+    void apply_auto_schedule(::Halide::Pipeline pipeline, ::Halide::Target target);
 };
+
+void DeinterleaveRawGenerator::apply_auto_schedule(::Halide::Pipeline pipeline, ::Halide::Target target) {
+    using ::Halide::Func;
+    using ::Halide::MemoryType;
+    using ::Halide::RVar;
+    using ::Halide::TailStrategy;
+    using ::Halide::Var;
+    Func preview = pipeline.get_func(21);
+    Func f9 = pipeline.get_func(20);
+    Func output = pipeline.get_func(19);
+    Func mirror_image = pipeline.get_func(18);
+    Func f4 = pipeline.get_func(17);
+    Func f3 = pipeline.get_func(16);
+    Func deinterleaveRaw16Result_3 = pipeline.get_func(15);
+    Func f8 = pipeline.get_func(14);
+    Func deinterleaveRaw10Result_3 = pipeline.get_func(13);
+    Func f2 = pipeline.get_func(12);
+    Func deinterleaveRaw16Result_2 = pipeline.get_func(11);
+    Func f7 = pipeline.get_func(10);
+    Func deinterleaveRaw10Result_2 = pipeline.get_func(9);
+    Func f1 = pipeline.get_func(8);
+    Func deinterleaveRaw16Result_1 = pipeline.get_func(7);
+    Func f6 = pipeline.get_func(6);
+    Func deinterleaveRaw10Result_1 = pipeline.get_func(5);
+    Func f0 = pipeline.get_func(4);
+    Func deinterleaveRaw16Result = pipeline.get_func(3);
+    Func f5 = pipeline.get_func(2);
+    Func deinterleaveRaw10Result = pipeline.get_func(1);
+    Var c(output.get_schedule().dims()[2].var);
+    Var i(f9.get_schedule().dims()[0].var);
+    Var ii("ii");
+    Var x(preview.get_schedule().dims()[0].var);
+    Var xi("xi");
+    Var xii("xii");
+    Var xiii("xiii");
+    Var y(preview.get_schedule().dims()[1].var);
+    Var yi("yi");
+    Var yii("yii");
+    Var yiii("yiii");
+    preview
+        .split(y, y, yi, 94, TailStrategy::ShiftInwards)
+        .split(x, x, xi, 32, TailStrategy::ShiftInwards)
+        .vectorize(xi)
+        .compute_root()
+        .reorder({xi, x, yi, y})
+        .parallel(y);
+    f9
+        .split(i, i, ii, 32, TailStrategy::RoundUp)
+        .vectorize(ii)
+        .compute_root()
+        .reorder({ii, i})
+        .parallel(i);
+    output
+        .split(y, y, yi, 47, TailStrategy::ShiftInwards)
+        .split(x, x, xi, 16, TailStrategy::ShiftInwards)
+        .vectorize(xi)
+        .compute_root()
+        .reorder({xi, x, yi, c, y})
+        .parallel(y);
+    f4
+        .split(y, y, yi, 94, TailStrategy::ShiftInwards)
+        .split(yi, yi, yii, 32, TailStrategy::ShiftInwards)
+        .split(yii, yii, yiii, 4, TailStrategy::ShiftInwards)
+        .split(x, x, xi, 1008, TailStrategy::ShiftInwards)
+        .split(xi, xi, xii, 128, TailStrategy::ShiftInwards)
+        .split(xii, xii, xiii, 16, TailStrategy::ShiftInwards)
+        .vectorize(xiii)
+        .compute_root()
+        .reorder({xiii, xii, c, xi, x, yiii, yii, yi, y})
+        .parallel(y);
+    f3
+        .split(y, y, yi, 16, TailStrategy::ShiftInwards)
+        .split(x, x, xi, 64, TailStrategy::ShiftInwards)
+        .split(xi, xi, xii, 16, TailStrategy::ShiftInwards)
+        .unroll(xi)
+        .vectorize(xii)
+        .compute_at(f4, yi)
+        .reorder({xii, xi, yi, x, y});
+    deinterleaveRaw16Result_3
+        .store_in(MemoryType::Stack)
+        .split(x, x, xi, 8, TailStrategy::RoundUp)
+        .unroll(x)
+        .vectorize(xi)
+        .compute_at(f3, yi)
+        .store_at(f3, x)
+        .reorder({xi, x, y});
+    f8
+        .store_in(MemoryType::Stack)
+        .split(x, x, xi, 32, TailStrategy::ShiftInwards)
+        .vectorize(xi)
+        .compute_at(f3, yi)
+        .reorder({xi, x});
+    deinterleaveRaw10Result_3
+        .split(x, x, xi, 32, TailStrategy::ShiftInwards)
+        .vectorize(xi)
+        .compute_at(f3, y)
+        .reorder({xi, x, y});
+    f2
+        .store_in(MemoryType::Stack)
+        .split(x, x, xi, 512, TailStrategy::ShiftInwards)
+        .split(xi, xi, xii, 64, TailStrategy::ShiftInwards)
+        .split(xii, xii, xiii, 16, TailStrategy::ShiftInwards)
+        .unroll(xii)
+        .vectorize(xiii)
+        .compute_at(f4, x)
+        .reorder({xiii, xii, xi, x, y});
+    deinterleaveRaw16Result_2
+        .store_in(MemoryType::Stack)
+        .split(x, x, xi, 8, TailStrategy::RoundUp)
+        .unroll(x)
+        .vectorize(xi)
+        .compute_at(f2, xi)
+        .reorder({xi, x, y});
+    f7
+        .store_in(MemoryType::Stack)
+        .split(x, x, xi, 32, TailStrategy::ShiftInwards)
+        .vectorize(xi)
+        .compute_at(f2, x)
+        .reorder({xi, x});
+    deinterleaveRaw10Result_2
+        .store_in(MemoryType::Stack)
+        .split(x, x, xi, 32, TailStrategy::ShiftInwards)
+        .vectorize(xi)
+        .compute_at(f4, yii)
+        .reorder({xi, x, y});
+    f1
+        .store_in(MemoryType::Stack)
+        .split(x, x, xi, 512, TailStrategy::ShiftInwards)
+        .split(xi, xi, xii, 64, TailStrategy::ShiftInwards)
+        .split(xii, xii, xiii, 16, TailStrategy::ShiftInwards)
+        .unroll(xii)
+        .vectorize(xiii)
+        .compute_at(f4, x)
+        .reorder({xiii, xii, xi, x, y});
+    deinterleaveRaw16Result_1
+        .store_in(MemoryType::Stack)
+        .split(x, x, xi, 8, TailStrategy::RoundUp)
+        .unroll(x)
+        .vectorize(xi)
+        .compute_at(f1, xi)
+        .reorder({xi, x, y});
+    f6
+        .store_in(MemoryType::Stack)
+        .split(x, x, xi, 32, TailStrategy::ShiftInwards)
+        .vectorize(xi)
+        .compute_at(f1, x)
+        .reorder({xi, x});
+    deinterleaveRaw10Result_1
+        .store_in(MemoryType::Stack)
+        .split(x, x, xi, 32, TailStrategy::ShiftInwards)
+        .vectorize(xi)
+        .compute_at(f4, yii)
+        .reorder({xi, x, y});
+    f0
+        .store_in(MemoryType::Stack)
+        .split(x, x, xi, 64, TailStrategy::RoundUp)
+        .split(xi, xi, xii, 16, TailStrategy::RoundUp)
+        .unroll(xi)
+        .vectorize(xii)
+        .compute_at(f4, xi)
+        .reorder({xii, xi, x, y});
+    deinterleaveRaw16Result
+        .store_in(MemoryType::Stack)
+        .split(x, x, xi, 8, TailStrategy::RoundUp)
+        .unroll(x)
+        .vectorize(xi)
+        .compute_at(f0, x)
+        .reorder({xi, x, y});
+    f5
+        .store_in(MemoryType::Stack)
+        .split(x, x, xi, 32, TailStrategy::ShiftInwards)
+        .vectorize(xi)
+        .compute_at(f4, x)
+        .reorder({xi, x});
+    deinterleaveRaw10Result
+        .store_in(MemoryType::Stack)
+        .split(x, x, xi, 32, TailStrategy::ShiftInwards)
+        .vectorize(xi)
+        .compute_at(f4, yii)
+        .reorder({xi, x, y});
+
+}
 
 void DeinterleaveRawGenerator::generate() {
     Func channels[4];
@@ -2916,8 +3179,27 @@ void DeinterleaveRawGenerator::generate() {
 
     preview(v_x, v_y) =  gammaLut(cast<uint8_t>(clamp(p * scale * 255.0f + 0.5f, 0, 255)));
 
+    input.set_estimates({ {0, 18000000} });
+    width.set_estimate(4000);
+    height.set_estimate(3000);
+    blackLevel.set_estimate(0, 64);
+    blackLevel.set_estimate(1, 64);
+    blackLevel.set_estimate(2, 64);
+    blackLevel.set_estimate(3, 64);
+    whiteLevel.set_estimate(1023);
+    offsetX.set_estimate(0);
+    offsetY.set_estimate(0);
+    scale.set_estimate(1.0f);
+    stride.set_estimate(4000);
+    sensorArrangement.set_estimate(0);
+    pixelFormat.set_estimate(0);
+
+    output.set_estimates({{0, 2000}, {0, 1500}, {0, 4} });
+    preview.set_estimates({{0, 2000}, {0, 1500} });
+
     if(!get_auto_schedule()) {
-        schedule_for_cpu();
+        //schedule_for_cpu();
+        apply_auto_schedule(get_pipeline(), get_target());
     }
  }
 
