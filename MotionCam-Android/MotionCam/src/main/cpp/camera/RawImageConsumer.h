@@ -38,9 +38,6 @@ namespace motioncam {
         void queueImage(AImage* image);
         void queueMetadata(const ACameraMetadata* metadata, ScreenOrientation screenOrientation, RawType rawType);
 
-        int getHdrBufferCount();
-        void cancelHdrBuffers();
-
         void enableRawPreview(std::shared_ptr<RawPreviewListener> listener, const int previewQuality);
         void updateRawPreviewSettings(
                 float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset);

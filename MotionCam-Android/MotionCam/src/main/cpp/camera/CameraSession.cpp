@@ -6,6 +6,7 @@
 
 #include <motioncam/Util.h>
 #include <motioncam/Settings.h>
+#include <motioncam/RawBufferManager.h>
 
 #include <string>
 #include <utility>
@@ -865,18 +866,14 @@ namespace motioncam {
                 mHdrCaptureInProgress = false;
                 mHdrCaptureSequenceCompleted = false;
 
-                mImageConsumer->cancelHdrBuffers();
-
                 mSessionListener->onCameraHdrImageCaptureFailed();
 
                 return;
             }
         }
 
-        int numHdrImages = mImageConsumer->getHdrBufferCount();
-
         // If we don't have the right number of images
-        int hdrBufferCount = mImageConsumer->getHdrBufferCount();
+        int hdrBufferCount = RawBufferManager::get().numHdrBuffers();
         if(hdrBufferCount < mRequestedHdrCaptures) {
             mSessionListener->onCameraHdrImageCaptureProgress(hdrBufferCount / (float) mRequestedHdrCaptures * 100.0f);
             return;
@@ -888,7 +885,7 @@ namespace motioncam {
         mHdrCaptureInProgress = false;
 
         LOGI("HDR capture completed. Saving data.");
-//        mImageConsumer->save(RawType::HDR, mHdrCaptureSettings, mHdrCaptureOutputPath);
+        RawBufferManager::get().saveHdr(mCameraDescription->metadata, mHdrCaptureSettings, mHdrCaptureOutputPath);
 
         mSessionListener->onCameraHdrImageCaptureCompleted();
     }

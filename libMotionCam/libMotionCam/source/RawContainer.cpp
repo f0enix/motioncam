@@ -168,19 +168,49 @@ namespace motioncam {
                                const int64_t referenceTimestamp,
                                const bool isHdr,
                                const bool writeDNG,
-                               std::vector<string> frames,
-                               std::map<string, std::shared_ptr<RawImageBuffer>> frameBuffers,
+                               const std::map<string, std::shared_ptr<RawImageBuffer>>& frameBuffers) :
+        mCameraMetadata(cameraMetadata),
+        mPostProcessSettings(postProcessSettings),
+        mReferenceTimestamp(referenceTimestamp),
+        mIsHdr(isHdr),
+        mWriteDNG(writeDNG)
+    {
+        if(frameBuffers.empty()) {
+            throw InvalidState("No frames");
+        }
+
+        // Clone buffers
+        for(const auto& p : frameBuffers) {
+            mFrameBuffers[p.first] = std::make_shared<RawImageBuffer>(*p.second);
+            mFrames.push_back(p.first);
+            
+            if(p.second->metadata.timestampNs == referenceTimestamp) {
+                mReferenceImage = p.first;
+            }
+        }
+        
+        if(mReferenceImage.empty()) {
+            mReferenceImage = mFrameBuffers.begin()->first;
+            mReferenceTimestamp = mFrameBuffers.begin()->second->metadata.timestampNs;
+        }
+    }
+
+    RawContainer::RawContainer(RawCameraMetadata& cameraMetadata,
+                               const PostProcessSettings& postProcessSettings,
+                               const int64_t referenceTimestamp,
+                               const bool isHdr,
+                               const bool writeDNG,
+                               std::map<string, std::shared_ptr<RawImageBuffer>>&& frameBuffers,
                                std::unique_ptr<RawBufferManager::LockedBuffers>&& lockedBuffers) :
         mCameraMetadata(cameraMetadata),
         mPostProcessSettings(postProcessSettings),
         mReferenceTimestamp(referenceTimestamp),
         mIsHdr(isHdr),
         mWriteDNG(writeDNG),
-        mFrames(std::move(frames)),
         mFrameBuffers(std::move(frameBuffers)),
         mLockedBuffers(std::move(lockedBuffers))
     {
-        if(mFrameBuffers.empty() || mFrames.empty()) {
+        if(mFrameBuffers.empty()) {
             throw InvalidState("No frames");
         }
         
@@ -189,8 +219,9 @@ namespace motioncam {
         while(it != mFrameBuffers.end()) {
             if(it->second->metadata.timestampNs == referenceTimestamp) {
                 mReferenceImage = it->first;
-                break;
             }
+            
+            mFrames.push_back(it->first);
 
             ++it;
         }
@@ -264,6 +295,30 @@ namespace motioncam {
             imageMetadata["exposureTime"]           = (double) frame->metadata.exposureTime;
             imageMetadata["orientation"]            = static_cast<int>(frame->metadata.screenOrientation);
 
+            if(!frame->metadata.calibrationMatrix1.empty()) {
+                imageMetadata["calibrationMatrix1"]  = toJsonArray(frame->metadata.calibrationMatrix1);
+            }
+
+            if(!frame->metadata.calibrationMatrix2.empty()) {
+                imageMetadata["calibrationMatrix2"]  = toJsonArray(frame->metadata.calibrationMatrix2);
+            }
+
+            if(!frame->metadata.colorMatrix1.empty()) {
+                imageMetadata["colorMatrix1"]  = toJsonArray(frame->metadata.colorMatrix1);
+            }
+
+            if(!frame->metadata.colorMatrix2.empty()) {
+                imageMetadata["colorMatrix2"]  = toJsonArray(frame->metadata.colorMatrix2);
+            }
+
+            if(!frame->metadata.forwardMatrix1.empty()) {
+                imageMetadata["forwardMatrix1"]  = toJsonArray(frame->metadata.forwardMatrix1);
+            }
+
+            if(!frame->metadata.forwardMatrix2.empty()) {
+                imageMetadata["forwardMatrix2"]  = toJsonArray(frame->metadata.forwardMatrix2);
+            }
+            
             if(!frame->metadata.lensShadingMap.empty()) {
                 imageMetadata["lensShadingMapWidth"]    = frame->metadata.lensShadingMap[0].cols;
                 imageMetadata["lensShadingMapHeight"]   = frame->metadata.lensShadingMap[0].rows;
@@ -434,6 +489,30 @@ namespace motioncam {
             string timestamp                    = getRequiredSettingAsString(*it, "timestamp");
             buffer->metadata.timestampNs        = std::stol(timestamp);
 
+            if(it->object_items().find("colorMatrix1") != it->object_items().end()) {
+                buffer->metadata.colorMatrix1 = toMat3x3((*it)["colorMatrix1"].array_items());
+            }
+
+            if(it->object_items().find("colorMatrix2") != it->object_items().end()) {
+                buffer->metadata.colorMatrix2 = toMat3x3((*it)["colorMatrix2"].array_items());
+            }
+
+            if(it->object_items().find("calibrationMatrix1") != it->object_items().end()) {
+                buffer->metadata.calibrationMatrix1 = toMat3x3((*it)["calibrationMatrix1"].array_items());
+            }
+
+            if(it->object_items().find("calibrationMatrix2") != it->object_items().end()) {
+                buffer->metadata.calibrationMatrix1 = toMat3x3((*it)["calibrationMatrix2"].array_items());
+            }
+
+            if(it->object_items().find("forwardMatrix1") != it->object_items().end()) {
+                buffer->metadata.calibrationMatrix1 = toMat3x3((*it)["forwardMatrix1"].array_items());
+            }
+
+            if(it->object_items().find("forwardMatrix2") != it->object_items().end()) {
+                buffer->metadata.calibrationMatrix1 = toMat3x3((*it)["forwardMatrix2"].array_items());
+            }
+
             // Lens shading maps
             int lenShadingMapWidth  = getRequiredSettingAsInt(*it, "lensShadingMapWidth");
             int lenShadingMapHeight = getRequiredSettingAsInt(*it, "lensShadingMapHeight");
@@ -448,7 +527,7 @@ namespace motioncam {
                 cv::Mat m(lenShadingMapHeight, lenShadingMapWidth, CV_32F, cv::Scalar(1));
                 buffer->metadata.lensShadingMap.push_back(m);
             }
-                        
+            
             // Load points for shading map
             auto shadingMapPts = (*it)["lensShadingMap"].array_items();
             

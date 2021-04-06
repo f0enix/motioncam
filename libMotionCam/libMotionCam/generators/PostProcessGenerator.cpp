@@ -1048,7 +1048,7 @@ protected:
     void rearrange(Func& output, Func input, Expr sensorArrangement);
     void rearrange(Func& output, Func in0, Func in1, Func in2, Func in3, Expr sensorArrangement);
 
-    void blur(Func& output, Func input);
+    void blur(Func& output, Func& outputTmp, Func input);
     void blur2(Func& output, Func& outputTmp, Func input);
     void blur3(Func& output, Func& outputTmp, Func input);
 
@@ -1178,13 +1178,12 @@ Func PostProcessBase::deinterleaveRaw10(Func in, int c, Expr stride) {
 }
 
 
-void PostProcessBase::blur(Func& output, Func input) {
-    Func in32;
-    Func blurX;
+void PostProcessBase::blur(Func& output, Func& outputTmp, Func input) {
+    Func in32{"blur_in32"};
 
     in32(v_x, v_y) = cast<int32_t>(input(v_x, v_y));
     
-    blurX(v_x, v_y) = (
+    outputTmp(v_x, v_y) = (
         1 * in32(v_x - 1, v_y) +
         2 * in32(v_x    , v_y) +
         1 * in32(v_x + 1, v_y)
@@ -1193,16 +1192,15 @@ void PostProcessBase::blur(Func& output, Func input) {
     output(v_x, v_y) =
         cast<uint16_t> (
             (
-              1 * blurX(v_x, v_y - 1) +
-              2 * blurX(v_x, v_y)     +
-              1 * blurX(v_x, v_y + 1)             
+              1 * outputTmp(v_x, v_y - 1) +
+              2 * outputTmp(v_x, v_y)     +
+              1 * outputTmp(v_x, v_y + 1)             
             ) / 4
         );
 }
 
 void PostProcessBase::blur2(Func& output, Func& outputTmp, Func input) {
-    Func in32;
-    Func blurX;
+    Func in32{"blur2_in32"};
 
     in32(v_x, v_y) = cast<int32_t>(input(v_x, v_y));
     
@@ -1227,8 +1225,7 @@ void PostProcessBase::blur2(Func& output, Func& outputTmp, Func input) {
 }
 
 void PostProcessBase::blur3(Func& output, Func& outputTmp, Func input) {
-    Func in32;
-    Func blurX;
+    Func in32{"blur3_in32"};
 
     in32(v_x, v_y) = cast<int32_t>(input(v_x, v_y));
 
@@ -2149,9 +2146,9 @@ void PostProcessGenerator::generate()
     
     rgbToHsv(hsvInput, tonemapOutputRgb);
 
-    fixColorArtifacts(hsvFixed, hsvInput);
+    // fixColorArtifacts(hsvFixed, hsvInput);
 
-    shiftHues(saturationApplied, hsvFixed, blueSaturation, greenSaturation, satParam);
+    shiftHues(saturationApplied, hsvInput, blueSaturation, greenSaturation, satParam);
 
     hsvToBgr(finalRgb, saturationApplied);
 
@@ -2606,8 +2603,6 @@ private:
     Func hsvInput{"hsvInput"};
     Func saturationApplied{"saturationApplied"};
     Func finalRgb{"finalRgb"};
-
-    std::unique_ptr<GuidedFilter> sharpenGf0;
 };
 
 Func PreviewGenerator::downscale(Func f, Func& downx, Expr factor) {
@@ -2616,12 +2611,14 @@ Func PreviewGenerator::downscale(Func f, Func& downx, Expr factor) {
 
     in(v_x, v_y, v_c) = cast<float>(f(v_x, v_y, v_c));
 
-    downx(v_x, v_y, v_c) = sum(in(v_x * factor + r.x, v_y, v_c)) / (factor + 1.0f);
-    downy(v_x, v_y, v_c) = sum(downx(v_x, v_y * factor + r.x, v_c)) / (factor + 1.0f);
-    
-    result(v_x, v_y, v_c) = cast<uint16_t>(downy(v_x, v_y, v_c));
+    downx(v_x, v_y, v_c) = sum(in(v_x * factor + r.x, v_y, v_c)) / (factor + 1);
+    downy(v_x, v_y, v_c) = sum(downx(v_x, v_y * factor + r.x, v_c)) / (factor + 1);
 
-    return result;
+    return downy;
+
+    // result(v_x, v_y, v_c) = cast<uint16_t>(downy(v_x, v_y, v_c));
+
+    // return result;
 }
 
 void PreviewGenerator::generate() {
@@ -2643,12 +2640,16 @@ void PreviewGenerator::generate() {
     Expr w = width;
     Expr h = height;
     
-    downscaled(v_x, v_y, v_c) =
+    Func input("input");
+
+    input(v_x, v_y, v_c) =
         mux(v_c,
-            {   in[0](v_x*downscaleFactor, v_y*downscaleFactor),
-                in[1](v_x*downscaleFactor, v_y*downscaleFactor),
-                in[2](v_x*downscaleFactor, v_y*downscaleFactor),
-                in[3](v_x*downscaleFactor, v_y*downscaleFactor) });
+            {   in[0](v_x, v_y),
+                in[1](v_x, v_y),
+                in[2](v_x, v_y),
+                in[3](v_x, v_y) });
+
+    downscaled = downscale(input, downscaledTemp, downscaleFactor);
 
     // Shading map
     linearScale(shadingMap[0], inShadingMap0, inShadingMap0.width(), inShadingMap0.height(), w, h);
@@ -2695,8 +2696,8 @@ void PreviewGenerator::generate() {
     // Sharpen
     //
 
-    blur2(blurOutput, blurOutputTmp, sharpenInputY);
-    blur3(blurOutput2, blurOutput2Tmp, blurOutput);
+    blur(blurOutput, blurOutputTmp, sharpenInputY);
+    blur2(blurOutput2, blurOutput2Tmp, blurOutput);
     
     Func gaussianDiff0{"gaussianDiff0"}, gaussianDiff1{"gaussianDiff1"};
     

@@ -31,16 +31,16 @@ namespace motioncam {
             friend class RawBufferManager;
 
         private:
-            LockedBuffers(std::vector<std::shared_ptr<RawImageBuffer>> buffers, bool returnBuffers);
+            LockedBuffers(std::vector<std::shared_ptr<RawImageBuffer>> buffers);
             LockedBuffers();
             
             const std::vector<std::shared_ptr<RawImageBuffer>> mBuffers;
-            bool mReturnBuffers;
         };
         
         void addBuffer(std::shared_ptr<RawImageBuffer>& buffer);
         int memoryUseBytes() const;
         int numBuffers() const;
+        void reset();
 
         std::shared_ptr<RawImageBuffer> dequeueUnusedBuffer();
         void enqueueReadyBuffer(const std::shared_ptr<RawImageBuffer>& buffer);
@@ -48,12 +48,19 @@ namespace motioncam {
         void discardBuffers(const std::vector<std::shared_ptr<RawImageBuffer>>& buffers);
         void returnBuffers(const std::vector<std::shared_ptr<RawImageBuffer>>& buffers);
 
-        std::shared_ptr<RawContainer> dequeuePendingContainer();
+        int numHdrBuffers();
         
-        std::unique_ptr<LockedBuffers> lockNumBuffers(int numBuffers, bool returnBuffers);
-        std::unique_ptr<LockedBuffers> lockAllBuffers(bool returnBuffers);
-        std::unique_ptr<LockedBuffers> lockBuffer(int64_t timestampNs, bool returnBuffers);
+        std::shared_ptr<RawContainer> peekPendingContainer();
+        void clearPendingContainer();
         
+        std::unique_ptr<LockedBuffers> consumeLatestBuffer();
+        std::unique_ptr<LockedBuffers> consumeAllBuffers();
+        std::unique_ptr<LockedBuffers> consumeBuffer(int64_t timestampNs);
+        
+        void saveHdr(RawCameraMetadata& metadata,
+                     const PostProcessSettings& settings,
+                     const std::string& outputPath);
+
         void save(RawCameraMetadata& metadata,
                   int64_t referenceTimestamp,
                   int numSaveBuffers,
@@ -64,14 +71,15 @@ namespace motioncam {
     private:
         RawBufferManager();
 
-        int mMemoryUseBytes;
-        int mNumBuffers;
-        
+        std::atomic<int> mMemoryUseBytes;
+        std::atomic<int> mNumBuffers;
+                
         std::recursive_mutex mMutex;
         
         std::vector<std::shared_ptr<RawImageBuffer>> mReadyBuffers;
+
         moodycamel::ConcurrentQueue<std::shared_ptr<RawImageBuffer>> mUnusedBuffers;
-        moodycamel::ConcurrentQueue<std::shared_ptr<RawContainer>> mPendingContainers;
+        std::shared_ptr<RawContainer> mPendingContainer;
     };
 
 } // namespace motioncam

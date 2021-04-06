@@ -16,13 +16,20 @@ namespace motioncam {
     class RawContainer {
     public:
         RawContainer(const std::string& inputPath);
+
         RawContainer(RawCameraMetadata& cameraMetadata,
                      const PostProcessSettings& postProcessSettings,
                      const int64_t referenceTimestamp,
                      const bool isHdr,
                      const bool writeDNG,
-                     std::vector<std::string> frames,
-                     std::map<std::string, std::shared_ptr<RawImageBuffer>> frameBuffers,
+                     const std::map<std::string, std::shared_ptr<RawImageBuffer>>& frameBuffers);
+
+        RawContainer(RawCameraMetadata& cameraMetadata,
+                     const PostProcessSettings& postProcessSettings,
+                     const int64_t referenceTimestamp,
+                     const bool isHdr,
+                     const bool writeDNG,
+                     std::map<std::string, std::shared_ptr<RawImageBuffer>>&& frameBuffers,
                      std::unique_ptr<RawBufferManager::LockedBuffers>&& lockedBuffers);
         
         const RawCameraMetadata& getCameraMetadata() const;
@@ -61,7 +68,7 @@ namespace motioncam {
         std::unique_ptr<util::ZipReader> mZipReader;
         RawCameraMetadata mCameraMetadata;
         PostProcessSettings mPostProcessSettings;
-        int64_t mReferenceTimestamp{};
+        int64_t mReferenceTimestamp;
         std::string mReferenceImage;
         bool mWriteDNG{};
         bool mIsHdr{};

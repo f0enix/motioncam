@@ -520,31 +520,29 @@ JNIEXPORT jobjectArray JNICALL Java_com_motioncam_camera_NativeCameraSessionBrid
     jobjectArray result = nullptr;
 
     // Return available buffers
-    {
-        auto lockedBuffers = RawBufferManager::get().lockAllBuffers(true);
-        if (!lockedBuffers)
-            return nullptr;
+    auto lockedBuffers = RawBufferManager::get().consumeAllBuffers();
+    if(!lockedBuffers)
+        return nullptr;
 
-        auto buffers = lockedBuffers->getBuffers();
+    auto buffers = lockedBuffers->getBuffers();
 
-        result = env->NewObjectArray(static_cast<jsize>(buffers.size()), nativeCameraBufferClass, nullptr);
-        if(result == nullptr)
-            return nullptr;
+    result = env->NewObjectArray(static_cast<jsize>(buffers.size()), nativeCameraBufferClass, nullptr);
+    if(result == nullptr)
+        return nullptr;
 
-        for (size_t i = 0; i < buffers.size(); i++) {
-            jobject obj =
-                    env->NewObject(
-                            nativeCameraBufferClass,
-                            env->GetMethodID(nativeCameraBufferClass, "<init>", "(JIJIII)V"),
-                            buffers[i]->metadata.timestampNs,
-                            buffers[i]->metadata.iso,
-                            buffers[i]->metadata.exposureTime,
-                            static_cast<int>(buffers[i]->metadata.screenOrientation),
-                            buffers[i]->width,
-                            buffers[i]->height);
+    for (size_t i = 0; i < buffers.size(); i++) {
+        jobject obj =
+                env->NewObject(
+                        nativeCameraBufferClass,
+                        env->GetMethodID(nativeCameraBufferClass, "<init>", "(JIJIII)V"),
+                        buffers[i]->metadata.timestampNs,
+                        buffers[i]->metadata.iso,
+                        buffers[i]->metadata.exposureTime,
+                        static_cast<int>(buffers[i]->metadata.screenOrientation),
+                        buffers[i]->width,
+                        buffers[i]->height);
 
-            env->SetObjectArrayElement(result, i, obj);
-        }
+        env->SetObjectArrayElement(result, i, obj);
     }
 
     return result;
@@ -566,23 +564,21 @@ Java_com_motioncam_camera_NativeCameraSessionBridge_GetPreviewSize(
     // Get first available buffer and return size divided by downscale factor
     jobject captureSize = nullptr;
 
-    {
-        auto lockedBuffer = RawBufferManager::get().lockNumBuffers(1, true);
-        if (!lockedBuffer || lockedBuffer->getBuffers().empty())
-            return nullptr;
+    auto lockedBuffer = RawBufferManager::get().consumeLatestBuffer();
+    if(!lockedBuffer || lockedBuffer->getBuffers().empty())
+        return nullptr;
 
-        auto imageBuffer = lockedBuffer->getBuffers().front();
+    auto imageBuffer = lockedBuffer->getBuffers().front();
 
-        // Return as Size instance
-        jclass cls = env->FindClass("android/util/Size");
-        captureSize =
-                env->NewObject(
-                        cls,
-                        env->GetMethodID(cls, "<init>", "(II)V"),
-                        imageBuffer->width / downscaleFactor / 2,
-                        imageBuffer->height / downscaleFactor / 2
-                );
-    }
+    // Return as Size instance
+    jclass cls = env->FindClass("android/util/Size");
+    captureSize =
+            env->NewObject(
+                    cls,
+                    env->GetMethodID(cls, "<init>", "(II)V"),
+                    imageBuffer->width / downscaleFactor / 2,
+                    imageBuffer->height / downscaleFactor / 2
+            );
 
     return captureSize;
 }
@@ -624,7 +620,7 @@ Java_com_motioncam_camera_NativeCameraSessionBridge_CreateImagePreview(
 
     motioncam::PostProcessSettings settings(json);
 
-    auto lockedBuffer = RawBufferManager::get().lockBuffer(bufferHandle, true);
+    auto lockedBuffer = RawBufferManager::get().consumeBuffer(bufferHandle);
     if(!lockedBuffer || lockedBuffer->getBuffers().empty()) {
         LOGE("Failed to get image buffer");
         return JNI_FALSE;
@@ -699,13 +695,13 @@ JNIEXPORT jdouble JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_Me
         return JNI_FALSE;
     }
 
-    auto lockedBuffer = RawBufferManager::get().lockBuffer(bufferHandle, true);
+    auto lockedBuffer = RawBufferManager::get().consumeBuffer(bufferHandle);
     if(!lockedBuffer || lockedBuffer->getBuffers().empty())
         return -1e10;
 
+    auto imageBuffer = lockedBuffer->getBuffers().front();
     auto cameraId = sessionManager->getSelectedCameraId();
     auto metadata = sessionManager->getCameraDescription(cameraId)->metadata;
-    auto imageBuffer = lockedBuffer->getBuffers().front();
 
     return gImageProcessor->measureSharpness(*imageBuffer);
 }
@@ -724,21 +720,18 @@ JNIEXPORT jstring JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_Es
 
     motioncam::PostProcessSettings settings;
 
-    {
-        auto lockedBuffer = RawBufferManager::get().lockNumBuffers(1, true);
-        if (!lockedBuffer || lockedBuffer->getBuffers().empty())
-            return nullptr;
+    auto lockedBuffer = RawBufferManager::get().consumeLatestBuffer();
+    if(!lockedBuffer || lockedBuffer->getBuffers().empty())
+        return nullptr;
 
-        auto imageBuffer = lockedBuffer->getBuffers().front();
+    auto imageBuffer = lockedBuffer->getBuffers().front();
+    auto cameraId = sessionManager->getSelectedCameraId();
+    auto metadata = sessionManager->getCameraDescription(cameraId)->metadata;
 
-        auto cameraId = sessionManager->getSelectedCameraId();
-        auto metadata = sessionManager->getCameraDescription(cameraId)->metadata;
-
-        if (basicSettings)
-            gImageProcessor->estimateBasicSettings(*imageBuffer, metadata, settings);
-        else
-            gImageProcessor->estimateSettings(*imageBuffer, metadata, settings);
-    }
+    if (basicSettings)
+        gImageProcessor->estimateBasicSettings(*imageBuffer, metadata, settings);
+    else
+        gImageProcessor->estimateSettings(*imageBuffer, metadata, settings);
 
     auto settingsJson = settings.toJson();
     return env->NewStringUTF(settingsJson.dump().c_str());
@@ -821,7 +814,7 @@ jfloat JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EstimateShado
         return -1.0f;
     }
 
-    auto lockedBuffer = RawBufferManager::get().lockNumBuffers(1, false);
+    auto lockedBuffer = RawBufferManager::get().consumeLatestBuffer();
     if(!lockedBuffer || lockedBuffer->getBuffers().empty())
         return -1;
 

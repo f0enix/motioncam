@@ -7,136 +7,17 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <LinearLayout
-        android:id="@+id/previewControls"
+    <include
+        android:id="@+id/preview_frame"
+        layout="@layout/preview_controls"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:orientation="vertical"
-        android:gravity="center"
         android:layout_marginStart="10dp"
         android:layout_marginEnd="10dp"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toTopOf="@+id/cameraFrame">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <LinearLayout
-                android:id="@+id/contrastBtn"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:padding="5dp"
-                android:background="@color/colorPrimaryDark"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_horizontal"
-                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                    android:text="CONTRAST"/>
-
-                <TextView
-                    android:id="@+id/contrastValue"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_horizontal"
-                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                    android:text="50%"/>
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/colourBtn"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:padding="5dp"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_horizontal"
-                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                    android:text="COLOUR"/>
-
-                <TextView
-                    android:id="@+id/colourValue"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_horizontal"
-                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                    android:text="50%"/>
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/tintBtn"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:padding="5dp"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_horizontal"
-                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                    android:text="TINT"/>
-
-                <TextView
-                    android:id="@+id/tintValue"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_horizontal"
-                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                    android:text="50%"/>
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/warmthBtn"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:padding="5dp"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_horizontal"
-                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                    android:text="WARMTH"/>
-
-                <TextView
-                    android:id="@+id/warmthValue"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_horizontal"
-                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                    android:text="50%"/>
-            </LinearLayout>
-
-        </LinearLayout>
-
-        <SeekBar
-            android:id="@+id/previewSeekBar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:progress="10"
-            android:progressBackgroundTint="@color/white"
-            android:thumbTint="@color/white"
-            android:progressTint="@color/white"
-            android:max="20"
-            android:theme="@style/Widget.AppCompat.SeekBar.Discrete"
-            android:padding="10dp"/>
-
-    </LinearLayout>
+        app:layout_constraintBottom_toTopOf="@+id/cameraFrame"/>
 
     <FrameLayout
         android:id="@+id/cameraFrame"
@@ -218,10 +99,11 @@
             android:id="@+id/hintText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="3dp"
+            android:padding="5dp"
             android:drawableStart="@drawable/baseline_cancel_24"
+            android:drawablePadding="5dp"
+            android:gravity="center_vertical"
             android:text="@string/hint_text"
-            android:gravity="center"
             android:textAppearance="@style/MotionCam.TextAppearance.Small"
             android:textColor="@color/white"/>
 

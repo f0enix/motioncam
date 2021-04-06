@@ -65,7 +65,7 @@ public class CameraActivity extends AppCompatActivity implements
 
     private static final int PERMISSION_REQUEST_CODE = 1;
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
-    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 6;
+    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 8;
     public static final int SHADOW_UPDATE_FREQUENCY_MS = 500;
 
     private enum FocusState {
@@ -228,7 +228,7 @@ public class CameraActivity extends AppCompatActivity implements
         });
 
         // Preview settings
-        mBinding.previewSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+        mBinding.previewFrame.previewSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 if(fromUser)
@@ -252,10 +252,10 @@ public class CameraActivity extends AppCompatActivity implements
         mBinding.burstModeBtn.setOnClickListener(this::onCaptureModeClicked);
         mBinding.zslModeBtn.setOnClickListener(this::onCaptureModeClicked);
 
-        mBinding.contrastBtn.setOnClickListener(this::onPreviewModeClicked);
-        mBinding.colourBtn.setOnClickListener(this::onPreviewModeClicked);
-        mBinding.tintBtn.setOnClickListener(this::onPreviewModeClicked);
-        mBinding.warmthBtn.setOnClickListener(this::onPreviewModeClicked);
+        mBinding.previewFrame.contrastBtn.setOnClickListener(this::onPreviewModeClicked);
+        mBinding.previewFrame.colourBtn.setOnClickListener(this::onPreviewModeClicked);
+        mBinding.previewFrame.tintBtn.setOnClickListener(this::onPreviewModeClicked);
+        mBinding.previewFrame.warmthBtn.setOnClickListener(this::onPreviewModeClicked);
 
         mBinding.hintText.setOnClickListener(this::onHintClicked);
 
@@ -502,46 +502,46 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void updatePreviewTabUi(boolean updateModeSelection) {
-        final float seekBarMax = mBinding.previewSeekBar.getMax();
+        final float seekBarMax = mBinding.previewFrame.previewSeekBar.getMax();
         int progress = Math.round(seekBarMax / 2);
 
         View selectionView = null;
 
-        mBinding.contrastValue.setText(Math.round(mPostProcessSettings.contrast * 100) + "%");
-        mBinding.colourValue.setText(Math.round(mPostProcessSettings.saturation / 2.0f * 100)  + "%");
-        mBinding.warmthValue.setText( Math.round((mTemperatureOffset + 1000.0f) / 2000.0f * 100.0f) + "%" );
-        mBinding.tintValue.setText( Math.round((mTintOffset + 50.0f) / 100.0f * 100.0f) + "%" );
+        mBinding.previewFrame.contrastValue.setText(Math.round(mPostProcessSettings.contrast * 100) + "%");
+        mBinding.previewFrame.colourValue.setText(Math.round(mPostProcessSettings.saturation / 2.0f * 100)  + "%");
+        mBinding.previewFrame.warmthValue.setText( Math.round((mTemperatureOffset + 1000.0f) / 2000.0f * 100.0f) + "%" );
+        mBinding.previewFrame.tintValue.setText( Math.round((mTintOffset + 50.0f) / 100.0f * 100.0f) + "%" );
 
         switch(mPreviewControlMode) {
             case CONTRAST:
                 progress = Math.round(mPostProcessSettings.contrast * seekBarMax);
-                selectionView = mBinding.contrastBtn;
+                selectionView = mBinding.previewFrame.contrastBtn;
                 break;
 
             case COLOUR:
                 progress = Math.round(mPostProcessSettings.saturation / 2.0f * seekBarMax);
-                selectionView = mBinding.colourBtn;
+                selectionView = mBinding.previewFrame.colourBtn;
                 break;
 
             case TINT:
                 progress = Math.round(((mTintOffset + 50.0f) / 100.0f * seekBarMax));
-                selectionView = mBinding.tintBtn;
+                selectionView = mBinding.previewFrame.tintBtn;
                 break;
 
             case WARMTH:
                 progress = Math.round(((mTemperatureOffset + 1000.0f) / 2000.0f * seekBarMax));
-                selectionView = mBinding.warmthBtn;
+                selectionView = mBinding.previewFrame.warmthBtn;
                 break;
         }
 
         if(updateModeSelection) {
-            mBinding.contrastBtn.setBackground(null);
-            mBinding.colourBtn.setBackground(null);
-            mBinding.tintBtn.setBackground(null);
-            mBinding.warmthBtn.setBackground(null);
+            mBinding.previewFrame.contrastBtn.setBackground(null);
+            mBinding.previewFrame.colourBtn.setBackground(null);
+            mBinding.previewFrame.tintBtn.setBackground(null);
+            mBinding.previewFrame.warmthBtn.setBackground(null);
 
             selectionView.setBackgroundColor(getColor(R.color.colorPrimaryDark));
-            mBinding.previewSeekBar.setProgress(progress);
+            mBinding.previewFrame.previewSeekBar.setProgress(progress);
         }
     }
 
@@ -580,16 +580,16 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void onPreviewModeClicked(View v) {
-        if(v == mBinding.contrastBtn) {
+        if(v == mBinding.previewFrame.contrastBtn) {
             mPreviewControlMode = PreviewControlMode.CONTRAST;
         }
-        else if(v == mBinding.colourBtn) {
+        else if(v == mBinding.previewFrame.colourBtn) {
             mPreviewControlMode = PreviewControlMode.COLOUR;
         }
-        else if(v == mBinding.tintBtn) {
+        else if(v == mBinding.previewFrame.tintBtn) {
             mPreviewControlMode = PreviewControlMode.TINT;
         }
-        else if(v == mBinding.warmthBtn) {
+        else if(v == mBinding.previewFrame.warmthBtn) {
             mPreviewControlMode = PreviewControlMode.WARMTH;
         }
 
@@ -597,7 +597,7 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void updatePreviewControlsParam(int progress) {
-        final float seekBarMax = mBinding.previewSeekBar.getMax();
+        final float seekBarMax = mBinding.previewFrame.previewSeekBar.getMax();
 
         switch(mPreviewControlMode) {
             case CONTRAST:
@@ -619,47 +619,6 @@ public class CameraActivity extends AppCompatActivity implements
 
         updatePreviewSettings();
         updatePreviewTabUi(false);
-    }
-
-    static public int getNumImagesToMerge(int iso, long exposureTime, float shadows) {
-        int numImages;
-
-        if(iso <= 320 && exposureTime <= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_100.getExposureTime()) {
-            numImages = 1;
-        }
-        else if (iso <= 400) {
-            numImages = 4;
-        }
-        else {
-            numImages = 7;
-        }
-
-        // If very dark, use more images
-        if(iso >= 1600 && exposureTime >= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_30.getExposureTime()) {
-            numImages = 9;
-        }
-
-        // If shadows are increased by a significant amount, use more images
-        if(shadows >= 3.99) {
-            numImages += 2;
-        }
-
-        if(shadows >= 7.99) {
-            numImages += 2;
-        }
-
-        return numImages;
-    }
-
-    static public float getChromaEps(int numImages) {
-        if(numImages <= 3)
-            return 1.0f;
-        else if(numImages <= 4)
-            return 8.0f;
-        else if(numImages <= 7)
-            return 16.0f;
-        else
-            return 32.0f;
     }
 
     private void onCaptureClicked() {
@@ -686,23 +645,16 @@ public class CameraActivity extends AppCompatActivity implements
                     .start();
 
             PostProcessSettings settings = mPostProcessSettings.clone();
+            DenoiseSettings denoiseSettings = new DenoiseSettings(mIso, mExposureTime, settings.shadows);
 
-            int numMergeImages =
-                    getNumImagesToMerge(mIso, mExposureTime, settings.shadows);
+            settings.chromaEps = denoiseSettings.chromaEps;
+            settings.spatialDenoiseAggressiveness = denoiseSettings.spatialWeight;
 
-            settings.chromaEps = getChromaEps(numMergeImages);
-            settings.exposure = 0.0f;
-
-            if(mIso <= 320 && mExposureTime <= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_100.getExposureTime())
-                settings.spatialDenoiseAggressiveness = 0.0f;
-            else
-                settings.spatialDenoiseAggressiveness = 1.0f;
-
-            Log.i(TAG, "Requested ZSL capture (numImages=" + numMergeImages + ")");
+            Log.i(TAG, "Requested ZSL capture (denoiseSettings=" + denoiseSettings.toString() + ")");
 
             mAsyncNativeCameraOps.captureImage(
                     Long.MIN_VALUE,
-                    numMergeImages,
+                    denoiseSettings.numMergeImages,
                     false,
                     settings,
                     CameraProfile.generateCaptureFile(this).getPath(),
@@ -751,10 +703,9 @@ public class CameraActivity extends AppCompatActivity implements
                             CameraManualControl.GetClosestIso(mIsoValues, mIso)
                     );
 
-                    int numMergeImages =
-                            getNumImagesToMerge(baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), settings.shadows);
+                    DenoiseSettings denoiseSettings = new DenoiseSettings(baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), settings.shadows);
 
-                    Log.i(TAG, "Requested HDR capture (shadows=" + settings.shadows + " numImages=" + numMergeImages + ", exposure=" + settings.exposure + ")");
+                    Log.i(TAG, "Requested HDR capture (denoiseSettings=" + denoiseSettings.toString() + ")");
 
                     // If the user has not override the shutter speed/iso, pick our own
                     if(!mManualControlsSet) {
@@ -762,18 +713,14 @@ public class CameraActivity extends AppCompatActivity implements
                         hdrExposure = CameraManualControl.MapToExposureLine(1.0, hdrExposure);
                     }
 
-                    settings.chromaEps = getChromaEps(numMergeImages);
+                    settings.chromaEps = denoiseSettings.chromaEps;
+                    settings.spatialDenoiseAggressiveness = denoiseSettings.spatialWeight;
                     settings.exposure = 0.0f;
                     settings.temperature = estimatedSettings.temperature + mTemperatureOffset;
                     settings.tint = estimatedSettings.tint + mTintOffset;
 
-                    if(mIso <= 320 && mExposureTime <= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_100.getExposureTime())
-                        settings.spatialDenoiseAggressiveness = 0.0f;
-                    else
-                        settings.spatialDenoiseAggressiveness = 1.0f;
-
                     mNativeCamera.captureHdrImage(
-                            numMergeImages,
+                            denoiseSettings.numMergeImages,
                             baseExposure.iso.getIso(),
                             baseExposure.shutterSpeed.getExposureTime(),
                             hdrExposure.iso.getIso(),
@@ -1095,7 +1042,7 @@ public class CameraActivity extends AppCompatActivity implements
 
         // Schedule timer to update shadows
         if(enableRawPreview) {
-            mBinding.previewControls.setVisibility(View.VISIBLE);
+            mBinding.previewFrame.previewControls.setVisibility(View.VISIBLE);
             mBinding.rawCameraPreview.setVisibility(View.VISIBLE);
             mBinding.shadowsLayout.setVisibility(View.VISIBLE);
 
@@ -1104,12 +1051,22 @@ public class CameraActivity extends AppCompatActivity implements
             mNativeCamera.enableRawPreview(this, getCameraPreviewQuality(sharedPrefs), false);
         }
         else {
-            mBinding.previewControls.setVisibility(View.GONE);
+            mBinding.previewFrame.previewControls.setVisibility(View.GONE);
             mBinding.rawCameraPreview.setVisibility(View.GONE);
             mBinding.shadowsLayout.setVisibility(View.GONE);
 
             mTextureView.setAlpha(1);
         }
+
+        mBinding.previewFrame.previewAdjustmentsBtn.setOnClickListener(v -> {
+            mBinding.previewFrame.previewAdjustmentsBtn.setVisibility(View.GONE);
+            mBinding.previewFrame.previewAdjustments.setVisibility(View.VISIBLE);
+        });
+
+        mBinding.previewFrame.previewAdjustments.findViewById(R.id.closePreviewAdjustmentsBtn).setOnClickListener(v -> {
+            mBinding.previewFrame.previewAdjustmentsBtn.setVisibility(View.VISIBLE);
+            mBinding.previewFrame.previewAdjustments.setVisibility(View.GONE);
+        });
 
         mShadowsUpdateTimer = new Timer("ShadowsUpdateTimer");
 

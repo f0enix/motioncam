@@ -48,14 +48,14 @@ namespace motioncam {
         cv::Vec3f cameraWhite;
         
         // Use user tint/temperature offsets
-        CameraProfile cameraProfile(cameraMetadata);
+        CameraProfile cameraProfile(cameraMetadata, rawBuffer.metadata);
         Temperature temperature;
         
         cameraProfile.temperatureFromVector(rawBuffer.metadata.asShot, temperature);
         
         Temperature userTemperature(temperature.temperature() + temperatureOffset, temperature.tint() + tintOffset);
         
-        ImageProcessor::createSrgbMatrix(cameraMetadata, userTemperature, cameraWhite, cameraToSrgb);
+        ImageProcessor::createSrgbMatrix(cameraMetadata, rawBuffer.metadata, userTemperature, cameraWhite, cameraToSrgb);
         
         Halide::Runtime::Buffer<float> cameraToSrgbBuffer = Halide::Runtime::Buffer<float>(
             (float*) cameraToSrgb.data, cameraToSrgb.cols, cameraToSrgb.rows);

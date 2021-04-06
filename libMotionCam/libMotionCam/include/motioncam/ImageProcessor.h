@@ -89,11 +89,13 @@ namespace motioncam {
                                                      const float scalePreview=1.0f);
         
         static void createSrgbMatrix(const RawCameraMetadata& cameraMetadata,
+                                     const RawImageMetadata& rawImageMetadata,
                                      const Temperature& temperature,
                                      cv::Vec3f& cameraWhite,
                                      cv::Mat& cameraToSrgb);
 
         static void createSrgbMatrix(const RawCameraMetadata& cameraMetadata,
+                                     const RawImageMetadata& rawImageMetadata,
                                      const cv::Vec3f& asShot,
                                      cv::Vec3f& cameraWhite,
                                      cv::Mat& cameraToSrgb);

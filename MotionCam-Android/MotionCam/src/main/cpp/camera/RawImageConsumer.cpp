@@ -57,6 +57,7 @@ namespace motioncam {
 
     RawImageConsumer::~RawImageConsumer() {
         stop();
+        RawBufferManager::get().reset();
     }
 
     void RawImageConsumer::start() {
@@ -66,8 +67,6 @@ namespace motioncam {
             LOGD("Attempting to start already running image consumer");
             return;
         }
-
-        cancelHdrBuffers();
 
         mRunning = true;
 
@@ -92,8 +91,6 @@ namespace motioncam {
         }
 
         mConsumerThreads.clear();
-
-        cancelHdrBuffers();
     }
 
     void RawImageConsumer::queueImage(AImage* image) {
@@ -119,65 +116,19 @@ namespace motioncam {
         mPendingMetadata.enqueue(std::move(metadata));
     }
 
-    int RawImageConsumer::getHdrBufferCount() {
-//        int hdrBufferCount = 0;
-//
-//        {
-//            std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
-//            hdrBufferCount = mHdrBuffers.size();
-//        }
-//
-//        return hdrBufferCount;
+    cv::Mat getColorMatrix(ACameraMetadata_const_entry& entry) {
+        cv::Mat m(3, 3, CV_32F);
 
-        return 0;
+        for(int y = 0; y < 3; y++) {
+            for(int x = 0; x < 3; x++) {
+                int i = y * 3 + x;
+
+                m.at<float>(y, x) = (float) entry.data.r[i].numerator / (float) entry.data.r[i].denominator;
+            }
+        }
+
+        return m;
     }
-
-    void RawImageConsumer::cancelHdrBuffers() {
-//        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
-//
-//        for(const auto& buffer : mHdrBuffers)
-//            RawBufferManager::get().discardBuffer(buffer);
-//
-//        mHdrBuffers.clear();
-    }
-
-//    void RawImageConsumer::save(
-//            const RawType rawType,
-//            const PostProcessSettings& settings,
-//            const std::string& outputPath)
-//    {
-//        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
-//
-//        if(mHdrBuffers.empty()) {
-//            LOGI("Failed to save, no buffers available");
-//            return;
-//        }
-//
-//        std::vector<std::string> frames;
-//        std::map<std::string, std::shared_ptr<RawImageBuffer>> frameBuffers;
-//
-//        auto it = mHdrBuffers.begin();
-//        int filenameIdx = 0;
-//
-//        while(it != mHdrBuffers.end()) {
-//            std::string filename = "frame" + std::to_string(filenameIdx) + ".raw";
-//
-//            frames.push_back(filename);
-//            frameBuffers[filename] = *it;
-//
-//            ++it;
-//            ++filenameIdx;
-//        }
-//
-//        // Save all images. Use first buffer as reference timestamp
-//        RawContainer rawContainer(mCameraDesc->metadata, settings, mHdrBuffers[0]->metadata.timestampNs, true, false, frames, frameBuffers);
-//
-//        rawContainer.saveContainer(outputPath);
-//
-//        // Return HDR buffers
-//        cancelHdrBuffers();
-//    }
-//
 
     bool RawImageConsumer::copyMetadata(RawImageMetadata& dst, const ACameraMetadata* src) {
         ACameraMetadata_const_entry metadataEntry;
@@ -249,15 +200,40 @@ namespace motioncam {
             return false;
         }
 
+        // ACAMERA_SENSOR_CALIBRATION_TRANSFORM1
+        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_CALIBRATION_TRANSFORM1, &metadataEntry) == ACAMERA_OK) {
+            dst.calibrationMatrix1 = getColorMatrix(metadataEntry);
+        }
+
+        // ACAMERA_SENSOR_CALIBRATION_TRANSFORM2
+        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_CALIBRATION_TRANSFORM2, &metadataEntry) == ACAMERA_OK) {
+            dst.calibrationMatrix2 = getColorMatrix(metadataEntry);
+        }
+
+        // ACAMERA_SENSOR_FORWARD_MATRIX1
+        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_FORWARD_MATRIX1, &metadataEntry) == ACAMERA_OK) {
+            dst.forwardMatrix1 = getColorMatrix(metadataEntry);
+        }
+
+        // ACAMERA_SENSOR_FORWARD_MATRIX2
+        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_FORWARD_MATRIX2, &metadataEntry) == ACAMERA_OK) {
+            dst.forwardMatrix2 = getColorMatrix(metadataEntry);
+        }
+
+        // ACAMERA_SENSOR_COLOR_TRANSFORM1
+        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_COLOR_TRANSFORM1, &metadataEntry) == ACAMERA_OK) {
+            dst.colorMatrix1 = getColorMatrix(metadataEntry);
+        }
+
+        // ACAMERA_SENSOR_COLOR_TRANSFORM2
+        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_COLOR_TRANSFORM2, &metadataEntry) == ACAMERA_OK) {
+            dst.colorMatrix2 = getColorMatrix(metadataEntry);
+        }
+
         return true;
     }
 
     void RawImageConsumer::onBufferReady(const std::shared_ptr<RawImageBuffer>& buffer) {
-//        if(buffer->metadata.rawType == RawType::HDR)
-//            mHdrBuffers.push_back(buffer);
-//        else
-//            RawBufferManager::get().enqueueReadyBuffer(buffer);
-
         RawBufferManager::get().enqueueReadyBuffer(buffer);
     }
 

@@ -52,9 +52,10 @@ public class ProcessorService extends IntentService {
         private final String mOutputFileNameJpeg;
         private final String mOutputFileNameDng;
         private final NotificationManager mNotifyManager;
-        private final NotificationCompat.Builder mBuilder;
         private final ResultReceiver mReceiver;
         private final NativeProcessor mNativeProcessor;
+
+        private NotificationCompat.Builder mBuilder;
 
         static private String fileNoExtension(String filename) {
             int pos = filename.lastIndexOf(".");
@@ -78,30 +79,6 @@ public class ProcessorService extends IntentService {
 
             mTempFileJpeg = new File(tempPath, mOutputFileNameJpeg);
             mTempFileDng = new File(tempPath, mOutputFileNameDng);
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                NotificationChannel notificationChannel = new NotificationChannel(
-                        NOTIFICATION_CHANNEL_ID,
-                        "MotionCam Notification",
-                        NotificationManager.IMPORTANCE_MIN);
-
-                // Configure the notification channel.
-                notificationChannel.setDescription("MotionCam process service");
-                notificationChannel.enableLights(false);
-                notificationChannel.enableVibration(false);
-                notificationChannel.setImportance(NotificationManager.IMPORTANCE_MIN);
-
-                mNotifyManager.createNotificationChannel(notificationChannel);
-            }
-
-            mBuilder = new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID);
-            mBuilder.setContentTitle("MotionCam")
-                    .setContentText("Processing Image")
-                    .setLargeIcon(BitmapFactory.decodeResource(context.getResources(), R.mipmap.icon))
-                    .setSmallIcon(R.drawable.ic_processing_notification);
-
-            mBuilder.setProgress(100, 0, false);
-            mNotifyManager.notify(NOTIFICATION_ID, mBuilder.build());
         }
 
         @Override
@@ -245,6 +222,29 @@ public class ProcessorService extends IntentService {
                 bundle.putInt(ProcessorReceiver.PROCESS_CODE_PROGRESS_VALUE_KEY, progress);
 
                 mReceiver.send(ProcessorReceiver.PROCESS_CODE_PROGRESS, bundle);
+            }
+
+            if(mBuilder == null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    NotificationChannel notificationChannel = new NotificationChannel(
+                            NOTIFICATION_CHANNEL_ID,
+                            "MotionCam Notification",
+                            NotificationManager.IMPORTANCE_MIN);
+
+                    // Configure the notification channel.
+                    notificationChannel.setDescription("MotionCam process service");
+                    notificationChannel.enableLights(false);
+                    notificationChannel.enableVibration(false);
+                    notificationChannel.setImportance(NotificationManager.IMPORTANCE_MIN);
+
+                    mNotifyManager.createNotificationChannel(notificationChannel);
+                }
+
+                mBuilder = new NotificationCompat.Builder(mContext, NOTIFICATION_CHANNEL_ID);
+                mBuilder.setContentTitle("MotionCam")
+                        .setContentText("Processing Image")
+                        .setLargeIcon(BitmapFactory.decodeResource(mContext.getResources(), R.mipmap.icon))
+                        .setSmallIcon(R.drawable.ic_processing_notification);
             }
 
             mBuilder.setProgress(100, progress, false);

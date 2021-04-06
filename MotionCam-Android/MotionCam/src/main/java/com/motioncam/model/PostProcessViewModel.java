@@ -8,6 +8,7 @@ import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 
 import com.motioncam.CameraActivity;
+import com.motioncam.DenoiseSettings;
 import com.motioncam.camera.AsyncNativeCameraOps;
 import com.motioncam.camera.NativeCameraBuffer;
 import com.motioncam.camera.NativeCameraInfo;
@@ -24,7 +25,7 @@ public class PostProcessViewModel extends ViewModel {
     public enum SpatialDenoiseAggressiveness {
         OFF(0.0f, 0),
         NORMAL(1.0f, 1),
-        HIGH(2.0f, 2);
+        HIGH(3.0f, 2);
 
         SpatialDenoiseAggressiveness(float weight, int optionValue) {
             mWeight = weight;
@@ -257,13 +258,11 @@ public class PostProcessViewModel extends ViewModel {
         detail.setValue(Math.round((settings.sharpen1 - 1.0f) * 25.0f));
 
         // Denoise settings
+        DenoiseSettings denoiseSettings = new DenoiseSettings(iso, shutterSpeed, settings.shadows);
         PostProcessViewModel.SpatialDenoiseAggressiveness spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
 
-        int n = CameraActivity.getNumImagesToMerge(iso, shutterSpeed, settings.shadows);
-
-        numMergeImages.setValue(n);
-        chromaEps.setValue(CameraActivity.getChromaEps(n));
-
+        numMergeImages.setValue(denoiseSettings.numMergeImages);
+        chromaEps.setValue(denoiseSettings.chromaEps);
         spatialDenoiseAggressiveness.setValue(spatialNoise.getOptionValue());
     }
 

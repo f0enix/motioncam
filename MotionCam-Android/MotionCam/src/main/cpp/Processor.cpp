@@ -100,11 +100,13 @@ jboolean JNICALL Java_com_motioncam_processor_NativeProcessor_ProcessInMemory(
 
     env->ReleaseStringUTFChars(outputPath_, javaOutputPath);
 
-    auto container = RawBufferManager::get().dequeuePendingContainer();
+    auto container = RawBufferManager::get().peekPendingContainer();
     if(!container)
         return JNI_FALSE;
 
     motioncam::ImageProcessor::process(*container, outputPath, *gListener);
+
+    RawBufferManager::get().clearPendingContainer();
 
     return JNI_TRUE;
 }
