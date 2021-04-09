@@ -10,7 +10,10 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
 import android.graphics.PointF;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.graphics.SurfaceTexture;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
@@ -32,6 +35,7 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import com.motioncam.camera.AsyncNativeCameraOps;
 import com.motioncam.camera.CameraManualControl;
@@ -109,6 +113,7 @@ public class CameraActivity extends AppCompatActivity implements
 
     private boolean mManualControlsEnabled;
     private boolean mManualControlsSet;
+    private boolean mSaveRaw;
     private CaptureMode mCaptureMode = CaptureMode.HDR;
     private PreviewControlMode mPreviewControlMode = PreviewControlMode.CONTRAST;
 
@@ -297,7 +302,10 @@ public class CameraActivity extends AppCompatActivity implements
         }
 
         SharedPreferences prefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
-        prefs.edit().putInt(SettingsViewModel.PREFS_KEY_UI_HINT_VERSION, versionCode).commit();
+        prefs
+            .edit()
+            .putInt(SettingsViewModel.PREFS_KEY_UI_HINT_VERSION, versionCode)
+            .apply();
 
         // Hide the hint
         mBinding.hintText.setVisibility(View.GONE);
@@ -366,8 +374,8 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.saturation = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, 1.0f);
         mPostProcessSettings.greenSaturation = 1.0f;
         mPostProcessSettings.blueSaturation = 1.0f;
-        mPostProcessSettings.sharpen0 = 3.5f;
-        mPostProcessSettings.sharpen1 = 2.5f;
+        mPostProcessSettings.sharpen0 = 4.0f;
+        mPostProcessSettings.sharpen1 = 3.0f;
         mPostProcessSettings.whitePoint = -1;
         mPostProcessSettings.blacks = -1;
         mPostProcessSettings.tonemapVariance = 0.25f;
@@ -381,10 +389,11 @@ public class CameraActivity extends AppCompatActivity implements
 
         updatePreviewTabUi(true);
 
-        // Update capture mode
         mCaptureMode = getCaptureMode(prefs);
-
         updateCaptureModeUi();
+
+        mSaveRaw = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, false);
+        updateSaveRawUi();
     }
 
     @Override
@@ -447,6 +456,7 @@ public class CameraActivity extends AppCompatActivity implements
                 .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, mTemperatureOffset)
                 .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, mTintOffset)
                 .putString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, mCaptureMode.name())
+                .putBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, mSaveRaw)
                 .apply();
         }
     }
@@ -565,6 +575,17 @@ public class CameraActivity extends AppCompatActivity implements
         }
     }
 
+    private void updateSaveRawUi() {
+        int color = mSaveRaw ? R.color.colorAccent : R.color.white;
+        mBinding.previewFrame.rawEnableBtn.setTextColor(getColor(color));
+
+        for (Drawable drawable : mBinding.previewFrame.rawEnableBtn.getCompoundDrawables()) {
+            if (drawable != null) {
+                drawable.setColorFilter(new PorterDuffColorFilter(ContextCompat.getColor(this, color), PorterDuff.Mode.SRC_IN));
+            }
+        }
+    }
+
     private void onCaptureModeClicked(View v) {
         if(v == mBinding.hdrModeBtn) {
             mCaptureMode = CaptureMode.HDR;
@@ -655,7 +676,7 @@ public class CameraActivity extends AppCompatActivity implements
             mAsyncNativeCameraOps.captureImage(
                     Long.MIN_VALUE,
                     denoiseSettings.numMergeImages,
-                    false,
+                    mSaveRaw,
                     settings,
                     CameraProfile.generateCaptureFile(this).getPath(),
                     handle -> {
@@ -1059,13 +1080,18 @@ public class CameraActivity extends AppCompatActivity implements
         }
 
         mBinding.previewFrame.previewAdjustmentsBtn.setOnClickListener(v -> {
-            mBinding.previewFrame.previewAdjustmentsBtn.setVisibility(View.GONE);
+            mBinding.previewFrame.previewControlBtns.setVisibility(View.GONE);
             mBinding.previewFrame.previewAdjustments.setVisibility(View.VISIBLE);
         });
 
         mBinding.previewFrame.previewAdjustments.findViewById(R.id.closePreviewAdjustmentsBtn).setOnClickListener(v -> {
-            mBinding.previewFrame.previewAdjustmentsBtn.setVisibility(View.VISIBLE);
+            mBinding.previewFrame.previewControlBtns.setVisibility(View.VISIBLE);
             mBinding.previewFrame.previewAdjustments.setVisibility(View.GONE);
+        });
+
+        mBinding.previewFrame.rawEnableBtn.setOnClickListener(v -> {
+            mSaveRaw = !mSaveRaw;
+            updateSaveRawUi();
         });
 
         mShadowsUpdateTimer = new Timer("ShadowsUpdateTimer");
@@ -1377,17 +1403,6 @@ public class CameraActivity extends AppCompatActivity implements
 
             mNativeCamera.setFocusPoint(mAutoFocusPoint, mAutoExposurePoint);
         }
-//        else if(state == FocusState.FIXED_AF_AE) {
-//            if(mAutoFocusPoint == null)
-//                mAutoFocusPoint = focusPt;
-//
-//            mAutoExposurePoint = focusPt;
-//
-//            mBinding.focusLockPointFrame.setVisibility(View.VISIBLE);
-//            mBinding.exposureLockPointFrame.setVisibility(View.VISIBLE);
-//
-//            mNativeCamera.setFocusPoint(mAutoFocusPoint, mAutoExposurePoint);
-//        }
         else if(state == FocusState.AUTO) {
             mBinding.focusLockPointFrame.setVisibility(View.INVISIBLE);
             mBinding.exposureLockPointFrame.setVisibility(View.INVISIBLE);
@@ -1436,26 +1451,6 @@ public class CameraActivity extends AppCompatActivity implements
 
             setFocusState(FocusState.FIXED, pt);
         }
-//        else if(mFocusState == FocusState.FIXED) {
-//            // If the camera does not support setting AE regions or manual controls are set, go back to auto
-//            if(mCameraMetadata.maxAeRegions <= 0 || mManualControlsSet) {
-//                setFocusState(FocusState.AUTO, null);
-//            }
-//            else {
-//                FrameLayout.LayoutParams layoutParams =
-//                        (FrameLayout.LayoutParams) mBinding.exposureLockPointFrame.getLayoutParams();
-//
-//                layoutParams.setMargins(
-//                        Math.round(touchX) - mBinding.exposureLockPointFrame.getWidth() / 2,
-//                        Math.round(touchY) - mBinding.exposureLockPointFrame.getHeight() / 2,
-//                        0,
-//                        0);
-//
-//                mBinding.exposureLockPointFrame.setLayoutParams(layoutParams);
-//
-//                setFocusState(FocusState.FIXED_AF_AE, pt);
-//            }
-//        }
         else {
             setFocusState(FocusState.AUTO, null);
         }

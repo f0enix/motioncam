@@ -801,55 +801,6 @@ void InverseTransformGenerator::inverse(Func& inverseOutput, Func& intermediateO
                                                     rowsExpr[3]);
 }
 
-// Func InverseTransformGenerator::threshold(Func in) {
-//     Expr x = in(v_x, v_y, v_c, v_i);
-//     Expr T = 1e-5f+denoiseAggressiveness*noiseSigma;
-
-//     // Func S, mean, var;
-
-//     // S(v_x, v_y, v_c, v_i) = x*x;
-
-//     // mean(v_x, v_y, v_c, v_i) = sqrt(1.0f/9.0f*(
-//     //     S(v_x - 1, v_y - 1, v_c, v_i) +
-//     //     S(v_x - 0, v_y - 1, v_c, v_i) +
-//     //     S(v_x + 1, v_y - 1, v_c, v_i) +
-//     //     S(v_x - 1, v_y - 0, v_c, v_i) +
-//     //     S(v_x - 0, v_y - 0, v_c, v_i) +
-//     //     S(v_x - 0, v_y - 0, v_c, v_i) +
-//     //     S(v_x - 1, v_y + 1, v_c, v_i) +
-//     //     S(v_x - 0, v_y + 1, v_c, v_i) +
-//     //     S(v_x + 1, v_y + 1, v_c, v_i) ));
-
-//     // var(v_x, v_y, v_c, v_i) = 1.0f/9.0f * (
-//     //     abs(S(v_x - 1, v_y - 1, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
-//     //     abs(S(v_x - 0, v_y - 1, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
-//     //     abs(S(v_x + 1, v_y - 1, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
-//     //     abs(S(v_x - 1, v_y - 0, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
-//     //     abs(S(v_x - 0, v_y - 0, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
-//     //     abs(S(v_x + 1, v_y - 0, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
-//     //     abs(S(v_x - 1, v_y + 1, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
-//     //     abs(S(v_x - 0, v_y + 1, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) +
-//     //     abs(S(v_x + 1, v_y + 1, v_c, v_i) - mean(v_x, v_y, v_c, v_i)) );
-
-//     // Expr w2 = 31*exp(-var(v_x, v_y, v_c, v_i) / 1024) + 1;
-
-//     // Shrink
-//     Expr m = abs(x);
-//     Expr w = m / (m + T);
-
-//     Expr wReal = select(v_c > 0, w * x, x);
-
-//     // Soft thresholding
-//     Expr W = max(x - noiseSigma, 0) + min(x + noiseSigma, 0);
-//     Expr sReal = select(v_c > 0, W, x);
-
-//     Func result;
-
-//     result(v_x, v_y, v_c, v_i) = select(softThresholding, sReal, wReal);
-
-//     return result;
-// }
-
 void InverseTransformGenerator::threshold(Expr& outReal, Expr& outImag, Func in, int realIdx, int imagIdx) {
     Expr xr = in(v_x, v_y, v_c, realIdx);
     Expr yi = in(v_x, v_y, v_c, imagIdx);

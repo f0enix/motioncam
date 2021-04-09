@@ -48,6 +48,8 @@ namespace motioncam {
         
         void saveContainer(const std::string& outputPath);
         
+        bool isInMemory() const { return mIsInMemory; };
+        
     private:
         void initialise();
         
@@ -70,8 +72,9 @@ namespace motioncam {
         PostProcessSettings mPostProcessSettings;
         int64_t mReferenceTimestamp;
         std::string mReferenceImage;
-        bool mWriteDNG{};
-        bool mIsHdr{};
+        bool mWriteDNG;
+        bool mIsHdr;
+        bool mIsInMemory;
         std::vector<std::string> mFrames;
         std::map<std::string, std::shared_ptr<RawImageBuffer>> mFrameBuffers;
         std::unique_ptr<RawBufferManager::LockedBuffers> mLockedBuffers;

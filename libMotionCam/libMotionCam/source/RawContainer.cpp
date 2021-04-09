@@ -173,7 +173,8 @@ namespace motioncam {
         mPostProcessSettings(postProcessSettings),
         mReferenceTimestamp(referenceTimestamp),
         mIsHdr(isHdr),
-        mWriteDNG(writeDNG)
+        mWriteDNG(writeDNG),
+        mIsInMemory(true)
     {
         if(frameBuffers.empty()) {
             throw InvalidState("No frames");
@@ -207,6 +208,7 @@ namespace motioncam {
         mReferenceTimestamp(referenceTimestamp),
         mIsHdr(isHdr),
         mWriteDNG(writeDNG),
+        mIsInMemory(false),
         mFrameBuffers(std::move(frameBuffers)),
         mLockedBuffers(std::move(lockedBuffers))
     {

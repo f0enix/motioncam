@@ -7,21 +7,36 @@
     android:layout_marginStart="10dp"
     android:layout_marginEnd="10dp">
 
-    <FrameLayout
+    <LinearLayout
+        android:id="@+id/previewControlBtns"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="center_vertical">
+        android:layout_gravity="center_vertical"
+        android:orientation="horizontal">
 
         <TextView
             android:id="@+id/previewAdjustmentsBtn"
             android:layout_width="100dp"
             android:layout_height="wrap_content"
             android:layout_margin="10dp"
+            android:textAlignment="center"
             android:drawableTop="@drawable/baseline_settings_brightness_white_36"
             android:textAppearance="@style/MotionCam.TextAppearance.Small"
             android:text="ADJUSTMENTS"/>
 
-    </FrameLayout>
+        <TextView
+            android:id="@+id/rawEnableBtn"
+            android:layout_width="100dp"
+            android:layout_height="wrap_content"
+            android:layout_margin="10dp"
+            android:textAlignment="center"
+            android:drawableTint="@color/colorAccent"
+            android:textColor="@color/colorAccent"
+            android:drawableTop="@drawable/baseline_photo_white_36"
+            android:textAppearance="@style/MotionCam.TextAppearance.Small"
+            android:text="RAW"/>
+
+    </LinearLayout>
 
     <LinearLayout
         android:id="@+id/previewAdjustments"

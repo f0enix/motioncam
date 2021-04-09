@@ -20,37 +20,37 @@ public class DenoiseSettings {
 
     public DenoiseSettings(int iso, long exposure, float shadows) {
         final double s = 1.8*1.8;
-        final double ev = log2(s / (exposure / (1.0e9))) - log2(iso / 100.0);
+        final double ev = log2(s / (exposure / 1.0e9)) - log2(iso / 100.0);
 
         int mergeImages = 0;
 
         if(ev > 9.99) {
             this.spatialWeight   = 0.0f;
-            this.chromaEps       = 2.0f;
+            this.chromaEps       = 1.0f;
             mergeImages         = 2;
         }
         else if(ev > 7.99) {
-            this.spatialWeight   = 1.0f;
-            this.chromaEps       = 4.0f;
+            this.spatialWeight   = 0.0f;
+            this.chromaEps       = 2.0f;
             mergeImages          = 4;
         }
         else if(ev > 5.99) {
-            this.spatialWeight   = 1.0f;
-            this.chromaEps       = 8.0f;
+            this.spatialWeight   = 0.0f;
+            this.chromaEps       = 4.0f;
             mergeImages          = 6;
         }
         else if(ev > 3.99) {
             this.spatialWeight   = 1.0f;
-            this.chromaEps       = 16.0f;
+            this.chromaEps       = 8.0f;
             mergeImages          = 8;
         }
         else if(ev > 1.99) {
             this.spatialWeight   = 1.0f;
-            this.chromaEps       = 32.0f;
+            this.chromaEps       = 16.0f;
             mergeImages          = 12;
         }
         else {
-            this.spatialWeight   = 3.0f;
+            this.spatialWeight   = 2.0f;
             this.chromaEps       = 32.0f;
             mergeImages          = 12;
         }

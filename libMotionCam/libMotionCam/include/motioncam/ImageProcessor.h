@@ -92,13 +92,15 @@ namespace motioncam {
                                      const RawImageMetadata& rawImageMetadata,
                                      const Temperature& temperature,
                                      cv::Vec3f& cameraWhite,
-                                     cv::Mat& cameraToSrgb);
+                                     cv::Mat& outCameraToPcs,
+                                     cv::Mat& outPcsToSrgb);
 
         static void createSrgbMatrix(const RawCameraMetadata& cameraMetadata,
                                      const RawImageMetadata& rawImageMetadata,
                                      const cv::Vec3f& asShot,
                                      cv::Vec3f& cameraWhite,
-                                     cv::Mat& cameraToSrgb);
+                                     cv::Mat& outCameraToPcs,
+                                     cv::Mat& outPcsToSrgb);
 
         static std::vector<Halide::Runtime::Buffer<uint16_t>> denoise(const RawContainer& rawContainer, ImageProgressHelper& progressHelper);
         

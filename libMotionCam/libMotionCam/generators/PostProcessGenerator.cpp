@@ -68,7 +68,7 @@ private:
 
 void GuidedFilter::boxFilter(Func& result, Func& intermediate, Func in) {
    const int R = radius;
-   RDom r(-R/2, R);
+   RDom r(-R/2, R/2);
 
    intermediate(v_x, v_y) = sum(in(v_x + r.x, v_y)) / R;
    result(v_x, v_y) = sum(intermediate(v_x, v_y + r.x)) / R;
@@ -259,10 +259,11 @@ public:
     Var v_xio{"v_xio"};
     Var v_xii{"v_xii"};
     
-    Func redIntermediate{"red"};
+    Func redIntermediate{"redIntermediate"};
     Func red{"red"};
+    Func greenIntermediate{"greenIntermediate"};
     Func green{"green"};
-    Func blueIntermediate{"blue"};
+    Func blueIntermediate{"blueIntermediate"};
     Func blue{"blue"};
 
     void generate();
@@ -270,16 +271,17 @@ public:
     
     void cmpSwap(Expr& a, Expr& b);
 
-    void medianFilter(Func& output, Func input);
-
     void calculateGreen(Func& output, Func input);
     void calculateGreen2(Func& output, Func input);
 
     void calculateRed(Func& output, Func input, Func green);
     void calculateBlue(Func& output, Func input, Func green);
+
+    void weightedMedianFilter(Func& output, Func input);
 };
 
-void Demosaic::medianFilter(Func& output, Func input) {
+void Demosaic::weightedMedianFilter(Func& output, Func input) {
+
     Expr p0 = input(v_x,   v_y);
     Expr p1 = input(v_x,   v_y);
     Expr p2 = input(v_x,   v_y);
@@ -297,126 +299,78 @@ void Demosaic::medianFilter(Func& output, Func input) {
     Expr p10 = input(v_x,  v_y+1);
     Expr p11 = input(v_x,  v_y+1);
 
-    Expr p12 = input(v_x-2, v_y);
-    Expr p13 = input(v_x+2, v_y);
-
-    Expr p14 = input(v_x,   v_y-2);
-    Expr p15 = input(v_x,   v_y+2);
-
-    Expr p16 = input(v_x-1, v_y-1);
-    Expr p17 = input(v_x-1, v_y+1);
-
-    Expr p18 = input(v_x+1, v_y-1);
-    Expr p19 = input(v_x+1, v_y+1);
-
-    cmpSwap(p0, p1);
-    cmpSwap(p3, p4);
-    cmpSwap(p2, p4);
-    cmpSwap(p2, p3);
-    cmpSwap(p0, p3);
-    cmpSwap(p0, p2);
-    cmpSwap(p1, p4);
-    cmpSwap(p1, p3);
-    cmpSwap(p1, p2);
-    cmpSwap(p5, p6);
-    cmpSwap(p8, p9);
-    cmpSwap(p7, p9);
-    cmpSwap(p7, p8);
-    cmpSwap(p5, p8);
-    cmpSwap(p5, p7);
-    cmpSwap(p6, p9);
-    cmpSwap(p6, p8);
-    cmpSwap(p6, p7);
-    cmpSwap(p0, p5);
-    cmpSwap(p1, p6);
-    cmpSwap(p1, p5);
-    cmpSwap(p2, p7);
-    cmpSwap(p3, p8);
-    cmpSwap(p4, p9);
-    cmpSwap(p4, p8);
-    cmpSwap(p3, p7);
-    cmpSwap(p4, p7);
-    cmpSwap(p2, p5);
-    cmpSwap(p3, p6);
-    cmpSwap(p4, p6);
-    cmpSwap(p3, p5);
-    cmpSwap(p4, p5);
+    Expr p12 = input(v_x-1, v_y-1);
+    Expr p13 = input(v_x-1, v_y+1);
+    Expr p14 = input(v_x+1, v_y-1);
+    Expr p15 = input(v_x+1, v_y+1);
+    
+    cmpSwap(p0,  p1);
+    cmpSwap(p2,  p3);
+    cmpSwap(p0,  p2);
+    cmpSwap(p1,  p3);
+    cmpSwap(p1,  p2);
+    cmpSwap(p4,  p5);
+    cmpSwap(p6,  p7);
+    cmpSwap(p4,  p6);
+    cmpSwap(p5,  p7);
+    cmpSwap(p5,  p6);
+    cmpSwap(p0,  p4);
+    cmpSwap(p1,  p5);
+    cmpSwap(p1,  p4);
+    cmpSwap(p2,  p6);
+    cmpSwap(p3,  p7);
+    cmpSwap(p3,  p6);
+    cmpSwap(p2,  p4);
+    cmpSwap(p3,  p5);
+    cmpSwap(p3,  p4);
+    cmpSwap(p8,  p9);
     cmpSwap(p10, p11);
-    cmpSwap(p13, p14);
-    cmpSwap(p12, p14);
+    cmpSwap(p8,  p10);
+    cmpSwap(p9,  p11);
+    cmpSwap(p9,  p10);
     cmpSwap(p12, p13);
-    cmpSwap(p10, p13);
-    cmpSwap(p10, p12);
+    cmpSwap(p14, p15);
+    cmpSwap(p12, p14);
+    cmpSwap(p13, p15);
+    cmpSwap(p13, p14);
+    cmpSwap(p8,  p12);
+    cmpSwap(p9,  p13);
+    cmpSwap(p9,  p12);
+    cmpSwap(p10, p14);
+    cmpSwap(p11, p15);
     cmpSwap(p11, p14);
+    cmpSwap(p10, p12);
     cmpSwap(p11, p13);
     cmpSwap(p11, p12);
-    cmpSwap(p15, p16);
-    cmpSwap(p18, p19);
-    cmpSwap(p17, p19);
-    cmpSwap(p17, p18);
-    cmpSwap(p15, p18);
-    cmpSwap(p15, p17);
-    cmpSwap(p16, p19);
-    cmpSwap(p16, p18);
-    cmpSwap(p16, p17);
-    cmpSwap(p10, p15);
-    cmpSwap(p11, p16);
-    cmpSwap(p11, p15);
-    cmpSwap(p12, p17);
-    cmpSwap(p13, p18);
-    cmpSwap(p14, p19);
-    cmpSwap(p14, p18);
-    cmpSwap(p13, p17);
-    cmpSwap(p14, p17);
-    cmpSwap(p12, p15);
-    cmpSwap(p13, p16);
-    cmpSwap(p14, p16);
-    cmpSwap(p13, p15);
-    cmpSwap(p14, p15);
-    cmpSwap(p0, p10);
-    cmpSwap(p1, p11);
-    cmpSwap(p1, p10);
-    cmpSwap(p2, p12);
-    cmpSwap(p3, p13);
-    cmpSwap(p4, p14);
-    cmpSwap(p4, p13);
-    cmpSwap(p3, p12);
-    cmpSwap(p4, p12);
-    cmpSwap(p2, p10);
-    cmpSwap(p3, p11);
-    cmpSwap(p4, p11);
-    cmpSwap(p3, p10);
-    cmpSwap(p4, p10);
-    cmpSwap(p5, p15);
-    cmpSwap(p6, p16);
-    cmpSwap(p6, p15);
-    cmpSwap(p7, p17);
-    cmpSwap(p8, p18);
-    cmpSwap(p9, p19);
-    cmpSwap(p9, p18);
-    cmpSwap(p8, p17);
-    cmpSwap(p9, p17);
-    cmpSwap(p7, p15);
-    cmpSwap(p8, p16);
-    cmpSwap(p9, p16);
-    cmpSwap(p8, p15);
-    cmpSwap(p9, p15);
-    cmpSwap(p5, p10);
-    cmpSwap(p6, p11);
-    cmpSwap(p6, p10);
-    cmpSwap(p7, p12);
-    cmpSwap(p8, p13);
-    cmpSwap(p9, p14);
-    cmpSwap(p9, p13);
-    cmpSwap(p8, p12);
-    cmpSwap(p9, p12);
-    cmpSwap(p7, p10);
-    cmpSwap(p8, p11);
-    cmpSwap(p9, p11);
-    cmpSwap(p8, p10);
-    cmpSwap(p9, p10);
+    cmpSwap(p0,  p8);
+    cmpSwap(p1,  p9);
+    cmpSwap(p1,  p8);
+    cmpSwap(p2,  p10);
+    cmpSwap(p3,  p11);
+    cmpSwap(p3,  p10);
+    cmpSwap(p2,  p8);
+    cmpSwap(p3,  p9);
+    cmpSwap(p3,  p8);
+    cmpSwap(p4,  p12);
+    cmpSwap(p5,  p13);
+    cmpSwap(p5,  p12);
+    cmpSwap(p6,  p14);
+    cmpSwap(p7,  p15);
+    cmpSwap(p7,  p14);
+    cmpSwap(p6,  p12);
+    cmpSwap(p7,  p13);
+    cmpSwap(p7,  p12);
+    cmpSwap(p4,  p8);
+    cmpSwap(p5,  p9);
+    cmpSwap(p5,  p8);
+    cmpSwap(p6,  p10);
+    cmpSwap(p7,  p11);
+    cmpSwap(p7,  p10);
+    cmpSwap(p6,  p8);
+    cmpSwap(p7,  p9);
+    cmpSwap(p7,  p8);
 
-    output(v_x, v_y) = cast<int16_t>((cast<int32_t>(p9) + cast<int32_t>(p10)) / 2);
+    output(v_x, v_y) = cast<int16_t>((cast<int32_t>(p7) + cast<int32_t>(p8)) / 2);
 }
 
 void Demosaic::cmpSwap(Expr& a, Expr& b) {
@@ -525,7 +479,11 @@ void Demosaic::calculateGreen(Func& output, Func input) {
     
     Expr interp = (w0*g0 + w1*g1 + w2*g2 + w3*g3) / (w0 + w1 + w2 + w3);
     
-    output(v_x, v_y) = select(((v_x + v_y) & 1) == 1, cast<int16_t>(input(v_x, v_y)), cast<int16_t>(interp));
+    greenIntermediate(v_x, v_y) = select(((v_x + v_y) & 1) == 1, cast<int16_t>(input(v_x, v_y) + 0.5f), cast<int16_t>(interp + 0.5f));
+
+    Func filtered{"greenFiltered"};
+
+    weightedMedianFilter(output, greenIntermediate);
 }
 
 void Demosaic::calculateRed(Func& output, Func input, Func green) {
@@ -533,6 +491,7 @@ void Demosaic::calculateRed(Func& output, Func input, Func green) {
 
     I(v_x, v_y) = cast<int32_t>(select(v_y % 2 == 0,  select(v_x % 2 == 0, input(v_x, v_y) - green(v_x, v_y), 0),
                                                       0));
+
     blurX(v_x, v_y) = (
         1 * I(v_x - 1, v_y) +
         2 * I(v_x    , v_y) +
@@ -548,8 +507,9 @@ void Demosaic::calculateRed(Func& output, Func input, Func green) {
             ) / 4
     );
 
-    Func filtered;
-    medianFilter(filtered, redIntermediate);
+    Func filtered{"redFiltered"};
+
+    weightedMedianFilter(filtered, redIntermediate);
 
     output(v_x, v_y) = green(v_x, v_y) + filtered(v_x, v_y);
 }
@@ -576,14 +536,14 @@ void Demosaic::calculateBlue(Func& output, Func input, Func green) {
             ) / 4
     );
 
-    Func filtered;
-    medianFilter(filtered, blueIntermediate);
+    Func filtered{"blueFiltered"};
 
-    output(v_x, v_y) = green(v_x, v_y) + filtered(v_x, v_y);        
+    weightedMedianFilter(filtered, blueIntermediate);
+
+    output(v_x, v_y) = green(v_x, v_y) + filtered(v_x, v_y);
 }
 
 void Demosaic::generate() {
-
     calculateGreen(green, bayerInput);
     calculateRed(red, bayerInput, green);
     calculateBlue(blue, bayerInput, green);
@@ -604,8 +564,8 @@ public:
     GeneratorParam<int> tonemap_levels {"tonemap_levels", 9};
     GeneratorParam<Type> output_type{"output_type", UInt(16)};
 
-    Input<Func> input{"input", 3 };
-    Output<Func> output{ "tonemapOutput", 3 };
+    Input<Func> input{"input", 2 };
+    Output<Func> output{ "tonemapOutput", 2 };
 
     Input<int> width {"width"};
     Input<int> height {"height"};
@@ -748,8 +708,8 @@ void TonemapGenerator::generate() {
     // Create two exposures
     Func exposures, weightsLut, weights, weightsNormalized;
     
-    Expr ia = input(v_x, v_y, 0);
-    Expr ib = cast(output_type, clamp(cast<float>(input(v_x, v_y, 0)) * gain, 0.0f, type_max));
+    Expr ia = input(v_x, v_y);
+    Expr ib = cast(output_type, clamp(cast<float>(input(v_x, v_y)) * gain, 0.0f, type_max));
 
     exposures(v_x, v_y, v_c) = select(v_c == 0, cast<int32_t>(gammaLut(ia)),
                                                 cast<int32_t>(gammaLut(ib)));
@@ -1019,20 +979,7 @@ void TonemapGenerator::generate() {
     }
 
     // Inverse gamma correct tonemapped result
-    Func tonemapped("tonemapped");
-
-    tonemapped(v_x, v_y) = inverseGammaLut(cast(output_type, clamp(outputPyramid[tonemap_levels - 1](v_x, v_y, 0), 0, type_max)));
-    
-    // Create output RGB image
-    Expr uvScale = select(input(v_x, v_y, 0) == 0, 1.0f, cast<float>(tonemapped(v_x, v_y)) / input(v_x, v_y, 0));
-
-    Expr U = uvScale * (input(v_x, v_y, 1) / cast<float>(type_max) - 0.5f) + 0.5f;
-    Expr V = uvScale * (input(v_x, v_y, 2) / cast<float>(type_max) - 0.5f) + 0.5f;
-    
-    output(v_x, v_y, v_c) =
-        select(v_c == 0, tonemapped(v_x, v_y),
-               v_c == 1, saturating_cast(output_type, U * type_max),
-                         saturating_cast(output_type, V * type_max));
+    output(v_x, v_y) = inverseGammaLut(cast(output_type, clamp(outputPyramid[tonemap_levels - 1](v_x, v_y, 0), 0, type_max)));
 }
 
 void TonemapGenerator::schedule() { 
@@ -1054,9 +1001,6 @@ protected:
 
     Func downsample(Func f, Func& temp);
     Func upsample(Func f, Func& temp);
-
-    void weightedMedianFilter(Func& output, Func input);
-    void medianFilter(Func& output, Func input);
 
     void rgb2yuv(Func& output, Func input);
     void yuv2rgb(Func& output, Func input);
@@ -1367,315 +1311,6 @@ void PostProcessBase::rearrange(Func& output, Func input, Expr sensorArrangement
 
 }
 
-void PostProcessBase::medianFilter(Func& output, Func input) {
-    Expr p[25];
-
-    // 3x3 median filter
-    for(int y = -2; y <= 2; y++) {
-        for(int x = -2; x <= 2; x++) {
-            p[5*(y+2)+(x+2)] = input(v_x + y, v_y + y);
-        }
-    }
-
-    cmpSwap(p[1], p[2]);
-    cmpSwap(p[0], p[2]);
-    cmpSwap(p[0], p[1]);
-    cmpSwap(p[4], p[5]);
-    cmpSwap(p[3], p[5]);
-    cmpSwap(p[3], p[4]);
-    cmpSwap(p[0], p[3]);
-    cmpSwap(p[1], p[4]);
-    cmpSwap(p[2], p[5]);
-    cmpSwap(p[2], p[4]);
-    cmpSwap(p[1], p[3]);
-    cmpSwap(p[2], p[3]);
-    cmpSwap(p[7], p[8]);
-    cmpSwap(p[6], p[8]);
-    cmpSwap(p[6], p[7]);
-    cmpSwap(p[10], p[11]);
-    cmpSwap(p[9], p[11]);
-    cmpSwap(p[9], p[10]);
-    cmpSwap(p[6], p[9]);
-    cmpSwap(p[7], p[10]);
-    cmpSwap(p[8], p[11]);
-    cmpSwap(p[8], p[10]);
-    cmpSwap(p[7], p[9]);
-    cmpSwap(p[8], p[9]);
-    cmpSwap(p[0], p[6]);
-    cmpSwap(p[1], p[7]);
-    cmpSwap(p[2], p[8]);
-    cmpSwap(p[2], p[7]);
-    cmpSwap(p[1], p[6]);
-    cmpSwap(p[2], p[6]);
-    cmpSwap(p[3], p[9]);
-    cmpSwap(p[4], p[10]);
-    cmpSwap(p[5], p[11]);
-    cmpSwap(p[5], p[10]);
-    cmpSwap(p[4], p[9]);
-    cmpSwap(p[5], p[9]);
-    cmpSwap(p[3], p[6]);
-    cmpSwap(p[4], p[7]);
-    cmpSwap(p[5], p[8]);
-    cmpSwap(p[5], p[7]);
-    cmpSwap(p[4], p[6]);
-    cmpSwap(p[5], p[6]);
-    cmpSwap(p[13], p[14]);
-    cmpSwap(p[12], p[14]);
-    cmpSwap(p[12], p[13]);
-    cmpSwap(p[16], p[17]);
-    cmpSwap(p[15], p[17]);
-    cmpSwap(p[15], p[16]);
-    cmpSwap(p[12], p[15]);
-    cmpSwap(p[13], p[16]);
-    cmpSwap(p[14], p[17]);
-    cmpSwap(p[14], p[16]);
-    cmpSwap(p[13], p[15]);
-    cmpSwap(p[14], p[15]);
-    cmpSwap(p[19], p[20]);
-    cmpSwap(p[18], p[20]);
-    cmpSwap(p[18], p[19]);
-    cmpSwap(p[21], p[22]);
-    cmpSwap(p[23], p[24]);
-    cmpSwap(p[21], p[23]);
-    cmpSwap(p[22], p[24]);
-    cmpSwap(p[22], p[23]);
-    cmpSwap(p[18], p[22]);
-    cmpSwap(p[18], p[21]);
-    cmpSwap(p[19], p[23]);
-    cmpSwap(p[20], p[24]);
-    cmpSwap(p[20], p[23]);
-    cmpSwap(p[19], p[21]);
-    cmpSwap(p[20], p[22]);
-    cmpSwap(p[20], p[21]);
-    cmpSwap(p[12], p[19]);
-    cmpSwap(p[12], p[18]);
-    cmpSwap(p[13], p[20]);
-    cmpSwap(p[14], p[21]);
-    cmpSwap(p[14], p[20]);
-    cmpSwap(p[13], p[18]);
-    cmpSwap(p[14], p[19]);
-    cmpSwap(p[14], p[18]);
-    cmpSwap(p[15], p[22]);
-    cmpSwap(p[16], p[23]);
-    cmpSwap(p[17], p[24]);
-    cmpSwap(p[17], p[23]);
-    cmpSwap(p[16], p[22]);
-    cmpSwap(p[17], p[22]);
-    cmpSwap(p[15], p[19]);
-    cmpSwap(p[15], p[18]);
-    cmpSwap(p[16], p[20]);
-    cmpSwap(p[17], p[21]);
-    cmpSwap(p[17], p[20]);
-    cmpSwap(p[16], p[18]);
-    cmpSwap(p[17], p[19]);
-    cmpSwap(p[17], p[18]);
-    cmpSwap(p[0], p[13]);
-    cmpSwap(p[0], p[12]);
-    cmpSwap(p[1], p[14]);
-    cmpSwap(p[2], p[15]);
-    cmpSwap(p[2], p[14]);
-    cmpSwap(p[1], p[12]);
-    cmpSwap(p[2], p[13]);
-    cmpSwap(p[2], p[12]);
-    cmpSwap(p[3], p[16]);
-    cmpSwap(p[4], p[17]);
-    cmpSwap(p[5], p[18]);
-    cmpSwap(p[5], p[17]);
-    cmpSwap(p[4], p[16]);
-    cmpSwap(p[5], p[16]);
-    cmpSwap(p[3], p[13]);
-    cmpSwap(p[3], p[12]);
-    cmpSwap(p[4], p[14]);
-    cmpSwap(p[5], p[15]);
-    cmpSwap(p[5], p[14]);
-    cmpSwap(p[4], p[12]);
-    cmpSwap(p[5], p[13]);
-    cmpSwap(p[5], p[12]);
-    cmpSwap(p[6], p[19]);
-    cmpSwap(p[7], p[20]);
-    cmpSwap(p[8], p[21]);
-    cmpSwap(p[8], p[20]);
-    cmpSwap(p[7], p[19]);
-    cmpSwap(p[8], p[19]);
-    cmpSwap(p[9], p[22]);
-    cmpSwap(p[10], p[23]);
-    cmpSwap(p[11], p[24]);
-    cmpSwap(p[11], p[23]);
-    cmpSwap(p[10], p[22]);
-    cmpSwap(p[11], p[22]);
-    cmpSwap(p[9], p[19]);
-    cmpSwap(p[10], p[20]);
-    cmpSwap(p[11], p[21]);
-    cmpSwap(p[11], p[20]);
-    cmpSwap(p[10], p[19]);
-    cmpSwap(p[11], p[19]);
-    cmpSwap(p[6], p[13]);
-    cmpSwap(p[6], p[12]);
-    cmpSwap(p[7], p[14]);
-    cmpSwap(p[8], p[15]);
-    cmpSwap(p[8], p[14]);
-    cmpSwap(p[7], p[12]);
-    cmpSwap(p[8], p[13]);
-    cmpSwap(p[8], p[12]);
-    cmpSwap(p[9], p[16]);
-    cmpSwap(p[10], p[17]);
-    cmpSwap(p[11], p[18]);
-    cmpSwap(p[11], p[17]);
-    cmpSwap(p[10], p[16]);
-    cmpSwap(p[11], p[16]);
-    cmpSwap(p[9], p[13]);
-    cmpSwap(p[9], p[12]);
-    cmpSwap(p[10], p[14]);
-    cmpSwap(p[11], p[15]);
-    cmpSwap(p[11], p[14]);
-    cmpSwap(p[10], p[12]);
-    cmpSwap(p[11], p[13]);
-    cmpSwap(p[11], p[12]);
-
-    output(v_x, v_y) = p[11];
-}
-
-void PostProcessBase::weightedMedianFilter(Func& output, Func input) {
-
-    Expr p0 = input(v_x,   v_y);
-    Expr p1 = input(v_x,   v_y);
-    Expr p2 = input(v_x,   v_y);
-    Expr p3 = input(v_x,   v_y);
-
-    Expr p4 = input(v_x-1, v_y);
-    Expr p5 = input(v_x-1, v_y);
-
-    Expr p6 = input(v_x+1, v_y);
-    Expr p7 = input(v_x+1, v_y);
-
-    Expr p8 = input(v_x,   v_y-1);
-    Expr p9 = input(v_x,   v_y-1);
-
-    Expr p10 = input(v_x,  v_y+1);
-    Expr p11 = input(v_x,  v_y+1);
-
-    Expr p12 = input(v_x-2, v_y);
-    Expr p13 = input(v_x+2, v_y);
-
-    Expr p14 = input(v_x,   v_y-2);
-    Expr p15 = input(v_x,   v_y+2);
-
-    Expr p16 = input(v_x-1, v_y-1);
-    Expr p17 = input(v_x-1, v_y+1);
-
-    Expr p18 = input(v_x+1, v_y-1);
-    Expr p19 = input(v_x+1, v_y+1);
-
-    cmpSwap(p0, p1);
-    cmpSwap(p3, p4);
-    cmpSwap(p2, p4);
-    cmpSwap(p2, p3);
-    cmpSwap(p0, p3);
-    cmpSwap(p0, p2);
-    cmpSwap(p1, p4);
-    cmpSwap(p1, p3);
-    cmpSwap(p1, p2);
-    cmpSwap(p5, p6);
-    cmpSwap(p8, p9);
-    cmpSwap(p7, p9);
-    cmpSwap(p7, p8);
-    cmpSwap(p5, p8);
-    cmpSwap(p5, p7);
-    cmpSwap(p6, p9);
-    cmpSwap(p6, p8);
-    cmpSwap(p6, p7);
-    cmpSwap(p0, p5);
-    cmpSwap(p1, p6);
-    cmpSwap(p1, p5);
-    cmpSwap(p2, p7);
-    cmpSwap(p3, p8);
-    cmpSwap(p4, p9);
-    cmpSwap(p4, p8);
-    cmpSwap(p3, p7);
-    cmpSwap(p4, p7);
-    cmpSwap(p2, p5);
-    cmpSwap(p3, p6);
-    cmpSwap(p4, p6);
-    cmpSwap(p3, p5);
-    cmpSwap(p4, p5);
-    cmpSwap(p10, p11);
-    cmpSwap(p13, p14);
-    cmpSwap(p12, p14);
-    cmpSwap(p12, p13);
-    cmpSwap(p10, p13);
-    cmpSwap(p10, p12);
-    cmpSwap(p11, p14);
-    cmpSwap(p11, p13);
-    cmpSwap(p11, p12);
-    cmpSwap(p15, p16);
-    cmpSwap(p18, p19);
-    cmpSwap(p17, p19);
-    cmpSwap(p17, p18);
-    cmpSwap(p15, p18);
-    cmpSwap(p15, p17);
-    cmpSwap(p16, p19);
-    cmpSwap(p16, p18);
-    cmpSwap(p16, p17);
-    cmpSwap(p10, p15);
-    cmpSwap(p11, p16);
-    cmpSwap(p11, p15);
-    cmpSwap(p12, p17);
-    cmpSwap(p13, p18);
-    cmpSwap(p14, p19);
-    cmpSwap(p14, p18);
-    cmpSwap(p13, p17);
-    cmpSwap(p14, p17);
-    cmpSwap(p12, p15);
-    cmpSwap(p13, p16);
-    cmpSwap(p14, p16);
-    cmpSwap(p13, p15);
-    cmpSwap(p14, p15);
-    cmpSwap(p0, p10);
-    cmpSwap(p1, p11);
-    cmpSwap(p1, p10);
-    cmpSwap(p2, p12);
-    cmpSwap(p3, p13);
-    cmpSwap(p4, p14);
-    cmpSwap(p4, p13);
-    cmpSwap(p3, p12);
-    cmpSwap(p4, p12);
-    cmpSwap(p2, p10);
-    cmpSwap(p3, p11);
-    cmpSwap(p4, p11);
-    cmpSwap(p3, p10);
-    cmpSwap(p4, p10);
-    cmpSwap(p5, p15);
-    cmpSwap(p6, p16);
-    cmpSwap(p6, p15);
-    cmpSwap(p7, p17);
-    cmpSwap(p8, p18);
-    cmpSwap(p9, p19);
-    cmpSwap(p9, p18);
-    cmpSwap(p8, p17);
-    cmpSwap(p9, p17);
-    cmpSwap(p7, p15);
-    cmpSwap(p8, p16);
-    cmpSwap(p9, p16);
-    cmpSwap(p8, p15);
-    cmpSwap(p9, p15);
-    cmpSwap(p5, p10);
-    cmpSwap(p6, p11);
-    cmpSwap(p6, p10);
-    cmpSwap(p7, p12);
-    cmpSwap(p8, p13);
-    cmpSwap(p9, p14);
-    cmpSwap(p9, p13);
-    cmpSwap(p8, p12);
-    cmpSwap(p9, p12);
-    cmpSwap(p7, p10);
-    cmpSwap(p8, p11);
-    cmpSwap(p9, p11);
-    cmpSwap(p8, p10);
-    cmpSwap(p9, p10);
-
-    output(v_x, v_y) = cast<uint16_t>((cast<int32_t>(p9) + cast<int32_t>(p10)) / 2);
-}
-
 void PostProcessBase::rgb2yuv(Func& output, Func input) {
     Expr R = input(v_x, v_y, 0);
     Expr G = input(v_x, v_y, 1);
@@ -1841,7 +1476,8 @@ public:
     Input<float> hdrScale{"hdrScale"};
 
     Input<float[3]> asShotVector{"asShotVector"};
-    Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
+    Input<Buffer<float>> cameraToPcs{"cameraToPcs", 2};
+    Input<Buffer<float>> pcsToSrgb{"pcsToSrgb", 2};
 
     Input<Buffer<float>> inShadingMap0{"inShadingMap0", 2 };
     Input<Buffer<float>> inShadingMap1{"inShadingMap1", 2 };
@@ -1885,7 +1521,6 @@ public:
     Func tonemapOutputRgb{"tonemapOutputRgb"};
     Func gammaCorrected{"gammaCorrected"};
     Func sharpened{"sharpened"};
-    Func sharpenInputY{"sharpenInputY"};
     Func chromaDenoiseInputU{"chromaDenoiseInputU"}, chromaDenoiseInputV{"chromaDenoiseInputV"};
     Func finalTonemap{"finalTonemap"};
     Func hsvInput{"hsvInput"};
@@ -1911,92 +1546,50 @@ public:
     void schedule_for_cpu();
     
 private:
-    void fixColorArtifacts(Func& output, Func input);
+    void sharpen(Func sharpenInputY);
 };
 
-// TODO: This needs some work.
-void PostProcessGenerator::fixColorArtifacts(Func& output, Func input) {
-    Func mask{"mask"}, maskErodedTmp{"maskErodedTmp"}, maskEroded{"maskEroded"};
-    Func weight{"weight"};
-    Func blurX{"blurX"}, blurY{"blurY"};
+void PostProcessGenerator::sharpen(Func sharpenInputY) {
+    blur2(blurOutput, blurOutputTmp, sharpenInputY);
+    blur3(blurOutput2, blurOutput2Tmp, blurOutput);
+    
+    Func gaussianDiff0{"gaussianDiff0"}, gaussianDiff1{"gaussianDiff1"};
+    
+    gaussianDiff0(v_x, v_y) = cast<int32_t>(sharpenInputY(v_x, v_y)) - blurOutput(v_x, v_y);
+    gaussianDiff1(v_x, v_y) = cast<int32_t>(blurOutput(v_x, v_y))  - blurOutput2(v_x, v_y);
+    
+    Func m{"m"}, n{"n"};
 
-    mask(v_x, v_y) = 1.0f/8.0f * (
-        abs(input(v_x, v_y, 2) - input(v_x - 1, v_y - 1, 2)) +
-        abs(input(v_x, v_y, 2) - input(v_x,     v_y - 1, 2)) +
-        abs(input(v_x, v_y, 2) - input(v_x + 1, v_y - 1, 2)) +
-        abs(input(v_x, v_y, 2) - input(v_x - 1, v_y - 0, 2)) +
-        abs(input(v_x, v_y, 2) - input(v_x + 1, v_y - 0, 2)) +
-        abs(input(v_x, v_y, 2) - input(v_x - 1, v_y + 1, 2)) +
-        abs(input(v_x, v_y, 2) - input(v_x,     v_y + 1, 2)) +
-        abs(input(v_x, v_y, 2) - input(v_x + 1, v_y + 1, 2)) );
+    m(v_x, v_y) = abs(cast<float>(gaussianDiff0(v_x, v_y)) / 32.0f);
+    n(v_x, v_y) = abs(cast<float>(gaussianDiff1(v_x, v_y)) / 32.0f);
 
-    maskErodedTmp(v_x, v_y) = max(
-        mask(v_x - 3, v_y),
-        mask(v_x - 2, v_y),
-        mask(v_x - 1, v_y),
-        mask(v_x + 0, v_y),
-        mask(v_x + 1, v_y),
-        mask(v_x + 2, v_y),
-        mask(v_x + 3, v_y) );
+    RDom r(-1, 1, -1, 1);
 
-    maskEroded(v_x, v_y) = max(
-        maskErodedTmp(v_x, v_y - 3),
-        maskErodedTmp(v_x, v_y - 2),
-        maskErodedTmp(v_x, v_y - 1),
-        maskErodedTmp(v_x, v_y + 0),
-        maskErodedTmp(v_x, v_y + 1),
-        maskErodedTmp(v_x, v_y + 2),
-        maskErodedTmp(v_x, v_y + 3) );
+    Func M{"M"}, N{"N"};
+    Func var{"var"}, var2{"var2"};
 
-    blurX(v_x, v_y) = (
-        1 * maskEroded(v_x - 1, v_y) +
-        2 * maskEroded(v_x,     v_y) +
-        1 * maskEroded(v_x + 1, v_y)
-    ) / 4;
+    M(v_x, v_y) = 1.0f/9.0f * sum(m(v_x + r.x, v_y + r.y));
+    N(v_x, v_y) = 1.0f/9.0f * sum(n(v_x + r.x, v_y + r.y));
 
-    blurY(v_x, v_y) = (
-        1 * blurX(v_x, v_y - 1) +
-        2 * blurX(v_x, v_y)     +
-        1 * blurX(v_x, v_y + 1)             
-    ) / 4;
+    var(v_x, v_y)  = 1.0f/8.0f * sum((m(v_x + r.x, v_y + r.y) - M(v_x + r.x, v_y + r.y)) * (m(v_x + r.x, v_y + r.y) - M(v_x + r.x, v_y + r.y)));
+    var2(v_x, v_y) = 1.0f/8.0f * sum((n(v_x + r.x, v_y + r.y) - N(v_x + r.x, v_y + r.y)) * (n(v_x + r.x, v_y + r.y) - N(v_x + r.x, v_y + r.y)));
 
-    if(!auto_schedule) {
-        mask
-            .compute_at(blurY, v_yi)
-            .store_at(blurY, v_yo)
-            .vectorize(v_x, 8);
+    Func S{"S"}, T{"T"};
 
-        maskErodedTmp
-            .compute_at(blurY, v_yi)
-            .store_at(blurY, v_yo)
-            .vectorize(v_x, 8);
+    S(v_x, v_y) = sharpen0 - (sharpen0 - 1.0f)*exp(-var(v_x, v_y));
+    T(v_x, v_y) = sharpen1 - (sharpen1 - 1.0f)*exp(-var2(v_x, v_y));
 
-        blurX
-            .compute_at(blurY, v_yi)
-            .store_at(blurY, v_yo)
-            .vectorize(v_x, 8);
-
-        blurY
-            .compute_root()
-            .reorder(v_x, v_y)
-            .split(v_y, v_yo, v_yi, 32)
-            .parallel(v_yo)
-            .vectorize(v_x, 8);
-    }
-
-    Expr H = input(v_x, v_y, 0);
-    Expr S = input(v_x, v_y, 1);
-    Expr V = input(v_x, v_y, 2);
-
-    output(v_x, v_y, v_c) = select( v_c == 0,   H,
-                                    v_c == 1,   (1.0f - blurY(v_x, v_y)) * S,
-                                                V);
+    sharpened(v_x, v_y) =
+        saturating_cast<int32_t>(
+            blurOutput2(v_x, v_y) +
+            S(v_x, v_y)*gaussianDiff0(v_x, v_y) +
+            T(v_x, v_y)*gaussianDiff1(v_x, v_y) +
+            0.5f
+        );    
 }
 
 void PostProcessGenerator::generate()
 {
-    Expr sharpen0Param = sharpen0;
-    Expr sharpen1Param = sharpen1;
     Expr shadowsParam  = shadows;
     Expr blacksParam   = blacks;
     Expr exposureParam = pow(2.0f, exposure);
@@ -2019,6 +1612,8 @@ void PostProcessGenerator::generate()
                 v_c == 1, cast<int16_t>( clamp( clamped1(v_x, v_y) * shadingMapArranged(v_x, v_y, 1), 0, range) ),
                 v_c == 2, cast<int16_t>( clamp( clamped2(v_x, v_y) * shadingMapArranged(v_x, v_y, 2), 0, range) ),
                           cast<int16_t>( clamp( clamped3(v_x, v_y) * shadingMapArranged(v_x, v_y, 3), 0, range) ) );
+
+
 
     // Combined image
     combinedInput(v_x, v_y) =
@@ -2055,39 +1650,38 @@ void PostProcessGenerator::generate()
                 v_c == 1, clamp( linear(v_x, v_y, 1), 0.0f, asShotVector[1] ),
                           clamp( linear(v_x, v_y, 2), 0.0f, asShotVector[2] ));
 
-    transform(colorCorrected, colorCorrectInput, cameraToSrgb);
+    Func XYZ{"XYZ"};
+
+    transform(XYZ, colorCorrectInput, cameraToPcs);
+
+    colorCorrected(v_x, v_y, v_c) = select(
+            v_c == 0, XYZ(v_x, v_y, 0) / max(1e-5f, XYZ(v_x, v_y, 0) + XYZ(v_x, v_y, 1) + XYZ(v_x, v_y, 2)),
+            v_c == 1, XYZ(v_x, v_y, 1) / max(1e-5f, XYZ(v_x, v_y, 0) + XYZ(v_x, v_y, 1) + XYZ(v_x, v_y, 2)),
+                      XYZ(v_x, v_y, 1));
 
     // Blend in highlights
-    Func hdrMask32, hdrInput32;
+    Func hdrMask32{"hdrMask32"}, hdrInput32{"hdrInput32"}, hdrMerged{"hdrMerged"};
 
     hdrMask32(v_x, v_y) = BoundaryConditions::repeat_edge(hdrMask)(v_x, v_y) / 255.0f;
     hdrInput32(v_x, v_y, v_c) = BoundaryConditions::repeat_edge(hdrInput)(v_x, v_y, v_c) / 65535.0f;
 
-    hdrMerged(v_x, v_y, v_c) = (1.0f - hdrMask32(v_x, v_y))*(hdrScale * colorCorrected(v_x, v_y, v_c)) + (hdrMask32(v_x, v_y)*hdrInput32(v_x, v_y, v_c));
+    hdrMerged(v_x, v_y, v_c) = select(
+        v_c == 0, (1.0f - hdrMask32(v_x, v_y))*colorCorrected(v_x, v_y, v_c) + (hdrMask32(v_x, v_y)*hdrInput32(v_x, v_y, v_c)),
+        v_c == 1, (1.0f - hdrMask32(v_x, v_y))*colorCorrected(v_x, v_y, v_c) + (hdrMask32(v_x, v_y)*hdrInput32(v_x, v_y, v_c)),
+                  exposureParam * (1.0f - hdrMask32(v_x, v_y))*(hdrScale * colorCorrected(v_x, v_y, v_c)) + (hdrMask32(v_x, v_y)*hdrInput32(v_x, v_y, v_c)));
 
-    // Adjust exposure
-    adjustExposure(v_x, v_y, v_c) = clamp(exposureParam * hdrMerged(v_x, v_y, v_c), 0.0f, 1.0f);
+    colorCorrectedYuv(v_x, v_y, v_c) = cast<uint16_t>(clamp(hdrMerged(v_x, v_y, v_c) * 65535 + 0.5f, 0, 65535));
 
-    // Move to YUV space
-    Func yuvResult("yuvResult");
+    Func x{"x"}, y{"y"}, Y{"Y"};
 
-    rgb2yuv(yuvResult, adjustExposure);
-
-    colorCorrectedYuv(v_x, v_y, v_c) = cast<uint16_t>(clamp(yuvResult(v_x, v_y, v_c) * 65535, 0, 65535));
-
-    Func Y("Y"), U("U"), V("V");
-
-    Y(v_x, v_y) = colorCorrectedYuv(v_x, v_y, 0);
-    U(v_x, v_y) = colorCorrectedYuv(v_x, v_y, 1);
-    V(v_x, v_y) = colorCorrectedYuv(v_x, v_y, 2);
-
-    // Fix any small artifacts by median filtering
-    weightedMedianFilter(Yfiltered, Y);
+    x(v_x, v_y) = colorCorrectedYuv(v_x, v_y, 0);
+    y(v_x, v_y) = colorCorrectedYuv(v_x, v_y, 1);
+    Y(v_x, v_y) = colorCorrectedYuv(v_x, v_y, 2);
 
     Func Utemp{"Utemp"}, Vtemp{"Vtemp"};
 
-    Udownsampled = downsample(U, Utemp);
-    Vdownsampled = downsample(V, Vtemp);
+    Udownsampled = downsample(x, Utemp);
+    Vdownsampled = downsample(y, Vtemp);
 
     uvDownsampled(v_x, v_y, v_c) = select(v_c == 0, Udownsampled(v_x, v_y), Vdownsampled(v_x, v_y));
 
@@ -2102,51 +1696,39 @@ void PostProcessGenerator::generate()
     if(!auto_schedule)
         Vdenoise.compute_root();
 
-    tonemapIn(v_x, v_y, v_c) = select(v_c == 0, cast<uint16_t>(Yfiltered(v_x, v_y)),
-                                      v_c == 1, cast<uint16_t>(clamp(upsample(Udenoise, UdenoiseTemp)(v_x, v_y), 0, 65535)),
-                                                cast<uint16_t>(clamp(upsample(Vdenoise, VdenoiseTemp)(v_x, v_y), 0, 65535)));
-
     tonemap = create<TonemapGenerator>();
 
     tonemap->output_type.set(UInt(16));
     tonemap->tonemap_levels.set(TONEMAP_LEVELS);
-    tonemap->apply(tonemapIn, in0.width() * 2, in0.height() * 2, tonemapVariance, gamma, shadowsParam);
+    tonemap->apply(Y, in0.width() * 2, in0.height() * 2, tonemapVariance, gamma, shadowsParam);
 
     //
     // Sharpen
     //
 
-    sharpenInputY(v_x, v_y) = tonemap->output(v_x, v_y, 0);
+    sharpen(tonemap->output);
 
-    blur2(blurOutput, blurOutputTmp, sharpenInputY);
-    blur3(blurOutput2, blurOutput2Tmp, blurOutput);
-    
-    Func gaussianDiff0{"gaussianDiff0"}, gaussianDiff1{"gaussianDiff1"};
-    
-    gaussianDiff0(v_x, v_y) = cast<int32_t>(sharpenInputY(v_x, v_y)) - blurOutput(v_x, v_y);
-    gaussianDiff1(v_x, v_y) = cast<int32_t>(blurOutput(v_x, v_y))  - blurOutput2(v_x, v_y);
-    
-    sharpened(v_x, v_y) =
-        saturating_cast<int32_t>(
-            blurOutput2(v_x, v_y) +
-            sharpen0Param*gaussianDiff0(v_x, v_y) +
-            sharpen1Param*gaussianDiff1(v_x, v_y)
+    finalTonemap(v_x, v_y, v_c) = select(v_c == 0, upsample(Udenoise, UdenoiseTemp)(v_x, v_y) / 65535.0f,
+                                         v_c == 1, upsample(Vdenoise, VdenoiseTemp)(v_x, v_y) / 65535.0f,
+                                                   sharpened(v_x, v_y) / 65535.0f);
+
+    Func tonemappedXYZ{"XYZ"};
+
+    // xyY -> XYZ
+    tonemappedXYZ(v_x, v_y, v_c) = select(
+        v_c == 0, (finalTonemap(v_x, v_y, 0)*finalTonemap(v_x, v_y, 2)) / finalTonemap(v_x, v_y, 1),
+        v_c == 1, finalTonemap(v_x, v_y, 2),
+                  ((1.0f - finalTonemap(v_x, v_y, 0) - finalTonemap(v_x, v_y, 1)) * finalTonemap(v_x, v_y, 2)) / finalTonemap(v_x, v_y, 1)
         );
 
-    // Back to RGB
-    finalTonemap(v_x, v_y, v_c) = select(v_c == 0, sharpened(v_x, v_y) / 65535.0f,
-                                         v_c == 1, tonemap->output(v_x, v_y, 1) / 65535.0f,
-                                                   tonemap->output(v_x, v_y, 2) / 65535.0f);
-
-    yuv2rgb(tonemapOutputRgb, finalTonemap);
+    // To sRGB
+    transform(tonemapOutputRgb, tonemappedXYZ, pcsToSrgb);
     
     //
     // Adjust hue & saturation
     //
-    
-    rgbToHsv(hsvInput, tonemapOutputRgb);
 
-    // fixColorArtifacts(hsvFixed, hsvInput);
+    rgbToHsv(hsvInput, tonemapOutputRgb);
 
     shiftHues(saturationApplied, hsvInput, blueSaturation, greenSaturation, satParam);
 
@@ -2226,7 +1808,7 @@ void PostProcessGenerator::generate()
     asShotVector.set_estimate(1, 1.0f);
     asShotVector.set_estimate(2, 1.0f);
 
-    cameraToSrgb.set_estimates({{0, 4}, {0, 4}});
+    // cameraToSrgb.set_estimates({{0, 4}, {0, 4}});
 
     output.set_estimates({{0, 4000}, {0, 3000}, {0, 3}});
 
@@ -2239,142 +1821,12 @@ void PostProcessGenerator::generate()
 }
 
 void PostProcessGenerator::schedule_for_gpu() {
-    shadingMap0
-        .reorder(v_x, v_y)
-        .compute_at(shaded, v_x)
-        .gpu_threads(v_x, v_y);
-
-    shadingMap1
-        .reorder(v_x, v_y)
-        .compute_at(shaded, v_x)
-        .gpu_threads(v_x, v_y);
-
-    shadingMap2
-        .reorder(v_x, v_y)
-        .compute_at(shaded, v_x)
-        .gpu_threads(v_x, v_y);
-
-    shadingMap3
-        .reorder(v_x, v_y)
-        .compute_at(shaded, v_x)
-        .gpu_threads(v_x, v_y);
-
-    shaded
-        .compute_root()
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 16, 32);
-
-    bayerInput
-        .compute_root()
-        .reorder(v_x, v_y)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 16, 32);
-
-    demosaic->green
-        .compute_root()
-        .reorder(v_x, v_y)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 16, 32);
-
-    demosaic->redIntermediate
-        .reorder( v_x, v_y)
-        .compute_at(demosaic->output, v_x)
-        .gpu_threads(v_x, v_y);
-
-    demosaic->red
-        .reorder( v_x, v_y)
-        .compute_at(demosaic->output, v_x)
-        .gpu_threads(v_x, v_y);
-
-    demosaic->blueIntermediate
-        .reorder( v_x, v_y)
-        .compute_at(demosaic->output, v_x)
-        .gpu_threads(v_x, v_y);
-
-    demosaic->blue
-        .reorder( v_x, v_y)
-        .compute_at(demosaic->output, v_x)
-        .gpu_threads(v_x, v_y);
-
-    demosaic->output
-        .compute_root()
-        .unroll(v_c)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 16, 32);
-
-    adjustExposure
-        .reorder(v_c, v_x, v_y)
-        .compute_at(colorCorrectedYuv, v_x)
-        .gpu_threads(v_x, v_y);
-
-    colorCorrected
-        .reorder(v_c, v_x, v_y)
-        .compute_at(colorCorrectedYuv, v_x)
-        .gpu_threads(v_x, v_y);
-
-    colorCorrectedYuv
-        .compute_root()
-        .reorder(v_c, v_x, v_y)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 16, 32);
-
-    Yfiltered
-        .compute_root()
-        .reorder(v_x, v_y)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 16, 32);
-
-    uvDownsampled
-        .compute_root()
-        .bound(v_c, 0, 2)
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 16, 32);
-
-    sharpened
-        .reorder(v_x, v_y)
-        .compute_at(output, v_x)
-        .gpu_threads(v_x, v_y);
-
-    tonemapOutputRgb
-        .reorder(v_c, v_x, v_y)
-        .compute_at(output, v_x)
-        .unroll(v_c)
-        .gpu_threads(v_x, v_y);
-
-    gammaCorrected
-        .reorder(v_c, v_x, v_y)
-        .compute_at(output, v_x)
-        .unroll(v_c)
-        .gpu_threads(v_x, v_y);
-
-    finalTonemap
-        .reorder(v_c, v_x, v_y)
-        .compute_at(output, v_x)
-        .unroll(v_c)
-        .gpu_threads(v_x, v_y);
-
-    saturationApplied
-        .reorder(v_c, v_x, v_y)
-        .compute_at(output, v_x)
-        .unroll(v_c)
-        .gpu_threads(v_x, v_y);
-
-    finalRgb
-        .reorder(v_c, v_x, v_y)
-        .compute_at(output, v_x)
-        .unroll(v_c)
-        .gpu_threads(v_x, v_y);
-
-    output
-        .compute_root()
-        .bound(v_c, 0, 3)
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 12, 32);
 }
 
 void PostProcessGenerator::schedule_for_cpu() { 
     int vector_size_u8 = natural_vector_size<uint8_t>();
     int vector_size_u16 = natural_vector_size<uint16_t>();
     int vector_size_u32 = natural_vector_size<uint32_t>();
-    int vector_size_f32 = natural_vector_size<float>();
 
     shaded
         .reorder(v_c, v_x, v_y)
@@ -2394,6 +1846,11 @@ void PostProcessGenerator::schedule_for_cpu() {
         .reorder(v_x, v_y)
         .split(v_y, v_yo, v_yi, 64)
         .parallel(v_yo)
+        .vectorize(v_x, vector_size_u16);
+
+    demosaic->greenIntermediate
+        .compute_at(colorCorrectedYuv, subtile_idx)
+        .store_at(colorCorrectedYuv, tile_idx)
         .vectorize(v_x, vector_size_u16);
 
     demosaic->green
@@ -2437,12 +1894,6 @@ void PostProcessGenerator::schedule_for_cpu() {
         .parallel(tile_idx)
         .vectorize(v_xii, vector_size_u16);
 
-    Yfiltered
-        .compute_root()
-        .split(v_y, v_yo, v_yi, 32)
-        .vectorize(v_x, vector_size_u16)
-        .parallel(v_yo);
-
     uvDownsampled
         .compute_root()
         .bound(v_c, 0, 2)
@@ -2477,39 +1928,15 @@ void PostProcessGenerator::schedule_for_cpu() {
         .vectorize(v_x, 8);
 
     sharpened
-        .compute_at(hsvInput, v_yi)
-        .store_at(hsvInput, v_yo)
-        .vectorize(v_x, vector_size_u32);
-
-    finalTonemap
-        .compute_at(hsvInput, v_yi)
-        .store_at(hsvInput, v_yo)
+        .compute_at(output, v_yi)
         .vectorize(v_x, vector_size_u16);
 
-    tonemapOutputRgb
-        .compute_at(hsvInput, v_yi)
+    finalRgb
+        .compute_at(output, v_yi)
         .reorder(v_c, v_x, v_y)
         .unroll(v_c)
-        .store_at(hsvInput, v_yo)
-        .vectorize(v_x, vector_size_u16);
-
-    hsvInput
-        .compute_root()
-        .reorder(v_c, v_x, v_y)
-        .split(v_y, v_yo, v_yi, 32)
-        .parallel(v_yo)
-        .unroll(v_c)
-        .vectorize(v_x, 8);
-
-    gammaCorrected
-        .compute_at(output, v_yi)
         .store_at(output, v_yo)
         .vectorize(v_x, vector_size_u16);
-
-    saturationApplied
-        .compute_at(output, v_yi)
-        .store_at(output, v_yo)
-        .vectorize(v_x, vector_size_f32);
 
     output
         .compute_root()
@@ -2538,7 +1965,8 @@ public:
     Input<Buffer<float>> inShadingMap3{"inShadingMap3", 2 };
     
     Input<float[3]> asShotVector{"asShotVector"};
-    Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
+    Input<Buffer<float>> cameraToPcs{"cameraToPcs", 2};
+    Input<Buffer<float>> pcsToSrgb{"pcsToSrgb", 2};
 
     Input<int> width{"width"};
     Input<int> height{"height"};
@@ -2589,7 +2017,6 @@ private:
     Func yuvOutput{"yuvOutput"};
     Func colorCorrected{"colorCorrected"};
     Func colorCorrectedYuv{"colorCorrectedYuv"};
-    Func sharpenInputY{"sharpenInputY"};
     Func sharpened{"sharpened"};
     Func finalTonemap{"finalTonemap"};
     Func blurOutput{"blurOutput"};
@@ -2615,10 +2042,6 @@ Func PreviewGenerator::downscale(Func f, Func& downx, Expr factor) {
     downy(v_x, v_y, v_c) = sum(downx(v_x, v_y * factor + r.x, v_c)) / (factor + 1);
 
     return downy;
-
-    // result(v_x, v_y, v_c) = cast<uint16_t>(downy(v_x, v_y, v_c));
-
-    // return result;
 }
 
 void PreviewGenerator::generate() {
@@ -2667,16 +2090,23 @@ void PreviewGenerator::generate() {
     downscaledInput(v_x, v_y, v_c) = select(v_c == 0,  clamp( c0,               0.0f, asShotVector[0] ),
                                             v_c == 1,  clamp( (c1 + c2) / 2,    0.0f, asShotVector[1] ),
                                                        clamp( c3,               0.0f, asShotVector[2] ));
-    // Transform to SRGB space
-    transform(colorCorrected, downscaledInput, cameraToSrgb);
+    // Transform to XYZ space
+    Func XYZ{"XYZ"};
 
-    // Adjust exposure
-    adjustExposure(v_x, v_y, v_c) = clamp(exposureParam * colorCorrected(v_x, v_y, v_c), 0.0f, 1.0f);
+    transform(XYZ, downscaledInput, cameraToPcs);
 
-    // Move to YUV space
-    rgb2yuv(yuvOutput, adjustExposure);
+    colorCorrected(v_x, v_y, v_c) = select(
+            v_c == 0, XYZ(v_x, v_y, 0) / max(1e-5f, XYZ(v_x, v_y, 0) + XYZ(v_x, v_y, 1) + XYZ(v_x, v_y, 2)),
+            v_c == 1, XYZ(v_x, v_y, 1) / max(1e-5f, XYZ(v_x, v_y, 0) + XYZ(v_x, v_y, 1) + XYZ(v_x, v_y, 2)),
+                      XYZ(v_x, v_y, 1));
 
-    colorCorrectedYuv(v_x, v_y, v_c) = cast<uint16_t>(clamp(yuvOutput(v_x, v_y, v_c) * 65535.0f + 0.5f, 0, 65535));
+    colorCorrectedYuv(v_x, v_y, v_c) = cast<uint16_t>(clamp(colorCorrected(v_x, v_y, v_c) * 65535 + 0.5f, 0, 65535));
+
+    Func x{"x"}, y{"y"}, Y{"Y"};
+
+    x(v_x, v_y) = colorCorrectedYuv(v_x, v_y, 0);
+    y(v_x, v_y) = colorCorrectedYuv(v_x, v_y, 1);
+    Y(v_x, v_y) = cast<uint16_t>(clamp(cast<float>(colorCorrectedYuv(v_x, v_y, 2)) * exposureParam + 0.5f, 0, 65535));
 
     // Tonemap
     tonemap = create<TonemapGenerator>();
@@ -2684,40 +2114,43 @@ void PreviewGenerator::generate() {
     tonemap->output_type.set(UInt(16));
     tonemap->tonemap_levels.set(tonemap_levels);
 
-    tonemap->apply(colorCorrectedYuv, width, height, tonemapVariance, gamma, shadowsParam);
-    
-    //
-    // Sharpen
-    //
-
-    sharpenInputY(v_x, v_y) = tonemap->output(v_x, v_y, 0);
+    tonemap->apply(Y, width, height, tonemapVariance, gamma, shadowsParam);
 
     //
     // Sharpen
     //
 
-    blur(blurOutput, blurOutputTmp, sharpenInputY);
+    blur(blurOutput, blurOutputTmp, tonemap->output);
     blur2(blurOutput2, blurOutput2Tmp, blurOutput);
     
     Func gaussianDiff0{"gaussianDiff0"}, gaussianDiff1{"gaussianDiff1"};
     
-    gaussianDiff0(v_x, v_y) = cast<int32_t>(sharpenInputY(v_x, v_y)) - blurOutput(v_x, v_y);
+    gaussianDiff0(v_x, v_y) = cast<int32_t>(tonemap->output(v_x, v_y)) - blurOutput(v_x, v_y);
     gaussianDiff1(v_x, v_y) = cast<int32_t>(blurOutput(v_x, v_y))  - blurOutput2(v_x, v_y);
     
     sharpened(v_x, v_y) =
         saturating_cast<int32_t>(
             blurOutput2(v_x, v_y) +
             sharpen0Param*gaussianDiff0(v_x, v_y) +
-            sharpen1Param*gaussianDiff1(v_x, v_y)
+            sharpen1Param*gaussianDiff1(v_x, v_y) +
+            0.5f
         );
 
-    // Back to RGB
-    finalTonemap(v_x, v_y, v_c) = select(v_c == 0, sharpened(v_x, v_y) / 65535.0f,
-                                         v_c == 1, tonemap->output(v_x, v_y, 1) / 65535.0f,
-                                                   tonemap->output(v_x, v_y, 2) / 65535.0f);
+    finalTonemap(v_x, v_y, v_c) = select(v_c == 0, x(v_x, v_y) / 65535.0f,
+                                         v_c == 1, y(v_x, v_y) / 65535.0f,
+                                                   sharpened(v_x, v_y) / 65535.0f);
 
-    // Back to RGB
-    yuv2rgb(tonemapOutputRgb, finalTonemap);
+    Func tonemappedXYZ{"XYZ"};
+
+    // xyY -> XYZ
+    tonemappedXYZ(v_x, v_y, v_c) = select(
+        v_c == 0, (finalTonemap(v_x, v_y, 0)*finalTonemap(v_x, v_y, 2)) / finalTonemap(v_x, v_y, 1),
+        v_c == 1, finalTonemap(v_x, v_y, 2),
+                  ((1.0f - finalTonemap(v_x, v_y, 0) - finalTonemap(v_x, v_y, 1)) * finalTonemap(v_x, v_y, 2)) / finalTonemap(v_x, v_y, 1)
+        );
+
+    // To sRGB
+    transform(tonemapOutputRgb, tonemappedXYZ, pcsToSrgb);
     
     // Finalize
     Expr b = 2.0f - pow(2.0f, contrast);
@@ -2762,35 +2195,35 @@ void PreviewGenerator::generate() {
     // Finalize output
     //
 
-    Expr X, Y;
+    Expr M, N;
 
     switch(rotation) {
         case 90:
-            X = width - v_y;
-            Y = select(flipped, height - v_x, v_x);
+            M = width - v_y;
+            N = select(flipped, height - v_x, v_x);
             break;
 
         case -90:
-            X = v_y;
-            Y = select(flipped, v_x, height - v_x);
+            M = v_y;
+            N = select(flipped, v_x, height - v_x);
             break;
 
         case 180:
-            X = v_x;
-            Y = height - v_y;
+            M = v_x;
+            N = height - v_y;
             break;
 
         default:
         case 0:
-            X = select(flipped, width - v_x, v_x);
-            Y = v_y;
+            M = select(flipped, width - v_x, v_x);
+            N = v_y;
             break;
     }
 
     output(v_x, v_y, v_c) = cast<uint8_t>(clamp(
-        select( v_c == 0, finalRgb(X, Y, 2) * 255 + 0.5f,
-                v_c == 1, finalRgb(X, Y, 1) * 255 + 0.5f,
-                v_c == 2, finalRgb(X, Y, 0) * 255 + 0.5f,
+        select( v_c == 0, finalRgb(M, N, 2) * 255 + 0.5f,
+                v_c == 1, finalRgb(M, N, 1) * 255 + 0.5f,
+                v_c == 2, finalRgb(M, N, 0) * 255 + 0.5f,
                           255), 0, 255));
 
     // Output interleaved
@@ -2805,55 +2238,7 @@ void PreviewGenerator::generate() {
         schedule_for_cpu();
 }
 
-void PreviewGenerator::schedule_for_gpu() {
-    downscaledInput
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .compute_at(colorCorrectedYuv, v_x)
-        .gpu_threads(v_x, v_y);
-
-    adjustExposure
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .compute_at(colorCorrectedYuv, v_x)
-        .gpu_threads(v_x, v_y);
-
-    colorCorrected
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .compute_at(colorCorrectedYuv, v_x)
-        .gpu_threads(v_x, v_y);
-
-    colorCorrectedYuv
-        .compute_root()
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 16);
-
-    tonemapOutputRgb
-        .reorder(v_c, v_x, v_y)
-        .compute_at(gammaCorrected, v_x)
-        .unroll(v_c)
-        .gpu_threads(v_x, v_y);
-
-    finalTonemap
-        .reorder(v_c, v_x, v_y)
-        .compute_at(gammaCorrected, v_x)
-        .unroll(v_c)
-        .gpu_threads(v_x, v_y);
-
-    gammaCorrected
-        .compute_root()
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 16);
-
-    output
-        .compute_root()
-        .bound(v_c, 0, 4)
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 16);
+void PreviewGenerator::schedule_for_gpu() {   
 }
 
 void PreviewGenerator::schedule_for_cpu() {
@@ -3442,7 +2827,7 @@ public:
     Input<Buffer<float>> inShadingMap3{"inShadingMap3", 2 };
 
     Input<float[3]> asShotVector{"asShotVector"};    
-    Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
+    Input<Buffer<float>> cameraToPcs{"cameraToPcs", 2};
 
     Input<int> downscaleFactor{"downscaleFactor"};
     Input<int> width{"width"};
@@ -3536,9 +2921,20 @@ void LinearImageGenerator::generate() {
                 v_c == 1, clamp( linear(v_x, v_y, 1), 0.0f, asShotVector[1] ),
                           clamp( linear(v_x, v_y, 2), 0.0f, asShotVector[2] ));
     
-    transform(colorCorrected, colorCorrectInput, cameraToSrgb);
+    transform(colorCorrected, colorCorrectInput, cameraToPcs);
 
-    output(v_x, v_y, v_c) = cast<uint16_t>(clamp(colorCorrected(v_x, v_y, v_c) * 65535 + 0.5f, 0, 65535));
+    Expr X = colorCorrected(v_x, v_y, 0);
+    Expr Y = colorCorrected(v_x, v_y, 1);
+    Expr Z = colorCorrected(v_x, v_y, 2);
+
+    output(v_x, v_y, v_c) = cast<uint16_t>(
+        clamp(
+            select(
+                v_c == 0, X / max(1e-5f, X + Y + Z) * 65535.0f + 0.5f,
+                v_c == 1, Y / max(1e-5f, X + Y + Z) * 65535.0f + 0.5f,
+                          Y * 65535.0f + 0.5f),
+            0, 65535)
+    );
 
     if(!auto_schedule)
         schedule_for_cpu();
