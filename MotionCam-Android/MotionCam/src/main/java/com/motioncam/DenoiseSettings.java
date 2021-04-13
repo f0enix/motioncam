@@ -23,36 +23,37 @@ public class DenoiseSettings {
         final double ev = log2(s / (exposure / 1.0e9)) - log2(iso / 100.0);
 
         int mergeImages = 0;
+        float chromaEps = 0;
 
         if(ev > 9.99) {
-            this.spatialWeight   = 0.0f;
-            this.chromaEps       = 1.0f;
+            this.spatialWeight  = 0.0f;
+            chromaEps           = 1.5f;
             mergeImages         = 2;
         }
         else if(ev > 7.99) {
-            this.spatialWeight   = 0.0f;
-            this.chromaEps       = 2.0f;
-            mergeImages          = 4;
+            this.spatialWeight  = 0.0f;
+            chromaEps           = 4.0f;
+            mergeImages         = 4;
         }
         else if(ev > 5.99) {
-            this.spatialWeight   = 0.0f;
-            this.chromaEps       = 4.0f;
-            mergeImages          = 6;
+            this.spatialWeight  = 0.0f;
+            chromaEps           = 6.0f;
+            mergeImages         = 6;
         }
         else if(ev > 3.99) {
-            this.spatialWeight   = 1.0f;
-            this.chromaEps       = 8.0f;
-            mergeImages          = 8;
+            this.spatialWeight  = 0.5f;
+            chromaEps           = 12.0f;
+            mergeImages         = 8;
         }
         else if(ev > 1.99) {
-            this.spatialWeight   = 1.0f;
-            this.chromaEps       = 16.0f;
-            mergeImages          = 12;
+            this.spatialWeight  = 1.0f;
+            chromaEps           = 16.0f;
+            mergeImages         = 12;
         }
         else {
-            this.spatialWeight   = 2.0f;
-            this.chromaEps       = 32.0f;
-            mergeImages          = 12;
+            this.spatialWeight  = 1.5f;
+            chromaEps           = 20.0f;
+            mergeImages         = 12;
         }
 
         // If shadows are increased by a significant amount, use more images
@@ -62,8 +63,10 @@ public class DenoiseSettings {
 
         if(shadows >= 7.99) {
             mergeImages += 2;
+            chromaEps   += 4;
         }
 
-        numMergeImages = mergeImages;
+        this.numMergeImages = mergeImages;
+        this.chromaEps      = chromaEps;
     }
 }

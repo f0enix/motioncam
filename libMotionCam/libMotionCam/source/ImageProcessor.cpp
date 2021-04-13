@@ -380,7 +380,7 @@ namespace motioncam {
         cv::Mat preview(previewBuffer.height(), previewBuffer.width(), CV_8UC4, previewBuffer.data());
         cv::Mat histogram;
         
-        cv::cvtColor(preview, preview, cv::COLOR_RGBA2GRAY);
+        cv::cvtColor(preview, preview, cv::COLOR_BGRA2GRAY);
 
         vector<cv::Mat> inputImages     = { preview };
         const vector<int> channels      = { 0 };
@@ -398,7 +398,7 @@ namespace motioncam {
         
         // Estimate blacks
         const float maxDehazePercent = 0.03f; // Max 3% pixels
-        const int maxEndBin = 15; // Max bin
+        const int maxEndBin = 25; // Max bin
 
         int endBin = 0;
 
@@ -417,6 +417,7 @@ namespace motioncam {
     cv::Mat ImageProcessor::estimateWhitePoint(const RawImageBuffer& rawBuffer,
                                                const RawCameraMetadata& cameraMetadata,
                                                float shadows,
+                                               float threshold,
                                                float& outWhitePoint) {
         PostProcessSettings settings;
         
@@ -427,7 +428,7 @@ namespace motioncam {
         cv::Mat preview(previewBuffer.height(), previewBuffer.width(), CV_8UC4, previewBuffer.data());
         cv::Mat histogram;
         
-        cv::cvtColor(preview, preview, cv::COLOR_RGBA2GRAY);
+        cv::cvtColor(preview, preview, cv::COLOR_BGRA2GRAY);
 
         vector<cv::Mat> inputImages     = { preview };
         const vector<int> channels      = { 0 };
@@ -448,7 +449,7 @@ namespace motioncam {
         for(endBin = histogram.rows - 1; endBin >= 128; endBin--) {
             float binPx = histogram.at<float>(endBin);
 
-            if(binPx < 0.999f)
+            if(binPx < 0.997f)
                 break;
         }
 
@@ -486,6 +487,7 @@ namespace motioncam {
         estimateWhitePoint(rawBuffer,
                            cameraMetadata,
                            settings.shadows,
+                           0.97f,
                            settings.whitePoint);
 
         // Update estimated settings
@@ -529,7 +531,7 @@ namespace motioncam {
         settings.shadows        = estimateShadows(histogram);
         settings.exposure       = estimateExposureCompensation(histogram);
         
-        auto preview = estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, settings.whitePoint);
+        auto preview = estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, 0.999f, settings.whitePoint);
         estimateBlacks(rawBuffer, cameraMetadata, settings.shadows, settings.blacks);
         
         //
@@ -1232,12 +1234,14 @@ namespace motioncam {
                 estimateWhitePoint(*referenceRawBuffer,
                                    rawContainer.getCameraMetadata(),
                                    settings.shadows,
+                                   0.999f,
                                    settings.whitePoint);
             }
             else {
                 estimateWhitePoint(*underExposedImage,
                                    rawContainer.getCameraMetadata(),
                                    settings.shadows * (1.0f/hdrMetadata->exposureScale),
+                                   0.995f,
                                    settings.whitePoint);
             }
         }
@@ -1403,22 +1407,8 @@ namespace motioncam {
         
         auto other = processFrames;
 
-        float motionVectorsWeight;
-        float differenceWeight;
-        
-        // Set up weights depending on exposure time
-        if(reference->metadata.exposureTime >= 1.0/60.0*1e9 + 1) {
-            motionVectorsWeight = 64;
-            differenceWeight = 31;
-        }
-        else if(reference->metadata.exposureTime >= 1.0/100.0*1e9) {
-            motionVectorsWeight = 32;
-            differenceWeight = 15;
-        }
-        else {
-            motionVectorsWeight = 16;
-            differenceWeight = 7;
-        }
+        float motionVectorsWeight = 20*20;
+        float differenceWeight = std::min(31.0f, 0.9042386185f*reference->metadata.exposureTime/(1000.0f*1000.0f) + 0.8587127159f);
         
         while(it != processFrames.end()) {
             if(rawContainer.getReferenceImage() == *it) {

@@ -68,7 +68,7 @@ private:
 
 void GuidedFilter::boxFilter(Func& result, Func& intermediate, Func in) {
    const int R = radius;
-   RDom r(-R/2, R/2);
+   RDom r(-R/2, R);
 
    intermediate(v_x, v_y) = sum(in(v_x + r.x, v_y)) / R;
    result(v_x, v_y) = sum(intermediate(v_x, v_y + r.x)) / R;
@@ -104,12 +104,10 @@ void GuidedFilter::generate() {
     
     output(v_x, v_y) = saturating_cast(output_type, (mean_a(v_x, v_y) * I(v_x, v_y)) + mean_b(v_x, v_y));
 
-    if(!auto_schedule) {
-        if(get_target().has_gpu_feature())
-            schedule_for_gpu();
-        else
-            schedule_for_cpu();
-    } 
+    if(get_target().has_gpu_feature())
+        schedule_for_gpu();
+    else
+        schedule_for_cpu();
 }
 
 void GuidedFilter::schedule() {    
@@ -225,6 +223,7 @@ void GuidedFilter::schedule_for_gpu() {
         .reorder(v_x, v_y)
         .gpu_tile(v_x, v_y, v_xi, v_yi, 16, 32);    
 }
+
 //
 
 //
@@ -286,91 +285,136 @@ void Demosaic::weightedMedianFilter(Func& output, Func input) {
     Expr p1 = input(v_x,   v_y);
     Expr p2 = input(v_x,   v_y);
     Expr p3 = input(v_x,   v_y);
+    Expr p4 = input(v_x,   v_y);
+    Expr p5 = input(v_x,   v_y);
+    Expr p6 = input(v_x,   v_y);
+    Expr p7 = input(v_x,   v_y);
 
-    Expr p4 = input(v_x-1, v_y);
-    Expr p5 = input(v_x-1, v_y);
+    Expr p8 = input(v_x-1, v_y);
+    Expr p9 = input(v_x-1, v_y);
 
-    Expr p6 = input(v_x+1, v_y);
-    Expr p7 = input(v_x+1, v_y);
+    Expr p10 = input(v_x+1, v_y);
+    Expr p11 = input(v_x+1, v_y);
 
-    Expr p8 = input(v_x,   v_y-1);
-    Expr p9 = input(v_x,   v_y-1);
+    Expr p12 = input(v_x,   v_y-1);
+    Expr p13 = input(v_x,   v_y-1);
 
-    Expr p10 = input(v_x,  v_y+1);
-    Expr p11 = input(v_x,  v_y+1);
+    Expr p14 = input(v_x,  v_y+1);
+    Expr p15 = input(v_x,  v_y+1);
 
-    Expr p12 = input(v_x-1, v_y-1);
-    Expr p13 = input(v_x-1, v_y+1);
-    Expr p14 = input(v_x+1, v_y-1);
-    Expr p15 = input(v_x+1, v_y+1);
+    Expr p16 = input(v_x-1, v_y-1);
+    Expr p17 = input(v_x-1, v_y+1);
+    Expr p18 = input(v_x+1, v_y-1);
+    Expr p19 = input(v_x+1, v_y+1);
     
-    cmpSwap(p0,  p1);
-    cmpSwap(p2,  p3);
-    cmpSwap(p0,  p2);
-    cmpSwap(p1,  p3);
-    cmpSwap(p1,  p2);
-    cmpSwap(p4,  p5);
-    cmpSwap(p6,  p7);
-    cmpSwap(p4,  p6);
-    cmpSwap(p5,  p7);
-    cmpSwap(p5,  p6);
-    cmpSwap(p0,  p4);
-    cmpSwap(p1,  p5);
-    cmpSwap(p1,  p4);
-    cmpSwap(p2,  p6);
-    cmpSwap(p3,  p7);
-    cmpSwap(p3,  p6);
-    cmpSwap(p2,  p4);
-    cmpSwap(p3,  p5);
-    cmpSwap(p3,  p4);
-    cmpSwap(p8,  p9);
+    cmpSwap(p0, p1);
+    cmpSwap(p3, p4);
+    cmpSwap(p2, p4);
+    cmpSwap(p2, p3);
+    cmpSwap(p0, p3);
+    cmpSwap(p0, p2);
+    cmpSwap(p1, p4);
+    cmpSwap(p1, p3);
+    cmpSwap(p1, p2);
+    cmpSwap(p5, p6);
+    cmpSwap(p8, p9);
+    cmpSwap(p7, p9);
+    cmpSwap(p7, p8);
+    cmpSwap(p5, p8);
+    cmpSwap(p5, p7);
+    cmpSwap(p6, p9);
+    cmpSwap(p6, p8);
+    cmpSwap(p6, p7);
+    cmpSwap(p0, p5);
+    cmpSwap(p1, p6);
+    cmpSwap(p1, p5);
+    cmpSwap(p2, p7);
+    cmpSwap(p3, p8);
+    cmpSwap(p4, p9);
+    cmpSwap(p4, p8);
+    cmpSwap(p3, p7);
+    cmpSwap(p4, p7);
+    cmpSwap(p2, p5);
+    cmpSwap(p3, p6);
+    cmpSwap(p4, p6);
+    cmpSwap(p3, p5);
+    cmpSwap(p4, p5);
     cmpSwap(p10, p11);
-    cmpSwap(p8,  p10);
-    cmpSwap(p9,  p11);
-    cmpSwap(p9,  p10);
-    cmpSwap(p12, p13);
-    cmpSwap(p14, p15);
-    cmpSwap(p12, p14);
-    cmpSwap(p13, p15);
     cmpSwap(p13, p14);
-    cmpSwap(p8,  p12);
-    cmpSwap(p9,  p13);
-    cmpSwap(p9,  p12);
-    cmpSwap(p10, p14);
-    cmpSwap(p11, p15);
-    cmpSwap(p11, p14);
+    cmpSwap(p12, p14);
+    cmpSwap(p12, p13);
+    cmpSwap(p10, p13);
     cmpSwap(p10, p12);
+    cmpSwap(p11, p14);
     cmpSwap(p11, p13);
     cmpSwap(p11, p12);
-    cmpSwap(p0,  p8);
-    cmpSwap(p1,  p9);
-    cmpSwap(p1,  p8);
-    cmpSwap(p2,  p10);
-    cmpSwap(p3,  p11);
-    cmpSwap(p3,  p10);
-    cmpSwap(p2,  p8);
-    cmpSwap(p3,  p9);
-    cmpSwap(p3,  p8);
-    cmpSwap(p4,  p12);
-    cmpSwap(p5,  p13);
-    cmpSwap(p5,  p12);
-    cmpSwap(p6,  p14);
-    cmpSwap(p7,  p15);
-    cmpSwap(p7,  p14);
-    cmpSwap(p6,  p12);
-    cmpSwap(p7,  p13);
-    cmpSwap(p7,  p12);
-    cmpSwap(p4,  p8);
-    cmpSwap(p5,  p9);
-    cmpSwap(p5,  p8);
-    cmpSwap(p6,  p10);
-    cmpSwap(p7,  p11);
-    cmpSwap(p7,  p10);
-    cmpSwap(p6,  p8);
-    cmpSwap(p7,  p9);
-    cmpSwap(p7,  p8);
+    cmpSwap(p15, p16);
+    cmpSwap(p18, p19);
+    cmpSwap(p17, p19);
+    cmpSwap(p17, p18);
+    cmpSwap(p15, p18);
+    cmpSwap(p15, p17);
+    cmpSwap(p16, p19);
+    cmpSwap(p16, p18);
+    cmpSwap(p16, p17);
+    cmpSwap(p10, p15);
+    cmpSwap(p11, p16);
+    cmpSwap(p11, p15);
+    cmpSwap(p12, p17);
+    cmpSwap(p13, p18);
+    cmpSwap(p14, p19);
+    cmpSwap(p14, p18);
+    cmpSwap(p13, p17);
+    cmpSwap(p14, p17);
+    cmpSwap(p12, p15);
+    cmpSwap(p13, p16);
+    cmpSwap(p14, p16);
+    cmpSwap(p13, p15);
+    cmpSwap(p14, p15);
+    cmpSwap(p0, p10);
+    cmpSwap(p1, p11);
+    cmpSwap(p1, p10);
+    cmpSwap(p2, p12);
+    cmpSwap(p3, p13);
+    cmpSwap(p4, p14);
+    cmpSwap(p4, p13);
+    cmpSwap(p3, p12);
+    cmpSwap(p4, p12);
+    cmpSwap(p2, p10);
+    cmpSwap(p3, p11);
+    cmpSwap(p4, p11);
+    cmpSwap(p3, p10);
+    cmpSwap(p4, p10);
+    cmpSwap(p5, p15);
+    cmpSwap(p6, p16);
+    cmpSwap(p6, p15);
+    cmpSwap(p7, p17);
+    cmpSwap(p8, p18);
+    cmpSwap(p9, p19);
+    cmpSwap(p9, p18);
+    cmpSwap(p8, p17);
+    cmpSwap(p9, p17);
+    cmpSwap(p7, p15);
+    cmpSwap(p8, p16);
+    cmpSwap(p9, p16);
+    cmpSwap(p8, p15);
+    cmpSwap(p9, p15);
+    cmpSwap(p5, p10);
+    cmpSwap(p6, p11);
+    cmpSwap(p6, p10);
+    cmpSwap(p7, p12);
+    cmpSwap(p8, p13);
+    cmpSwap(p9, p14);
+    cmpSwap(p9, p13);
+    cmpSwap(p8, p12);
+    cmpSwap(p9, p12);
+    cmpSwap(p7, p10);
+    cmpSwap(p8, p11);
+    cmpSwap(p9, p11);
+    cmpSwap(p8, p10);
+    cmpSwap(p9, p10);
 
-    output(v_x, v_y) = cast<int16_t>((cast<int32_t>(p7) + cast<int32_t>(p8)) / 2);
+    output(v_x, v_y) = cast<int16_t>((cast<int32_t>(p9) + cast<int32_t>(p10)) / 2);
 }
 
 void Demosaic::cmpSwap(Expr& a, Expr& b) {
@@ -380,7 +424,7 @@ void Demosaic::cmpSwap(Expr& a, Expr& b) {
 }
 
 void Demosaic::calculateGreen2(Func& output, Func input) {
-    const int M = 4;
+    const int M = 1;
     const float DivEpsilon = 0.1f/(1024.0f*1024.0f);
 
     Func filteredH, filteredV, diffH, diffV, smoothedH, smoothedV;    
@@ -435,10 +479,14 @@ void Demosaic::calculateGreen2(Func& output, Func input) {
 
     Expr interp = input(v_x, v_y) + (V*h + H*v) / (H + V);
 
-    output(v_x, v_y) = select(
+    greenIntermediate(v_x, v_y) = select(
         ((v_x + v_y) & 1) == 1,
             input(v_x, v_y),
             saturating_cast<int16_t>(interp + 0.5f));
+
+    Func filtered{"greenFiltered"};
+
+    weightedMedianFilter(output, greenIntermediate);    
 }
 
 void Demosaic::calculateGreen(Func& output, Func input) {
@@ -507,11 +555,11 @@ void Demosaic::calculateRed(Func& output, Func input, Func green) {
             ) / 4
     );
 
-    Func filtered{"redFiltered"};
+    // Func filtered{"redFiltered"};
 
-    weightedMedianFilter(filtered, redIntermediate);
+    // weightedMedianFilter(filtered, redIntermediate);
 
-    output(v_x, v_y) = green(v_x, v_y) + filtered(v_x, v_y);
+    output(v_x, v_y) = green(v_x, v_y) + redIntermediate(v_x, v_y);
 }
 
 void Demosaic::calculateBlue(Func& output, Func input, Func green) {
@@ -536,11 +584,11 @@ void Demosaic::calculateBlue(Func& output, Func input, Func green) {
             ) / 4
     );
 
-    Func filtered{"blueFiltered"};
+    // Func filtered{"blueFiltered"};
 
-    weightedMedianFilter(filtered, blueIntermediate);
+    // weightedMedianFilter(filtered, blueIntermediate);
 
-    output(v_x, v_y) = green(v_x, v_y) + filtered(v_x, v_y);
+    output(v_x, v_y) = green(v_x, v_y) + blueIntermediate(v_x, v_y);
 }
 
 void Demosaic::generate() {
@@ -1550,7 +1598,7 @@ private:
 };
 
 void PostProcessGenerator::sharpen(Func sharpenInputY) {
-    blur2(blurOutput, blurOutputTmp, sharpenInputY);
+    blur(blurOutput, blurOutputTmp, sharpenInputY);
     blur3(blurOutput2, blurOutput2Tmp, blurOutput);
     
     Func gaussianDiff0{"gaussianDiff0"}, gaussianDiff1{"gaussianDiff1"};
@@ -1560,32 +1608,27 @@ void PostProcessGenerator::sharpen(Func sharpenInputY) {
     
     Func m{"m"}, n{"n"};
 
-    m(v_x, v_y) = abs(cast<float>(gaussianDiff0(v_x, v_y)) / 32.0f);
+    m(v_x, v_y) = abs(cast<float>(gaussianDiff0(v_x, v_y)) / 64.0f);
     n(v_x, v_y) = abs(cast<float>(gaussianDiff1(v_x, v_y)) / 32.0f);
 
-    RDom r(-1, 1, -1, 1);
+    RDom r(-2, 2, -2, 2);
 
     Func M{"M"}, N{"N"};
-    Func var{"var"}, var2{"var2"};
 
-    M(v_x, v_y) = 1.0f/9.0f * sum(m(v_x + r.x, v_y + r.y));
-    N(v_x, v_y) = 1.0f/9.0f * sum(n(v_x + r.x, v_y + r.y));
-
-    var(v_x, v_y)  = 1.0f/8.0f * sum((m(v_x + r.x, v_y + r.y) - M(v_x + r.x, v_y + r.y)) * (m(v_x + r.x, v_y + r.y) - M(v_x + r.x, v_y + r.y)));
-    var2(v_x, v_y) = 1.0f/8.0f * sum((n(v_x + r.x, v_y + r.y) - N(v_x + r.x, v_y + r.y)) * (n(v_x + r.x, v_y + r.y) - N(v_x + r.x, v_y + r.y)));
+    M(v_x, v_y) = 1.0f/25.0f * sum(m(v_x + r.x, v_y + r.y));
+    N(v_x, v_y) = 1.0f/25.0f * sum(n(v_x + r.x, v_y + r.y));
 
     Func S{"S"}, T{"T"};
 
-    S(v_x, v_y) = sharpen0 - (sharpen0 - 1.0f)*exp(-var(v_x, v_y));
-    T(v_x, v_y) = sharpen1 - (sharpen1 - 1.0f)*exp(-var2(v_x, v_y));
+    S(v_x, v_y) = sharpen0 - (sharpen0 - 1.0f)*exp(-M(v_x, v_y));
+    T(v_x, v_y) = sharpen1 - (sharpen1 - 1.0f)*exp(-N(v_x, v_y));
 
     sharpened(v_x, v_y) =
         saturating_cast<int32_t>(
             blurOutput2(v_x, v_y) +
             S(v_x, v_y)*gaussianDiff0(v_x, v_y) +
-            T(v_x, v_y)*gaussianDiff1(v_x, v_y) +
-            0.5f
-        );    
+            T(v_x, v_y)*gaussianDiff1(v_x, v_y)
+        );
 }
 
 void PostProcessGenerator::generate()

@@ -374,8 +374,8 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.saturation = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, 1.0f);
         mPostProcessSettings.greenSaturation = 1.0f;
         mPostProcessSettings.blueSaturation = 1.0f;
-        mPostProcessSettings.sharpen0 = 4.0f;
-        mPostProcessSettings.sharpen1 = 3.0f;
+        mPostProcessSettings.sharpen0 = 5.0f;
+        mPostProcessSettings.sharpen1 = 4.0f;
         mPostProcessSettings.whitePoint = -1;
         mPostProcessSettings.blacks = -1;
         mPostProcessSettings.tonemapVariance = 0.25f;

@@ -220,12 +220,12 @@ void DenoiseGenerator::generate() {
                 v_i == 2, T2,
                           T3 );
 
-    Expr D = (abs(inMean0(v_x, v_y, v_c, v_i) - inMean1(v_x, v_y, v_c, v_i))) * (1.0f/ cast<float>(whiteLevel));
+    Expr D = (abs(inMean0(v_x, v_y, v_c, v_i) - inMean1(v_x, v_y, v_c, v_i))) * (1.0f/cast<float>(whiteLevel));
     Func w{"w"};
 
     Expr M = flowMap(v_x, v_y, 0)*flowMap(v_x, v_y, 0) + flowMap(v_x, v_y, 1)*flowMap(v_x, v_y, 1);
 
-    w(v_x, v_y, v_c, v_i) = exp(-M/motionVectorsWeight) * differenceWeight*exp(-256.0f * D) + 1.0f;
+    w(v_x, v_y, v_c, v_i) = 1.0f + fast_exp(-M/motionVectorsWeight) * differenceWeight*fast_exp(-256.0f * D);
 
     Func outMean{"outMean"}, outHigh{"outHigh"};
 
