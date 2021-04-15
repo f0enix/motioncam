@@ -266,7 +266,7 @@ public class PostProcessFragment extends Fragment implements
         mViewModel.isFlipped.setValue(cameraFrontFacing);
 
         mNativeCamera = new NativeCameraSessionBridge(nativeCameraHandle);
-        mSelectedCamera = new NativeCameraInfo(cameraId, cameraFrontFacing, false);
+        mSelectedCamera = new NativeCameraInfo(cameraId, cameraFrontFacing, 0, 0);
 
         mNativeCamera.initImageProcessor();
 

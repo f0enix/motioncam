@@ -3,11 +3,13 @@ package com.motioncam.camera;
 public class NativeCameraInfo {
     public final String cameraId;
     public final boolean isFrontFacing;
-    public final boolean supportsLinearPreview;
+    public final int exposureCompRangeMin;
+    public final int exposureCompRangeMax;
 
-    public NativeCameraInfo(String cameraId, boolean isFrontFacing, boolean supportsLinearPreview) {
+    public NativeCameraInfo(String cameraId, boolean isFrontFacing, int exposureCompRangeMin, int exposureCompRangeMax) {
         this.cameraId = cameraId;
         this.isFrontFacing = isFrontFacing;
-        this.supportsLinearPreview = supportsLinearPreview;
+        this.exposureCompRangeMin = exposureCompRangeMin;
+        this.exposureCompRangeMax = exposureCompRangeMax;
     }
 }

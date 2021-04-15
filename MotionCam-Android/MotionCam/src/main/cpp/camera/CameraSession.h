@@ -141,6 +141,7 @@ namespace motioncam {
         void doOnCameraExposureStatusChanged(int32_t iso, int64_t exposureTime);
         void doCameraAutoExposureStateChanged(CameraExposureState state);
         void doCameraAutoFocusStateChanged(CameraFocusState state);
+        void doOnTriggerAfCompleted();
 
         void doOnInternalError(const std::string& e);
 
@@ -162,7 +163,6 @@ namespace motioncam {
 
     private:
         CameraCaptureSessionState mState;
-        bool mIsPaused;
         CameraMode mMode;
         int32_t mLastIso;
         int64_t mLastExposureTime;

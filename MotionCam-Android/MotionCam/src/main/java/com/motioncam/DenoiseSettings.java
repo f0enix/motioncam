@@ -25,7 +25,12 @@ public class DenoiseSettings {
         int mergeImages = 0;
         float chromaEps = 0;
 
-        if(ev > 9.99) {
+        if(ev > 11.99) {
+            this.spatialWeight  = 0.0f;
+            chromaEps           = 1.0f;
+            mergeImages         = 1;
+        }
+        else if(ev > 9.99) {
             this.spatialWeight  = 0.0f;
             chromaEps           = 1.5f;
             mergeImages         = 2;
@@ -42,16 +47,16 @@ public class DenoiseSettings {
         }
         else if(ev > 3.99) {
             this.spatialWeight  = 0.5f;
-            chromaEps           = 12.0f;
+            chromaEps           = 6.0f;
             mergeImages         = 8;
         }
         else if(ev > 1.99) {
             this.spatialWeight  = 1.0f;
-            chromaEps           = 16.0f;
-            mergeImages         = 12;
+            chromaEps           = 12.0f;
+            mergeImages         = 10;
         }
         else {
-            this.spatialWeight  = 1.5f;
+            this.spatialWeight  = 1.0f;
             chromaEps           = 20.0f;
             mergeImages         = 12;
         }

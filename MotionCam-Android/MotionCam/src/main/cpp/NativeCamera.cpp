@@ -760,17 +760,15 @@ JNIEXPORT jobjectArray JNICALL Java_com_motioncam_camera_NativeCameraSessionBrid
         auto desc = sessionManager->getCameraDescription(supportedCameras[i]);
 
         jstring jcameraId = env->NewStringUTF(supportedCameras[i].c_str());
-        jboolean supportsLinearPreview =
-                std::find(desc->tonemapModes.begin(), desc->tonemapModes.end(), ACAMERA_TONEMAP_MODE_CONTRAST_CURVE) != desc->tonemapModes.end();
 
         jobject obj =
                 env->NewObject(
                         nativeCameraInfoClass,
-                        env->GetMethodID(nativeCameraInfoClass, "<init>", "(Ljava/lang/String;ZZ)V"),
+                        env->GetMethodID(nativeCameraInfoClass, "<init>", "(Ljava/lang/String;ZII)V"),
                         jcameraId,
                         desc->lensFacing == ACAMERA_LENS_FACING_FRONT,
-                        supportsLinearPreview
-                );
+                        desc->exposureCompensationRange[0],
+                        desc->exposureCompensationRange[1]);
 
         env->DeleteLocalRef(jcameraId);
 
@@ -824,13 +822,15 @@ jfloat JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EstimateShado
 
     cv::Mat histogram = motioncam::ImageProcessor::calcHistogram(metadata, *imageBuffer, false, 8);
 
-    double s = 1.8*1.8;
+    double a = 1.8;
+    if(!metadata.apertures.empty())
+        a = metadata.apertures[0];
+
+    double s = a*a;
     double ev = std::log2(s / (imageBuffer->metadata.exposureTime / (1.0e9))) - std::log2(imageBuffer->metadata.iso / 100.0);
     double keyValue = 1.03 - bias / (bias + std::log10(std::pow(10.0, ev) + 1));
 
-    float result = motioncam::ImageProcessor::estimateShadows(histogram, keyValue);
-
-    return result;
+    return motioncam::ImageProcessor::estimateShadows(histogram, keyValue);
 }
 
 extern "C" JNIEXPORT

@@ -516,8 +516,8 @@ namespace motioncam {
             }
 
             // Lens shading maps
-            int lenShadingMapWidth  = getRequiredSettingAsInt(*it, "lensShadingMapWidth");
-            int lenShadingMapHeight = getRequiredSettingAsInt(*it, "lensShadingMapHeight");
+            int lenShadingMapWidth  = getOptionalSetting(*it, "lensShadingMapWidth", 0);
+            int lenShadingMapHeight = getOptionalSetting(*it, "lensShadingMapHeight", 0);
             
             // Make sure there are a reasonable number of points available
             if(lenShadingMapHeight < 4 || lenShadingMapWidth < 4) {

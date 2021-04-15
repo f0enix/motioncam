@@ -10,7 +10,7 @@ import androidx.lifecycle.ViewModel;
 public class SettingsViewModel extends ViewModel {
     public static final String CAMERA_SHARED_PREFS          = "camera_prefs";
 
-    public static final int MINIMUM_MEMORY_USE_MB           = 256;
+    public static final int MINIMUM_MEMORY_USE_MB           = 384;
     public static final int MAXIMUM_MEMORY_USE_MB           = 2048;
 
     public static final String PREFS_KEY_MEMORY_USE_MBYTES          = "memory_use_megabytes";

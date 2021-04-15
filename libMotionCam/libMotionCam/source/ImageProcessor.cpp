@@ -348,7 +348,7 @@ namespace motioncam {
         
         avgLuminance = std::exp(avgLuminance / (totalPixels + 1));
 
-        return std::min(keyValue / avgLuminance, 16.0f);
+        return std::max(1.0f, std::min(keyValue / avgLuminance, 32.0f));
     }
 
     float ImageProcessor::estimateExposureCompensation(const cv::Mat& histogram) {
@@ -398,7 +398,7 @@ namespace motioncam {
         
         // Estimate blacks
         const float maxDehazePercent = 0.03f; // Max 3% pixels
-        const int maxEndBin = 25; // Max bin
+        const int maxEndBin = 30; // Max bin
 
         int endBin = 0;
 
@@ -808,7 +808,7 @@ namespace motioncam {
                          scalePreview,
                          rawData->rawBuffer,
                          rawData->previewBuffer);
-        
+                        
         return rawData;
     }
 
@@ -1399,14 +1399,12 @@ namespace motioncam {
         
         cv::Mat referenceFlowImage(reference->previewBuffer.height(), reference->previewBuffer.width(), CV_8U, reference->previewBuffer.data());
         Halide::Runtime::Buffer<float> fuseOutput(reference->rawBuffer.width(), reference->rawBuffer.height(), 4);
-
+        
         fuseOutput.fill(0);
         
         auto processFrames = rawContainer.getFrames();
         auto it = processFrames.begin();
         
-        auto other = processFrames;
-
         float motionVectorsWeight = 20*20;
         float differenceWeight = std::min(31.0f, 0.9042386185f*reference->metadata.exposureTime/(1000.0f*1000.0f) + 0.8587127159f);
         

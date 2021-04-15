@@ -220,7 +220,7 @@ public class CameraActivity extends AppCompatActivity implements
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 if(fromUser)
-                    onHighlightsSeekBarChanged(progress);
+                    onExposureCompSeekBarChanged(progress);
             }
 
             @Override
@@ -313,9 +313,9 @@ public class CameraActivity extends AppCompatActivity implements
         onSettingsClicked();
     }
 
-    private void onHighlightsSeekBarChanged(int progress) {
+    private void onExposureCompSeekBarChanged(int progress) {
         if(mNativeCamera != null) {
-            float value = progress / 100.0f;
+            float value = progress / (float) mBinding.exposureSeekBar.getMax();
             mNativeCamera.setExposureCompensation(value);
         }
     }
@@ -348,10 +348,9 @@ public class CameraActivity extends AppCompatActivity implements
         else {
             findViewById(R.id.cameraManualControlFrame).setVisibility(View.GONE);
             findViewById(R.id.infoFrame).setVisibility(View.VISIBLE);
-            mBinding.exposureLayout.setVisibility(View.VISIBLE);
+            findViewById(R.id.exposureCompFrame).setVisibility(View.VISIBLE);
 
-            if(mSelectedCamera.supportsLinearPreview)
-                findViewById(R.id.exposureCompFrame).setVisibility(View.VISIBLE);
+            mBinding.exposureLayout.setVisibility(View.VISIBLE);
 
             if(mNativeCamera != null) {
                 mNativeCamera.setAutoExposure();
@@ -375,7 +374,7 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.greenSaturation = 1.0f;
         mPostProcessSettings.blueSaturation = 1.0f;
         mPostProcessSettings.sharpen0 = 5.0f;
-        mPostProcessSettings.sharpen1 = 4.0f;
+        mPostProcessSettings.sharpen1 = 3.0f;
         mPostProcessSettings.whitePoint = -1;
         mPostProcessSettings.blacks = -1;
         mPostProcessSettings.tonemapVariance = 0.25f;
@@ -411,7 +410,7 @@ public class CameraActivity extends AppCompatActivity implements
 
         mBinding.focusLockPointFrame.setVisibility(View.INVISIBLE);
         mBinding.exposureLockPointFrame.setVisibility(View.INVISIBLE);
-        mBinding.exposureSeekBar.setProgress(50);
+        mBinding.exposureSeekBar.setProgress(0);
         mBinding.shadowsSeekBar.setProgress(50);
 
         mFocusState = FocusState.AUTO;
@@ -906,6 +905,10 @@ public class CameraActivity extends AppCompatActivity implements
         else
             mBinding.switchCameraBtn.setVisibility(View.VISIBLE);
 
+        int numEvSteps = mSelectedCamera.exposureCompRangeMax - mSelectedCamera.exposureCompRangeMin;
+        mBinding.exposureSeekBar.setMax(numEvSteps);
+        mBinding.exposureSeekBar.setProgress(numEvSteps / 2);
+
         // Create texture view for camera preview
         mTextureView = new TextureView(this);
         mBinding.cameraFrame.addView(
@@ -992,10 +995,6 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private CaptureMode getCaptureMode(SharedPreferences sharedPrefs) {
-        // Always in burst mode if raw preview is disabled
-        if(!sharedPrefs.getBoolean(SettingsViewModel.PREFS_KEY_DUAL_EXPOSURE_CONTROLS, false))
-            return CaptureMode.BURST;
-
         return CaptureMode.valueOf(
                 sharedPrefs.getString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, CaptureMode.HDR.name()));
     }
@@ -1381,7 +1380,7 @@ public class CameraActivity extends AppCompatActivity implements
                     shadows,
                     mPostProcessSettings.contrast,
                     mPostProcessSettings.saturation,
-                    0.03f,
+                    0.05f,
                     1.0f,
                     mTemperatureOffset,
                     mTintOffset);

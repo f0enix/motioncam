@@ -49,6 +49,7 @@ namespace motioncam {
         EVENT_CAMERA_EXPOSURE_STATUS_CHANGED,
         EVENT_CAMERA_AUTO_EXPOSURE_STATE_CHANGED,
         EVENT_CAMERA_AUTO_FOCUS_STATE_CHANGED,
+        EVENT_CAMERA_TRIGGER_AF_COMPLETED,
 
         STOP
     };
@@ -229,7 +230,6 @@ namespace motioncam {
 
     CameraSession::CameraSession(std::shared_ptr<CameraSessionListener> listener, std::shared_ptr<CameraDescription>  cameraDescription, std::shared_ptr<RawImageConsumer> rawImageConsumer) :
         mState(CameraCaptureSessionState::CLOSED),
-        mIsPaused(false),
         mMode(CameraMode::AUTO),
         mLastIso(0),
         mLastExposureTime(0),
@@ -604,8 +604,6 @@ namespace motioncam {
         // Stop image consumer
         LOGD("Stopping image consumer");
         mImageConsumer->stop();
-
-        mIsPaused = false;
     }
 
     bool CameraSession::doRepeatCapture() {
@@ -614,10 +612,13 @@ namespace motioncam {
             uint8_t afMode  = ACAMERA_CONTROL_AF_MODE_CONTINUOUS_PICTURE;
 
             ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
+            ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
             ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_EXPOSURE_COMPENSATION, 1, &mExposureCompensation);
             ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_SENSITIVITY, 0, nullptr);
             ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_EXPOSURE_TIME, 0, nullptr);
             ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 0, nullptr);
+            ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_REGIONS, 0, nullptr);
+            ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_REGIONS, 0, nullptr);
 
         }
         else if(mMode == CameraMode::MANUAL) {
@@ -638,37 +639,25 @@ namespace motioncam {
     }
 
     void CameraSession::doPauseCapture() {
-        if(mIsPaused) {
+        if(mState != CameraCaptureSessionState::ACTIVE) {
             LOGW("Cannot pause capture, invalid state.");
             return;
         }
 
         // Stop capture if we are active
-        if (mState == CameraCaptureSessionState::ACTIVE) {
-            ACameraCaptureSession_stopRepeating(mSessionContext->captureSession.get());
-            mIsPaused = true;
-        }
+        ACameraCaptureSession_stopRepeating(mSessionContext->captureSession.get());
     }
 
     void CameraSession::doResumeCapture() {
-        if(!mIsPaused) {
+        if(mState != CameraCaptureSessionState::READY) {
             LOGW("Cannot resume capture, invalid state.");
             return;
         }
 
-        if (mState == CameraCaptureSessionState::READY) {
-            doRepeatCapture();
-
-            mIsPaused = false;
-        }
+        doRepeatCapture();
     }
 
     void CameraSession::doSetAutoExposure() {
-        if (mIsPaused) {
-            LOGW("Cannot set auto exposure, invalid state");
-            return;
-        }
-
         if (mState == CameraCaptureSessionState::ACTIVE) {
             mMode = CameraMode::AUTO;
             mExposureCompensation = 0;
@@ -678,7 +667,7 @@ namespace motioncam {
     }
 
     void CameraSession::doSetManualExposure(int32_t iso, int64_t exposureTime) {
-        if (mIsPaused || mState != CameraCaptureSessionState::ACTIVE) {
+        if (mState != CameraCaptureSessionState::ACTIVE) {
             LOGW("Cannot set manual exposure, invalid state");
             return;
         }
@@ -694,7 +683,7 @@ namespace motioncam {
     }
 
     void CameraSession::doSetFocusPoint(double focusX, double focusY, double exposureX, double exposureY) {
-        if(mIsPaused || mState != CameraCaptureSessionState::ACTIVE) {
+        if(mState != CameraCaptureSessionState::ACTIVE) {
             LOGW("Cannot set focus, invalid state");
             return;
         }
@@ -706,7 +695,7 @@ namespace motioncam {
         }
 
         // Stop existing capture
-        ACameraCaptureSession_stopRepeating(mSessionContext->captureSession.get());
+        ACameraCaptureSession_abortCaptures(mSessionContext->captureSession.get());
 
         uint8_t afMode      = ACAMERA_CONTROL_AF_MODE_AUTO;
         uint8_t afTrigger   = ACAMERA_CONTROL_AF_TRIGGER_START;
@@ -720,8 +709,8 @@ namespace motioncam {
         focusX = std::max(0.0, std::min(1.0, focusX));
         focusY = std::max(0.0, std::min(1.0, focusY));
 
-        int w = 50;//static_cast<int>(static_cast<float>(mCameraDescription->sensorSize[2]) * 0.05f);
-        int h = 50;//static_cast<int>(static_cast<float>(mCameraDescription->sensorSize[3]) * 0.05f);
+        int w = 100;//static_cast<int>(static_cast<float>(mCameraDescription->sensorSize[2]) * 0.05f);
+        int h = 100;//static_cast<int>(static_cast<float>(mCameraDescription->sensorSize[3]) * 0.05f);
 
         int px = static_cast<int>(static_cast<float>(mCameraDescription->sensorSize[0] + mCameraDescription->sensorSize[2]) * focusX);
         int py = static_cast<int>(static_cast<float>(mCameraDescription->sensorSize[1] + mCameraDescription->sensorSize[3]) * focusY);
@@ -748,18 +737,15 @@ namespace motioncam {
             int sx = static_cast<int>((mCameraDescription->sensorSize[0] + mCameraDescription->sensorSize[2]) * exposureX);
             int sy = static_cast<int>((mCameraDescription->sensorSize[1] + mCameraDescription->sensorSize[3]) * exposureY);
 
-            w = 100;
-            h = 100;
-
             int32_t aeRegion[5] = { (int) (sx - w), (int) (sy - h),
                                     (int) (sx + w), (int) (sy + h),
                                     1000 };
 
-            aeRegion[0] = std::max(mCameraDescription->sensorSize[0], aeRegion[0]);
-            aeRegion[1] = std::max(mCameraDescription->sensorSize[1], aeRegion[1]);
-
-            aeRegion[2] = std::min(mCameraDescription->sensorSize[2] - 1, aeRegion[2]);
-            aeRegion[3] = std::min(mCameraDescription->sensorSize[3] - 1, aeRegion[3]);
+//            aeRegion[0] = std::max(mCameraDescription->sensorSize[0], aeRegion[0]);
+//            aeRegion[1] = std::max(mCameraDescription->sensorSize[1], aeRegion[1]);
+//
+//            aeRegion[2] = std::min(mCameraDescription->sensorSize[2] - 1, aeRegion[2]);
+//            aeRegion[3] = std::min(mCameraDescription->sensorSize[3] - 1, aeRegion[3]);
 
             ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_REGIONS, 5, &aeRegion[0]);
             ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER, 1, &aeTrigger);
@@ -777,38 +763,14 @@ namespace motioncam {
     }
 
     void CameraSession::doSetAutoFocus() {
-        if(mIsPaused || mState != CameraCaptureSessionState::ACTIVE) {
+        if(mState != CameraCaptureSessionState::ACTIVE) {
             LOGW("Cannot set auto focus, invalid state");
             return;
         }
 
-        doRepeatCapture();
+        LOGI("Setting auto focus");
 
-//        uint8_t afMode      = ACAMERA_CONTROL_AF_MODE_CONTINUOUS_PICTURE;
-//        uint8_t afTrigger   = ACAMERA_CONTROL_AF_TRIGGER_CANCEL;
-//        uint8_t aeTrigger   = ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER_CANCEL;
-//
-//        int32_t afAeRegion[5] = { 0, 0, 0, 0 };
-//
-//        ACaptureRequest_setEntry_u8(mSessionContext->afCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
-//        ACaptureRequest_setEntry_u8(mSessionContext->afCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 1, &afTrigger);
-//        ACaptureRequest_setEntry_u8(mSessionContext->afCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER, 1, &aeTrigger);
-//        ACaptureRequest_setEntry_i32(mSessionContext->afCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_REGIONS, 5, &afAeRegion[0]);
-//        ACaptureRequest_setEntry_i32(mSessionContext->afCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_REGIONS, 5, &afAeRegion[0]);
-//
-//        // Stop existing capture
-//        ACameraCaptureSession_stopRepeating(mSessionContext->captureSession.get());
-//
-//        // Cancel AF/AE
-//        if (ACameraCaptureSession_capture(
-//                mSessionContext->captureSession.get(),
-//                &mSessionContext->captureCallbacks[CaptureEvent::CANCEL_AF]->callbacks,
-//                1,
-//                &mSessionContext->afCaptureRequest->captureRequest,
-//                &mSessionContext->captureCallbacks[CaptureEvent::CANCEL_AF]->sequenceId) != ACAMERA_OK)
-//        {
-//            throw CameraSessionException("Failed to cancel auto focus");
-//        }
+        doRepeatCapture();
     }
 
     void CameraSession::doCaptureHdr(int numImages, int baseIso, int64_t baseExposure, int hdrIso, int64_t hdrExposure) {
@@ -898,6 +860,8 @@ namespace motioncam {
 
         mExposureCompensation = exposureComp;
 
+        LOGI("Updating exposure compensation to %d", mExposureCompensation);
+
         doRepeatCapture();
     }
 
@@ -960,24 +924,7 @@ namespace motioncam {
         else if(context.event == CaptureEvent::TRIGGER_AF) {
             LOGI("AF trigger completed");
 
-            uint8_t afMode = ACAMERA_CONTROL_AF_MODE_AUTO;
-            uint8_t afTrigger = ACAMERA_CONTROL_AF_TRIGGER_IDLE;
-            uint8_t aeTrigger = ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER_IDLE;
-
-            ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
-            ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER, 1, &aeTrigger);
-            ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 1, &afTrigger);
-
-            camera_status_t result = ACameraCaptureSession_setRepeatingRequest(
-                    mSessionContext->captureSession.get(),
-                    &mSessionContext->captureCallbacks[CaptureEvent::REPEAT]->callbacks,
-                    1,
-                    &mSessionContext->repeatCaptureRequest->captureRequest,
-                    &mSessionContext->captureCallbacks[CaptureEvent::REPEAT]->sequenceId);
-
-            if(result != ACAMERA_OK) {
-                LOGW("Failed to trigger AF");
-            }
+            pushEvent(EventAction::EVENT_CAMERA_TRIGGER_AF_COMPLETED);
         }
 
         // Read the ISO/shutter speed values.
@@ -1132,7 +1079,7 @@ namespace motioncam {
     }
 
     void CameraSession::doOnCameraSessionStateChanged(const CameraCaptureSessionState state) {
-        LOGD("Camera session has changed state (%d)", state);
+        LOGI("Camera session has changed state (%d)", state);
 
         mState = state;
         mSessionListener->onCameraStateChanged(mState);
@@ -1153,6 +1100,28 @@ namespace motioncam {
     void CameraSession::doOnInternalError(const std::string& e) {
         LOGE("Internal error: %s", e.c_str());
         pushEvent(EventAction::ACTION_CLOSE_CAMERA);
+    }
+
+    void CameraSession::doOnTriggerAfCompleted() {
+        uint8_t afMode = ACAMERA_CONTROL_AF_MODE_AUTO;
+        uint8_t afTrigger = ACAMERA_CONTROL_AF_TRIGGER_IDLE;
+        uint8_t aeTrigger = ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER_IDLE;
+
+        ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
+        ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER, 1, &aeTrigger);
+        ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 1, &afTrigger);
+
+        camera_status_t result = ACameraCaptureSession_setRepeatingRequest(
+                mSessionContext->captureSession.get(),
+                &mSessionContext->captureCallbacks[CaptureEvent::REPEAT]->callbacks,
+                1,
+                &mSessionContext->repeatCaptureRequest->captureRequest,
+                &mSessionContext->captureCallbacks[CaptureEvent::REPEAT]->sequenceId);
+
+        if(result != ACAMERA_OK) {
+            LOGE("Failed set AF repeat capture");
+            pushEvent(EventAction::ACTION_CLOSE_CAMERA);
+        }
     }
 
     //
@@ -1292,6 +1261,11 @@ namespace motioncam {
 
             case EventAction::EVENT_CAMERA_AUTO_FOCUS_STATE_CHANGED: {
                 doCameraAutoFocusStateChanged(static_cast<CameraFocusState>(eventLoopData->data["state"].int_value()));
+                break;
+            }
+
+            case EventAction::EVENT_CAMERA_TRIGGER_AF_COMPLETED: {
+                doOnTriggerAfCompleted();
                 break;
             }
 
