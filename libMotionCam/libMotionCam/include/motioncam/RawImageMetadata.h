@@ -54,6 +54,7 @@ namespace motioncam {
             exposureTime(0),
             iso(0),
             timestampNs(0),
+            recvdTimestampMs(0),
             exposureCompensation(0),
             screenOrientation(ScreenOrientation::PORTRAIT),
             rawType(RawType::ZSL)
@@ -67,6 +68,7 @@ namespace motioncam {
             iso(other.iso),
             exposureCompensation(other.exposureCompensation),
             timestampNs(other.timestampNs),
+            recvdTimestampMs(other.recvdTimestampMs),
             screenOrientation(other.screenOrientation),
             rawType(other.rawType)
         {
@@ -79,6 +81,7 @@ namespace motioncam {
             iso(other.iso),
             exposureCompensation(other.exposureCompensation),
             timestampNs(other.timestampNs),
+            recvdTimestampMs(other.recvdTimestampMs),
             screenOrientation(other.screenOrientation),
             rawType(other.rawType)
         {
@@ -91,6 +94,7 @@ namespace motioncam {
             iso = obj.iso;
             exposureCompensation = obj.exposureCompensation;
             timestampNs = obj.timestampNs;
+            recvdTimestampMs = obj.recvdTimestampMs;
             screenOrientation = obj.screenOrientation;
             rawType = obj.rawType;
 
@@ -99,10 +103,21 @@ namespace motioncam {
 
         cv::Vec3f asShot;
         std::vector<cv::Mat> lensShadingMap;
+
+        cv::Mat colorMatrix1;
+        cv::Mat colorMatrix2;
+
+        cv::Mat calibrationMatrix1;
+        cv::Mat calibrationMatrix2;
+
+        cv::Mat forwardMatrix1;
+        cv::Mat forwardMatrix2;
+
         int64_t exposureTime;
         int32_t iso;
         int32_t exposureCompensation;
         int64_t timestampNs;
+        int64_t recvdTimestampMs;
         ScreenOrientation screenOrientation;
         RawType rawType;
     };
@@ -119,6 +134,7 @@ namespace motioncam {
         virtual const std::vector<uint8_t>& hostData() = 0;
         virtual void copyHostData(const std::vector<uint8_t>& data) = 0;
         virtual void release() = 0;
+        virtual std::unique_ptr<NativeBuffer> clone() = 0;
     };
 
     class NativeHostBuffer : public NativeBuffer {
@@ -129,6 +145,20 @@ namespace motioncam {
 
         NativeHostBuffer(size_t length) : data(length)
         {
+        }
+
+        NativeHostBuffer(const std::vector<uint8_t>& other) : data(other)
+        {
+        }
+
+        NativeHostBuffer(const uint8_t* other, size_t len)
+        {
+            data.resize(len);
+            data.assign(other, other + len);
+        }
+
+        std::unique_ptr<NativeBuffer> clone() {
+            return std::make_unique<NativeHostBuffer>(data);
         }
 
         uint8_t* lock(bool write) {
@@ -190,15 +220,36 @@ namespace motioncam {
         {
         }
 
-//        RawImageBuffer(const RawImageBuffer&& other) noexcept :
-//                data(std::move(other.data)),
-//                metadata(std::move(other.metadata)),
-//                pixelFormat(other.pixelFormat),
-//                width(other.width),
-//                height(other.height),
-//                rowStride(other.rowStride)
-//        {
-//        }
+        RawImageBuffer(const RawImageBuffer& other) :
+            metadata(other.metadata),
+            pixelFormat(other.pixelFormat),
+            width(other.width),
+            height(other.height),
+            rowStride(other.rowStride)
+        {
+            data = other.data->clone();
+        }
+        
+        RawImageBuffer(RawImageBuffer&& other) noexcept :
+                data(std::move(other.data)),
+                metadata(std::move(other.metadata)),
+                pixelFormat(other.pixelFormat),
+                width(other.width),
+                height(other.height),
+                rowStride(other.rowStride)
+        {
+        }
+
+        RawImageBuffer& operator=(const RawImageBuffer &obj) {
+            data = obj.data->clone();
+            metadata = obj.metadata;
+            pixelFormat = obj.pixelFormat;
+            width = obj.width;
+            height = obj.height;
+            rowStride = obj.rowStride;
+
+            return *this;
+        }
 
         std::unique_ptr<NativeBuffer> data;
         RawImageMetadata metadata;

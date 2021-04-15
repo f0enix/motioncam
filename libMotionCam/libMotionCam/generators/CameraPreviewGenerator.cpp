@@ -616,7 +616,7 @@ void CameraPreviewGenerator::generate() {
     if (get_target().has_gpu_feature()) {
         rawInput
             .reorder(v_c, v_x, v_y)
-            .compute_at(downscaled, v_x)
+            .compute_at(downscaled, v_x)            
             .gpu_threads(v_x, v_y);
 
         downscaledTemp

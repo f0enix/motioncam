@@ -53,6 +53,7 @@ public:
     Input<int32_t> whiteLevel{"whiteLevel"};
     
     Input<float> motionVectorsWeight{"motionVectorsWeight"};
+    Input<float> differenceWeight{"differenceWeight"};
 
     Output<Func> output{"output", 3};
 
@@ -132,7 +133,7 @@ Expr DenoiseGenerator::median(Expr A, Expr B, Expr C, Expr D) {
     cmpSwap(B, D);
     cmpSwap(B, C);
 
-    return (B + C) / 2;
+    return 0.5f * (B + C);
 }
 
 Func DenoiseGenerator::registeredInput() {
@@ -161,18 +162,17 @@ Func DenoiseGenerator::registeredInput() {
     Expr p0 = lerp(inputF32(x, y, v_c), inputF32(x + 1, y, v_c), a);
     Expr p1 = lerp(inputF32(x, y + 1, v_c), inputF32(x + 1, y + 1, v_c), a);
     
-    result(v_x, v_y, v_c) = saturating_cast<uint16_t>(lerp(p0, p1, b));
+    result(v_x, v_y, v_c) = saturating_cast<uint16_t>(lerp(p0, p1, b) + 0.5f);
 
     return result;
 }
 
 void DenoiseGenerator::generate() {    
-    Func inRepeated0 = BoundaryConditions::repeat_edge(input0, { {0, width}, {0, height} } );
     Func inRepeated1 = registeredInput();
 
     Func inSigned0{"inSigned0"}, inSigned1{"inSigned1"};
 
-    inSigned0(v_x, v_y, v_c) = cast<float>(inRepeated0(v_x, v_y, v_c));
+    inSigned0(v_x, v_y, v_c) = cast<float>(input0(clamp(v_x, 0, width - 1), clamp(v_y, 0, height - 1), v_c));
     inSigned1(v_x, v_y, v_c) = cast<float>(inRepeated1(v_x, v_y, v_c));
 
     Func inMean0{"inMean0"}, inMean1{"inMean1"};
@@ -215,27 +215,27 @@ void DenoiseGenerator::generate() {
     );
 
     T(v_x, v_y, v_c, v_i) =
-        select( v_i == 0, 1.0f/0.6745f * T0,
-                v_i == 1, 1.0f/0.6745f * T1,
-                v_i == 2, 1.0f/0.6745f * T2,
-                          1.0f/0.6745f * T3 );
+        select( v_i == 0, T0,
+                v_i == 1, T1,
+                v_i == 2, T2,
+                          T3 );
 
-    Expr D = (abs(inMean0(v_x, v_y, v_c, v_i) - inMean1(v_x, v_y, v_c, v_i))) / cast<float>(whiteLevel);
+    Expr D = (abs(inMean0(v_x, v_y, v_c, v_i) - inMean1(v_x, v_y, v_c, v_i))) * (1.0f/cast<float>(whiteLevel));
     Func w{"w"};
 
-    Expr M = sqrt(flowMap(v_x, v_y, 0)*flowMap(v_x, v_y, 0) + flowMap(v_x, v_y, 1)*flowMap(v_x, v_y, 1));
+    Expr M = flowMap(v_x, v_y, 0)*flowMap(v_x, v_y, 0) + flowMap(v_x, v_y, 1)*flowMap(v_x, v_y, 1);
 
-    w(v_x, v_y, v_c, v_i) = exp(-M/motionVectorsWeight) * 15*exp(-256.0f * D) + 1.0f;
+    w(v_x, v_y, v_c, v_i) = 1.0f + fast_exp(-M/motionVectorsWeight) * differenceWeight*fast_exp(-256.0f * D);
 
     Func outMean{"outMean"}, outHigh{"outHigh"};
 
     Expr d0 = inHigh0(v_x, v_y, v_c, v_i) - inHigh1(v_x, v_y, v_c, v_i);
-    Expr m0 = abs(d0) / (abs(d0) + w(v_x, v_y, v_c, v_i)*T(v_x, v_y, v_c, v_i) + 1e-5f);
+    Expr m0 = abs(d0) / (1e-15f + abs(d0) + w(v_x, v_y, v_c, v_i)*T(v_x, v_y, v_c, v_i));
 
     outHigh(v_x, v_y, v_c, v_i) = inHigh1(v_x, v_y, v_c, v_i) + m0*d0;
 
     Expr d1 = inMean0(v_x, v_y, v_c, v_i) - inMean1(v_x, v_y, v_c, v_i);
-    Expr m1 = abs(d1) / (abs(d1) + w(v_x, v_y, v_c, v_i)*T(v_x, v_y, v_c, v_i) + 1e-5f);
+    Expr m1 = abs(d1) / (1e-15f + abs(d1) + w(v_x, v_y, v_c, v_i)*T(v_x, v_y, v_c, v_i));
 
     outMean(v_x, v_y, v_c, v_i) = inMean1(v_x, v_y, v_c, v_i) + m1*d1;
 
@@ -250,6 +250,8 @@ void DenoiseGenerator::generate() {
     input0.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
     width.set_estimate(2000);
     height.set_estimate(1500);
+    whiteLevel.set_estimate(1023);
+    motionVectorsWeight.set_estimate(32);
     input1.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
     pendingOutput.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
     flowMap.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
@@ -257,23 +259,26 @@ void DenoiseGenerator::generate() {
     output.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
         
     if (!auto_schedule) {
-
-        inRepeated0
-            .compute_at(output, v_c)
-            .split(_0, v_yo, v_yi, 16)
-            .vectorize(v_yi);
+        inSigned0
+            .compute_at(output, v_yo)
+            .vectorize(v_x, 8);
 
         inRepeated1
             .compute_root()
-            .split(v_x, v_xo, v_xi, 16)
-            .vectorize(v_xi)
-            .parallel(v_c);
+            .reorder(v_c, v_x, v_y)
+            .bound(v_c, 0, 4)
+            .split(v_y, v_yo, v_yi, 32)
+            .vectorize(v_x, 8)
+            .unroll(v_c)
+            .parallel(v_yo);
 
         output
             .compute_root()
-            .split(v_x, v_xo, v_xi, 16)
-            .vectorize(v_xi)
-            .parallel(v_c);
+            .reorder(v_x, v_y, v_c)
+            .bound(v_c, 0, 4)
+            .split(v_y, v_yo, v_yi, 32)
+            .vectorize(v_x, 8)
+            .parallel(v_yo);
     }
 }
 
@@ -361,77 +366,105 @@ Expr ForwardTransformGenerator::forwardStep1(Func in, int c, int i, const vector
 }
 
 void ForwardTransformGenerator::forward0(Func& forwardOutput, Func& intermediateOutput, Func image) {
-    Expr expr0[2];
+    Expr expr[4];
     
     // Rows
-    expr0[0] = select(v_c == 0, forwardStep0(image, -1, F_WAVELET_REAL[0]),
-                                forwardStep0(image, -1, F_WAVELET_REAL[1]));
+    expr[0] = select(v_c == 0, forwardStep0(image, -1, F_WAVELET_REAL[0]),
+                               forwardStep0(image, -1, F_WAVELET_REAL[1]));
 
-    expr0[1] = select(v_c == 0, forwardStep0(image, -1, F_WAVELET_IMAG[0]),
-                                forwardStep0(image, -1, F_WAVELET_IMAG[1]));
+    expr[1] = select(v_c == 0, forwardStep0(image, -1, F_WAVELET_IMAG[0]),
+                               forwardStep0(image, -1, F_WAVELET_IMAG[1]));
 
-    intermediateOutput(v_x, v_y, v_c, v_i) = select(v_i == 0, expr0[0], expr0[1]);
-
+    intermediateOutput(v_x, v_y, v_c, v_i) = select(v_i == 0, expr[0], expr[1]);
+    
     // Cols
     Func rowsResultTransposed = transpose(intermediateOutput);
-    Expr expr1[2];
 
-    expr1[0] = select(v_c == 0, forwardStep1(rowsResultTransposed, 0, 0, F_WAVELET_REAL[0]),
-                      v_c == 1, forwardStep1(rowsResultTransposed, 0, 0, F_WAVELET_REAL[1]),
-                      v_c == 2, forwardStep1(rowsResultTransposed, 1, 0, F_WAVELET_REAL[0]),
-                                forwardStep1(rowsResultTransposed, 1, 0, F_WAVELET_REAL[1]));
-
-    expr1[1] = select(v_c == 0, forwardStep1(rowsResultTransposed, 0, 1, F_WAVELET_IMAG[0]),
-                      v_c == 1, forwardStep1(rowsResultTransposed, 0, 1, F_WAVELET_IMAG[1]),
-                      v_c == 2, forwardStep1(rowsResultTransposed, 1, 1, F_WAVELET_IMAG[0]),
-                                forwardStep1(rowsResultTransposed, 1, 1, F_WAVELET_IMAG[1]));
-
-
+    for(int i = 0; i < 4; i++) {
+        int idx = i / 2;
+        
+        if(i % 2 == 0) {
+            expr[i] = select(v_c == 0, forwardStep1(rowsResultTransposed, 0, idx, F_WAVELET_REAL[0]),
+                             v_c == 1, forwardStep1(rowsResultTransposed, 0, idx, F_WAVELET_REAL[1]),
+                             v_c == 2, forwardStep1(rowsResultTransposed, 1, idx, F_WAVELET_REAL[0]),
+                                       forwardStep1(rowsResultTransposed, 1, idx, F_WAVELET_REAL[1]));
+        }
+        else {
+            expr[i] = select(v_c == 0, forwardStep1(rowsResultTransposed, 0, idx, F_WAVELET_IMAG[0]),
+                             v_c == 1, forwardStep1(rowsResultTransposed, 0, idx, F_WAVELET_IMAG[1]),
+                             v_c == 2, forwardStep1(rowsResultTransposed, 1, idx, F_WAVELET_IMAG[0]),
+                                       forwardStep1(rowsResultTransposed, 1, idx, F_WAVELET_IMAG[1]));
+            
+        }
+    }
+    
     // Oriented wavelets
     Func forwardTmp;
     
-    forwardTmp(v_x, v_y, v_c, v_i) = select(v_i == 0, expr1[0], expr1[1]);
+    forwardTmp(v_x, v_y, v_c, v_i) = select(v_i == 0, expr[0],
+                                            v_i == 1, expr[1],
+                                            v_i == 2, expr[2],
+                                                      expr[3]);
     
     forwardOutput(v_x, v_y, v_c, v_i) = select(v_c == 0, forwardTmp(v_x, v_y, v_c, v_i),
-                                        select(v_i == 0, (forwardTmp(v_x, v_y, v_c, 0) + forwardTmp(v_x, v_y, v_c, 1)) * (float)sqrt(0.5f),
-                                                         (forwardTmp(v_x, v_y, v_c, 0) - forwardTmp(v_x, v_y, v_c, 1)) * (float)sqrt(0.5f)));
+                                        select(v_i == 0, (forwardTmp(v_x, v_y, v_c, 0) + forwardTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f),
+                                               v_i == 1, (forwardTmp(v_x, v_y, v_c, 1) + forwardTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
+                                               v_i == 2, (forwardTmp(v_x, v_y, v_c, 1) - forwardTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
+                                                         (forwardTmp(v_x, v_y, v_c, 0) - forwardTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f)));
 }
 
 void ForwardTransformGenerator::forward1(Func& forwardOutput, Func& intermediateOutput, Func image) {
-    Expr expr0[2];
+    Expr expr[4];
 
     // Rows
-    expr0[0] = select(v_c == 0, forwardStep0(image, 0, WAVELET_REAL[0]),
-                                forwardStep0(image, 0, WAVELET_REAL[1]));
-
-    expr0[1] = select(v_c == 0, forwardStep0(image, 1, WAVELET_IMAG[0]),
-                                forwardStep0(image, 1, WAVELET_IMAG[1]));
+    for(int i = 0; i < 4; i++) {
+        if(i < 2) {
+            expr[i] = select(v_c == 0, forwardStep0(image, i, WAVELET_REAL[0]),
+                                       forwardStep0(image, i, WAVELET_REAL[1]));
+        }
+        else {
+            expr[i] = select(v_c == 0, forwardStep0(image, i, WAVELET_IMAG[0]),
+                                       forwardStep0(image, i, WAVELET_IMAG[1]));
+        }
+    }
     
-    intermediateOutput(v_x, v_y, v_c, v_i) = select(v_i == 0, expr0[0], expr0[1]);
+    intermediateOutput(v_x, v_y, v_c, v_i) = select(v_i == 0, expr[0],
+                                                    v_i == 1, expr[1],
+                                                    v_i == 2, expr[2],
+                                                              expr[3]);
 
     // Cols
     Func rowsResultTransposed = transpose(intermediateOutput);
-    Expr expr1[2];
-
-    expr1[0] = select(v_c == 0, forwardStep1(rowsResultTransposed, 0, 0, WAVELET_REAL[0]),
-                      v_c == 1, forwardStep1(rowsResultTransposed, 0, 0, WAVELET_REAL[1]),
-                      v_c == 2, forwardStep1(rowsResultTransposed, 1, 0, WAVELET_REAL[0]),
-                                forwardStep1(rowsResultTransposed, 1, 0, WAVELET_REAL[1]));
-
-    expr1[1] = select(v_c == 0, forwardStep1(rowsResultTransposed, 0, 1, WAVELET_IMAG[0]),
-                      v_c == 1, forwardStep1(rowsResultTransposed, 0, 1, WAVELET_IMAG[1]),
-                      v_c == 2, forwardStep1(rowsResultTransposed, 1, 1, WAVELET_IMAG[0]),
-                                forwardStep1(rowsResultTransposed, 1, 1, WAVELET_IMAG[1]));
-
-
+    
+    for(int i = 0; i < 4; i++) {
+        if(i % 2 == 0) {
+            expr[i] = select(v_c == 0, forwardStep1(rowsResultTransposed, 0, i, WAVELET_REAL[0]),
+                             v_c == 1, forwardStep1(rowsResultTransposed, 0, i, WAVELET_REAL[1]),
+                             v_c == 2, forwardStep1(rowsResultTransposed, 1, i, WAVELET_REAL[0]),
+                                       forwardStep1(rowsResultTransposed, 1, i, WAVELET_REAL[1]));
+        }
+        else {
+            expr[i] = select(v_c == 0, forwardStep1(rowsResultTransposed, 0, i, WAVELET_IMAG[0]),
+                             v_c == 1, forwardStep1(rowsResultTransposed, 0, i, WAVELET_IMAG[1]),
+                             v_c == 2, forwardStep1(rowsResultTransposed, 1, i, WAVELET_IMAG[0]),
+                                       forwardStep1(rowsResultTransposed, 1, i, WAVELET_IMAG[1]));
+            
+        }
+    }
+    
     // Oriented wavelets
     Func forwardTmp;
     
-    forwardTmp(v_x, v_y, v_c, v_i) = select(v_i == 0, expr1[0], expr1[1]);
+    forwardTmp(v_x, v_y, v_c, v_i) = select(v_i == 0, expr[0],
+                                            v_i == 1, expr[1],
+                                            v_i == 2, expr[2],
+                                                      expr[3]);
     
     forwardOutput(v_x, v_y, v_c, v_i) = select(v_c == 0, forwardTmp(v_x, v_y, v_c, v_i),
-                                        select(v_i == 0, (forwardTmp(v_x, v_y, v_c, 0) + forwardTmp(v_x, v_y, v_c, 1)) * (float)sqrt(0.5f),
-                                                         (forwardTmp(v_x, v_y, v_c, 0) - forwardTmp(v_x, v_y, v_c, 1)) * (float)sqrt(0.5f)));
+                                        select(v_i == 0, (forwardTmp(v_x, v_y, v_c, 0) + forwardTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f),
+                                               v_i == 1, (forwardTmp(v_x, v_y, v_c, 1) + forwardTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
+                                               v_i == 2, (forwardTmp(v_x, v_y, v_c, 1) - forwardTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
+                                                         (forwardTmp(v_x, v_y, v_c, 0) - forwardTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f)));
 }
 
 void ForwardTransformGenerator::generate() {
@@ -473,14 +506,14 @@ void ForwardTransformGenerator::generate() {
             // Use low pass output from previous level
             in(v_x, v_y, v_i) = output[level - 1](v_x, v_y, 0, v_i);
             
-            clampedIn = BoundaryConditions::repeat_image(in, { {0, width >> level}, {0, height >> level} } );
+            clampedIn = BoundaryConditions::repeat_image(in, { {0, width >> level}, {0, height >> level} });
             
             forward1(forwardOutput, intermediateOutput, clampedIn);
         }
         
         // Set output of level
         output[level] = transpose(forwardOutput);
-                
+
         funcsStage0.push_back(intermediateOutput);
         funcsStage1.push_back(forwardOutput);
     }
@@ -504,7 +537,7 @@ void ForwardTransformGenerator::schedule_for_gpu() {
         if(level < 3) {
             output[level]
                 .compute_root()
-                .bound(v_i, 0, 2)
+                .bound(v_i, 0, 4)
                 .reorder(v_i, v_x, v_y)
                 .tile(v_x, v_y, v_xo, v_yo, v_xi, v_yi, 4, 8)
                 .fuse(v_xo, v_yo, tile_idx)
@@ -539,7 +572,7 @@ void ForwardTransformGenerator::schedule_for_gpu() {
         else {
             output[level]
                 .compute_root()
-                .bound(v_i, 0, 2)
+                .bound(v_i, 0, 4)
                 .reorder(v_i, v_x, v_y)
                 .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
 
@@ -579,7 +612,7 @@ void ForwardTransformGenerator::schedule_for_cpu() {
 
             output[level]
                 .compute_root()
-                .bound(v_i, 0, 2)
+                .bound(v_i, 0, 4)
                 .reorder(v_i, v_x, v_y)
                 .tile(v_x, v_y, v_xo, v_yo, v_xi, v_yi, outerTileX, outerTileY, TailStrategy::GuardWithIf)
                 .fuse(v_xo, v_yo, tile_idx)
@@ -608,7 +641,7 @@ void ForwardTransformGenerator::schedule_for_cpu() {
         else {        
             output[level]
                 .compute_root()
-                .bound(v_i, 0, 2)
+                .bound(v_i, 0, 4)
                 .reorder(v_i, v_x, v_y)
                 .tile(v_x, v_y, v_xo, v_yo, v_xi, v_yi, outerTileX, outerTileY)
                 .fuse(v_xo, v_yo, tile_idx)
@@ -645,9 +678,6 @@ class InverseTransformGenerator : public Generator<InverseTransformGenerator> {
 public:
     Input<Buffer<float>[]> input{"input", 4};
 
-    Input<uint16_t> blackLevel{"blackLevel"};
-    Input<uint16_t> whiteLevel{"whiteLevel"};
-    Input<uint16_t> outputRange{"outputRange"};
     Input<float> noiseSigma{"noiseSigma"};
     Input<bool> softThresholding{"softThresholding"};
 
@@ -684,8 +714,8 @@ public:
     vector<Func> denoisedOutput;
     vector<Func> inverseOutput;
 
-    Func threshold(Func in);
-    
+    void threshold(Expr& outReal, Expr& outImag, Func in, int realIdx, int imagIdx);
+
     void inverseStep(Expr& out0, Expr& out1, Func in, int idx0, int idx1, int idx, const vector<float>& H0, const vector<float>& H1);
     void inverse(Func& inverseOutput, Func& intermediateOutput, Func wavelet, const vector<float> real[2], const vector<float> imag[2]);
 };
@@ -714,7 +744,7 @@ void InverseTransformGenerator::inverse(Func& inverseOutput, Func& intermediateO
     // Transpose for cols
     Func waveletTransposed = transpose(wavelet);
 
-    Expr h[4], g[4];
+    Expr h[2], g[2];
 
     //
     // Cols
@@ -723,61 +753,65 @@ void InverseTransformGenerator::inverse(Func& inverseOutput, Func& intermediateO
     // LL, LH, HL, HH
     // 0   1   2   3
     //
-
-    Expr colsExpr[2];
     
-    inverseStep(h[0], h[1], waveletTransposed, 0, 1, 0, real[0], real[1]);
-    inverseStep(g[0], g[1], waveletTransposed, 2, 3, 0, real[0], real[1]);
+    Expr colsExpr[4];
 
-    inverseStep(h[2], h[3], waveletTransposed, 0, 1, 1, imag[0], imag[1]);
-    inverseStep(g[2], g[3], waveletTransposed, 2, 3, 1, imag[0], imag[1]);
+    for(int i = 0; i < 4; i++) {
+        if(i % 2 == 0) {
+            inverseStep(h[0], h[1], waveletTransposed, 0, 1, i, real[0], real[1]);
+            inverseStep(g[0], g[1], waveletTransposed, 2, 3, i, real[0], real[1]);
+        }
+        else {
+            inverseStep(h[0], h[1], waveletTransposed, 0, 1, i, imag[0], imag[1]);
+            inverseStep(g[0], g[1], waveletTransposed, 2, 3, i, imag[0], imag[1]);
+        }
 
-    colsExpr[0] =  select(v_c == 0, select(v_x % 2 == 0, h[0], h[1]),
-                                    select(v_x % 2 == 0, g[0], g[1]));
+        colsExpr[i] =  select(v_c == 0, select(v_x % 2 == 0, h[0], h[1]),
+                                        select(v_x % 2 == 0, g[0], g[1]));
+    }
 
-    colsExpr[1] =  select(v_c == 0, select(v_x % 2 == 0, h[2], h[3]),
-                                    select(v_x % 2 == 0, g[2], g[3]));
-
-    intermediateOutput(v_x, v_y, v_c, v_i) = select(v_i == 0, colsExpr[0], colsExpr[1]);
-
+    intermediateOutput(v_x, v_y, v_c, v_i) = select(v_i == 0, colsExpr[0],
+                                                    v_i == 1, colsExpr[1],
+                                                    v_i == 2, colsExpr[2],
+                                                              colsExpr[3]);
     intermediateOutput
-        .bound(v_i, 0, 2)
-        .bound(v_c, 0, 2);
+        .bound(v_i, 0, 4)
+        .bound(v_c, 0, 4);
     
     // Transpose for rows
     Func colsResultTransposed = transpose(intermediateOutput);
 
     // Rows
-    Expr rowsExpr[2];
-
-    inverseStep(h[0], h[1], colsResultTransposed, 0, 1, 0, real[0], real[1]);
-    inverseStep(g[0], g[1], colsResultTransposed, 0, 1, 1, imag[0], imag[1]);
-
-    rowsExpr[0] = select(v_x % 2 == 0, h[0], h[1]);
-    rowsExpr[1] = select(v_x % 2 == 0, g[0], g[1]);
+    Expr rowsExpr[4];
     
-    inverseOutput(v_x, v_y, v_i) = select(v_i == 0, rowsExpr[0], rowsExpr[1]);
+    for(int i = 0; i < 4; i++) {
+        if(i < 2) {
+            inverseStep(h[0], h[1], colsResultTransposed, 0, 1, i, real[0], real[1]);
+            rowsExpr[i] = select(v_x % 2 == 0, h[0], h[1]);
+        }
+        else {
+            inverseStep(h[0], h[1], colsResultTransposed, 0, 1, i, imag[0], imag[1]);
+            rowsExpr[i] = select(v_x % 2 == 0, h[0], h[1]);
+        }
+    }
+    
+    inverseOutput(v_x, v_y, v_i) = select(v_i == 0, rowsExpr[0],
+                                          v_i == 1, rowsExpr[1],
+                                          v_i == 2, rowsExpr[2],
+                                                    rowsExpr[3]);
 }
 
-Func InverseTransformGenerator::threshold(Func in) {
-    Expr x = in(v_x, v_y, v_c, v_i);
-    Expr T = denoiseAggressiveness*noiseSigma;
+void InverseTransformGenerator::threshold(Expr& outReal, Expr& outImag, Func in, int realIdx, int imagIdx) {
+    Expr xr = in(v_x, v_y, v_c, realIdx);
+    Expr yi = in(v_x, v_y, v_c, imagIdx);
+    
+    Expr mag = sqrt(xr*xr + yi*yi);
 
-    // Shrink
-    Expr m = abs(x);
-    Expr w = m / (m + T);
+    Expr Y = max(mag - noiseSigma, 0);
+    Expr w = mag / (mag + noiseSigma + 1e-5f);
 
-    Expr wReal = select(v_c > 0, w * x, x);
-
-    // Soft thresholding
-    Expr W = max(x - noiseSigma, 0) + min(x + noiseSigma, 0);
-    Expr sReal = select(v_c > 0, W, x);
-
-    Func result;
-
-    result(v_x, v_y, v_c, v_i) = select(softThresholding, sReal, wReal);
-
-    return result;
+    outReal = select(v_c > 0, select(softThresholding, Y * (xr / mag), w * xr), xr);
+    outImag = select(v_c > 0, select(softThresholding, Y * (yi / mag), w * yi), yi);
 }
 
 void InverseTransformGenerator::generate() {
@@ -788,18 +822,31 @@ void InverseTransformGenerator::generate() {
     // Threshold coefficients
     for(int level = 0; level < levels; level++) {
         Func denoiseTmp;
+        Expr real0, imag0;
+        Expr real1, imag1;
+
         Func spatialDenoise("spatialDenoiseLvl" + std::to_string(level));
 
         Func in = BoundaryConditions::repeat_image(input.at(level));
         Func thresholded, normalized;
 
         normalized(v_x, v_y, v_c, v_i) = in(v_x, v_y, v_c, v_i) / max(numFrames - 1.0f, 1.0f);
-        thresholded = threshold(normalized);
+
+
+        threshold(real0, imag0, normalized, 0, 2);
+        threshold(real1, imag1, normalized, 1, 3);
+
+        denoiseTmp(v_x, v_y, v_c, v_i) = select(v_i == 0, real0,
+                                                v_i == 1, real1,
+                                                v_i == 2, imag0,
+                                                          imag1);
 
         // Oriented wavelets
-        spatialDenoise(v_x, v_y, v_c, v_i) = select(v_c == 0, normalized(v_x, v_y, v_c, v_i),
-                                             select(v_i == 0, (thresholded(v_x, v_y, v_c, 0) + thresholded(v_x, v_y, v_c, 1)) * (float)sqrt(0.5f),
-                                                              (thresholded(v_x, v_y, v_c, 0) - thresholded(v_x, v_y, v_c, 1)) * (float)sqrt(0.5f)));
+        spatialDenoise(v_x, v_y, v_c, v_i) = select(v_c == 0,  denoiseTmp(v_x, v_y, v_c, v_i),
+                                             select(v_i == 0, (denoiseTmp(v_x, v_y, v_c, 0) + denoiseTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f),
+                                                    v_i == 1, (denoiseTmp(v_x, v_y, v_c, 1) + denoiseTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
+                                                    v_i == 2, (denoiseTmp(v_x, v_y, v_c, 1) - denoiseTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
+                                                              (denoiseTmp(v_x, v_y, v_c, 0) - denoiseTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f)));
 
         denoisedOutput.push_back(spatialDenoise);
     }
@@ -824,15 +871,17 @@ void InverseTransformGenerator::generate() {
         else {
             // Use output from previous level
             size_t prevOutputIdx = inverseOutput.size() - 1;
-            Expr inExpr[2];
+            Expr inExpr[4];
             
-            inExpr[0] = select(v_c == 0, inverseOutput[prevOutputIdx](v_x, v_y, 0),
-                                         denoisedOutput[level](v_x, v_y, v_c, 0));
-
-            inExpr[1] = select(v_c == 0, inverseOutput[prevOutputIdx](v_x, v_y, 1),
-                                         denoisedOutput[level](v_x, v_y, v_c, 1));
+            for(int idx = 0; idx < 4; idx++) {
+                inExpr[idx] = select(v_c == 0, inverseOutput[prevOutputIdx](v_x, v_y, idx),
+                                               denoisedOutput[level](v_x, v_y, v_c, idx));
+            }
             
-            inverseInput(v_x, v_y, v_c, v_i) = select(v_i == 0, inExpr[0], inExpr[1]);
+            inverseInput(v_x, v_y, v_c, v_i) = select(v_i == 0, inExpr[0],
+                                                      v_i == 1, inExpr[1],
+                                                      v_i == 2, inExpr[2],
+                                                                inExpr[3]);
         }
         
         Func inverseResult("inverseResultLvl" + std::to_string(level));
@@ -842,13 +891,15 @@ void InverseTransformGenerator::generate() {
         if(level == 0) {
             inverse(inverseResult, intermediateResult, inverseInput, F_WAVELET_REAL, F_WAVELET_IMAG);
             
-            Expr inverseAvg =
-                 (  inverseResult(v_x, v_y, 0) +
-                    inverseResult(v_x, v_y, 1) ) / 2.0f;
+            Func finalResult("finalResult");
 
-            Expr linearOutput = clamp((inverseAvg - blackLevel) / (whiteLevel - blackLevel), 0.0f, 1.0f);
+            finalResult(v_x, v_y) =
+                (inverseResult(v_x, v_y, 0) +
+                 inverseResult(v_x, v_y, 1) +
+                 inverseResult(v_x, v_y, 2) +
+                 inverseResult(v_x, v_y, 3)) / 4.0f;
 
-            output(v_x, v_y) = saturating_cast<uint16_t>(linearOutput * outputRange + 0.5f);
+            output(v_x, v_y) = saturating_cast<uint16_t>(Halide::round(finalResult(v_x, v_y)));
             
             if(get_target().has_gpu_feature()) {
                 output
@@ -905,7 +956,8 @@ void InverseTransformGenerator::generate() {
                     .compute_at(output, subtile_idx)
                     .store_at(output, tile_idx)
                     .unroll(v_c)
-                    .vectorize(v_x, 4);            }
+                    .vectorize(v_x, 4);
+            }
         }
         else {
             inverse(inverseResult, intermediateResult, inverseInput, WAVELET_REAL, WAVELET_IMAG);
@@ -913,7 +965,7 @@ void InverseTransformGenerator::generate() {
             if(get_target().has_gpu_feature()) {
                 inverseResult
                     .compute_root()
-                    .bound(v_i, 0, 2)
+                    .bound(v_i, 0, 4)
                     .reorder(v_i, v_x, v_y)
                     .tile(v_x, v_y, v_xo, v_yo, v_xi, v_yi, 4, 8)
                     .fuse(v_xo, v_yo, tile_idx)
@@ -967,7 +1019,8 @@ void InverseTransformGenerator::generate() {
                     .compute_at(inverseResult, subtile_idx)
                     .store_at(inverseResult, tile_idx)
                     .unroll(v_c)
-                    .vectorize(v_x, 4);            }
+                    .vectorize(v_x, 4);
+            }
         }
         
         inverseOutput.push_back(inverseResult);
@@ -1052,7 +1105,7 @@ void FuseImageGenerator::registeredInput(Func& result) {
     Expr p0 = lerp(inputF32(x, y, v_c), inputF32(x + 1, y, v_c), a);
     Expr p1 = lerp(inputF32(x, y + 1, v_c), inputF32(x + 1, y + 1, v_c), a);
     
-    result(v_x, v_y, v_c) = saturating_cast<uint16_t>(lerp(p0, p1, b));
+    result(v_x, v_y, v_c) = saturating_cast<uint16_t>(lerp(p0, p1, b) + 0.5f);
 }
 
 void FuseImageGenerator::generate() {
@@ -1111,7 +1164,7 @@ void FuseImageGenerator::schedule_for_gpu() {
         output[level]
             .compute_root()
             .reorder(v_i, v_c, v_x, v_y)
-            .bound(v_i, 0, 2)
+            .bound(v_i, 0, 4)
             .unroll(v_i)
             .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 16);
     }
@@ -1131,7 +1184,7 @@ void FuseImageGenerator::schedule_for_cpu() {
         output[level]
             .compute_root()
             .reorder(v_i, v_c, v_x, v_y)
-            .bound(v_i, 0, 2)
+            .bound(v_i, 0, 4)
             .split(v_y, v_yo, v_yi, 16, TailStrategy::GuardWithIf)
             .parallel(v_yo)
             .unroll(v_i)

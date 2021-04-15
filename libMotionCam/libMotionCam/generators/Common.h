@@ -20,8 +20,4 @@ const float YUV_B = 0.114f;
 
 const int TONEMAP_LEVELS = 9;
 
-// Sharpen settings
-const int SHARPEN_FILTER_RADIUS = 3;
-const int DETAIL_FILTER_RADIUS = 31;
-
 #endif // _COMMON_H_

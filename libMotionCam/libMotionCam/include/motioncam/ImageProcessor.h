@@ -41,6 +41,8 @@ namespace motioncam {
                             const std::string& outputPath,
                             const ImageProcessorProgress& progressListener);
 
+        static void process(RawContainer& rawContainer, const std::string& outputPath, const ImageProcessorProgress& progressListener);
+
         static Halide::Runtime::Buffer<uint8_t> createPreview(const RawImageBuffer& rawBuffer,
                                                        const int downscaleFactor,
                                                        const RawCameraMetadata& cameraMetadata,
@@ -69,6 +71,7 @@ namespace motioncam {
         static cv::Mat estimateWhitePoint(const RawImageBuffer& rawBuffer,
                                           const RawCameraMetadata& cameraMetadata,
                                           float shadows,
+                                          float threshold,
                                           float& outWhitePoint);
 
         static double measureSharpness(const RawImageBuffer& rawBuffer);
@@ -87,14 +90,18 @@ namespace motioncam {
                                                      const float scalePreview=1.0f);
         
         static void createSrgbMatrix(const RawCameraMetadata& cameraMetadata,
+                                     const RawImageMetadata& rawImageMetadata,
                                      const Temperature& temperature,
                                      cv::Vec3f& cameraWhite,
-                                     cv::Mat& cameraToSrgb);
+                                     cv::Mat& outCameraToPcs,
+                                     cv::Mat& outPcsToSrgb);
 
         static void createSrgbMatrix(const RawCameraMetadata& cameraMetadata,
+                                     const RawImageMetadata& rawImageMetadata,
                                      const cv::Vec3f& asShot,
                                      cv::Vec3f& cameraWhite,
-                                     cv::Mat& cameraToSrgb);
+                                     cv::Mat& outCameraToPcs,
+                                     cv::Mat& outPcsToSrgb);
 
         static std::vector<Halide::Runtime::Buffer<uint16_t>> denoise(const RawContainer& rawContainer, ImageProgressHelper& progressHelper);
         
@@ -106,8 +113,8 @@ namespace motioncam {
 
         static cv::Mat postProcess(std::vector<Halide::Runtime::Buffer<uint16_t>>& inputBuffers,
                                    const std::shared_ptr<HdrMetadata>& hdrMetadata,
-                                   const int offsetX,
-                                   const int offsetY,
+                                   int offsetX,
+                                   int offsetY,
                                    const RawImageMetadata& metadata,
                                    const RawCameraMetadata& cameraMetadata,
                                    const PostProcessSettings& settings);

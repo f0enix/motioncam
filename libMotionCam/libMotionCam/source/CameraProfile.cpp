@@ -13,18 +13,33 @@ using std::vector;
 
 namespace motioncam {
     
-    CameraProfile::CameraProfile(const RawCameraMetadata& metadata) {
-        cv::Mat calibration1 = metadata.calibrationMatrix1;
-        cv::Mat calibration2 = metadata.calibrationMatrix2;
-        
-        cv::Mat colorMatrix1 = calibration1 * normalizeColorMatrix(metadata.colorMatrix1);
-        cv::Mat colorMatrix2 = calibration2 * normalizeColorMatrix(metadata.colorMatrix2);
+    CameraProfile::CameraProfile(const RawCameraMetadata& cameraMetadata, const RawImageMetadata& imageMetadata) {
+        cv::Mat calibration1 =
+            imageMetadata.calibrationMatrix1.empty() ? cameraMetadata.calibrationMatrix1 : imageMetadata.calibrationMatrix1;
 
-        cv::Mat forwardMatrix1 = normalizeForwardMatrix(metadata.forwardMatrix1);
-        cv::Mat forwardMatrix2 = normalizeForwardMatrix(metadata.forwardMatrix2);
+        cv::Mat calibration2 =
+            imageMetadata.calibrationMatrix2.empty() ? cameraMetadata.calibrationMatrix2 : imageMetadata.calibrationMatrix2;
 
-        float colorTemperature1 = color::IlluminantToTemperature(metadata.colorIlluminant1);
-        float colorTemperature2 = color::IlluminantToTemperature(metadata.colorIlluminant2);
+        //
+
+        cv::Mat colorMatrix1 =
+            calibration1 * normalizeColorMatrix(imageMetadata.colorMatrix1.empty() ? cameraMetadata.colorMatrix1 : imageMetadata.colorMatrix1);
+
+        cv::Mat colorMatrix2 =
+            calibration2 * normalizeColorMatrix(imageMetadata.colorMatrix2.empty() ? cameraMetadata.colorMatrix2 : imageMetadata.colorMatrix2);
+
+        //
+
+        cv::Mat forwardMatrix1 =
+            normalizeForwardMatrix(imageMetadata.forwardMatrix1.empty() ? cameraMetadata.forwardMatrix1 : imageMetadata.forwardMatrix1);
+
+        cv::Mat forwardMatrix2 =
+            normalizeForwardMatrix(imageMetadata.forwardMatrix2.empty() ? cameraMetadata.forwardMatrix2 : imageMetadata.forwardMatrix2);
+
+        //
+
+        float colorTemperature1 = color::IlluminantToTemperature(cameraMetadata.colorIlluminant1);
+        float colorTemperature2 = color::IlluminantToTemperature(cameraMetadata.colorIlluminant2);
 
         if(colorTemperature1 > colorTemperature2) {
             mColorMatrix1 = colorMatrix2;

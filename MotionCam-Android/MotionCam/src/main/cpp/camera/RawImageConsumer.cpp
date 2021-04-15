@@ -40,9 +40,9 @@ namespace motioncam {
 
     RawImageConsumer::RawImageConsumer(std::shared_ptr<CameraDescription> cameraDescription, const size_t maxMemoryUsageBytes) :
         mMaximumMemoryUsageBytes(maxMemoryUsageBytes),
-        mBufferManager(new RawBufferManager()),
         mRunning(false),
         mEnableRawPreview(false),
+        mRawPreviewQuality(4),
         mOverrideWhiteBalance(false),
         mShadows(1.0f),
         mContrast(0.5f),
@@ -51,12 +51,13 @@ namespace motioncam {
         mWhitePoint(1.0f),
         mTempOffset(0.0f),
         mTintOffset(0.0f),
-        mCameraDesc(cameraDescription)
+        mCameraDesc(std::move(cameraDescription))
     {
     }
 
     RawImageConsumer::~RawImageConsumer() {
         stop();
+        RawBufferManager::get().reset();
     }
 
     void RawImageConsumer::start() {
@@ -67,11 +68,7 @@ namespace motioncam {
             return;
         }
 
-        cancelHdrBuffers();
-
         mRunning = true;
-
-        unlockBuffers();
 
         // Start consumer threads
         for(int i = 0; i < COPY_THREADS; i++) {
@@ -94,10 +91,6 @@ namespace motioncam {
         }
 
         mConsumerThreads.clear();
-
-        lockBuffers();
-
-        cancelHdrBuffers();
     }
 
     void RawImageConsumer::queueImage(AImage* image) {
@@ -105,6 +98,8 @@ namespace motioncam {
     }
 
     void RawImageConsumer::queueMetadata(const ACameraMetadata* cameraMetadata, ScreenOrientation screenOrientation, RawType rawType) {
+        using namespace std::chrono;
+
         RawImageMetadata metadata;
 
         if(!copyMetadata(metadata, cameraMetadata)) {
@@ -115,200 +110,24 @@ namespace motioncam {
         // Keep screen orientation and RAW type at time of capture
         metadata.screenOrientation = screenOrientation;
         metadata.rawType = rawType;
+        metadata.recvdTimestampMs = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 
-        {
-            std::lock_guard<std::recursive_mutex> lock(mBufferMutex);
-
-            // Add pending metadata
-            mPendingMetadata.push_back(std::move(metadata));
-        }
+        // Add pending metadata
+        mPendingMetadata.enqueue(std::move(metadata));
     }
 
-    void RawImageConsumer::lockBuffers() {
-        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
+    cv::Mat getColorMatrix(ACameraMetadata_const_entry& entry) {
+        cv::Mat m(3, 3, CV_32F);
 
-        if(mBufferManager) {
-            mBufferManager->lock();
-        }
-    }
+        for(int y = 0; y < 3; y++) {
+            for(int x = 0; x < 3; x++) {
+                int i = y * 3 + x;
 
-    void RawImageConsumer::unlockBuffers() {
-        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
-
-        if(mBufferManager)
-            mBufferManager->unlock();
-    }
-
-    int RawImageConsumer::getHdrBufferCount() {
-        int hdrBufferCount = 0;
-
-        {
-            std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
-            hdrBufferCount = mHdrBuffers.size();
-        }
-
-        return hdrBufferCount;
-    }
-
-    std::vector<std::shared_ptr<RawImageBuffer>> RawImageConsumer::getBuffers() {
-        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
-
-        if(mBufferManager)
-            return mBufferManager->getBuffers();
-
-        return std::vector<std::shared_ptr<RawImageBuffer>>();
-    }
-
-    std::shared_ptr<RawImageBuffer> RawImageConsumer::getBuffer(int64_t timestamp) {
-        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
-
-        if(mBufferManager)
-            return mBufferManager->getBuffer(timestamp);
-
-        return std::shared_ptr<RawImageBuffer>();
-    }
-
-    std::shared_ptr<RawImageBuffer> RawImageConsumer::lockLatest() {
-        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
-
-        if(mBufferManager)
-            return mBufferManager->lockLatest();
-
-        return std::shared_ptr<RawImageBuffer>();
-    }
-
-    void RawImageConsumer::cancelHdrBuffers() {
-        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
-
-        for(auto buffer : mHdrBuffers)
-            mBufferManager->discardBuffer(buffer);
-
-        mHdrBuffers.clear();
-    }
-
-    void RawImageConsumer::save(
-            const RawType rawType,
-            const PostProcessSettings& settings,
-            const std::string& outputPath)
-    {
-        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
-
-        if(mHdrBuffers.empty()) {
-            LOGI("Failed to save, no buffers available");
-            return;
-        }
-
-        std::vector<std::string> frames;
-        std::map<std::string, std::shared_ptr<RawImageBuffer>> frameBuffers;
-
-        auto it = mHdrBuffers.begin();
-        int filenameIdx = 0;
-
-        while(it != mHdrBuffers.end()) {
-            std::string filename = "frame" + std::to_string(filenameIdx) + ".raw";
-
-            frames.push_back(filename);
-            frameBuffers[filename] = *it;
-
-            ++it;
-            ++filenameIdx;
-        }
-
-        // Save all images. Use first buffer as reference timestamp
-        RawContainer rawContainer(mCameraDesc->metadata, settings, mHdrBuffers[0]->metadata.timestampNs, true, false, frames, frameBuffers);
-
-        rawContainer.saveContainer(outputPath);
-
-        // Return HDR buffers
-        cancelHdrBuffers();
-    }
-
-    void RawImageConsumer::save(
-            int64_t referenceTimestamp,
-            int numSaveBuffers,
-            const bool writeDNG,
-            const PostProcessSettings& settings,
-            const std::string& outputPath)
-    {
-        std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
-
-        if(!mBufferManager) {
-            LOGW("Buffer manager does not exist. Can't save!");
-            return;
-        }
-
-        auto buffers = mBufferManager->getBuffers();
-        if(buffers.empty())
-            return;
-
-        std::vector<std::shared_ptr<RawImageBuffer>> images;
-
-        // Find reference frame
-        int referenceIdx = static_cast<int>(buffers.size()) - 1;
-
-        for(int i = 0; i < buffers.size(); i++) {
-            if(buffers[i]->metadata.timestampNs == referenceTimestamp) {
-                referenceIdx = i;
-                images.push_back(buffers[i]);
-                break;
+                m.at<float>(y, x) = (float) entry.data.r[i].numerator / (float) entry.data.r[i].denominator;
             }
         }
 
-        // Update timestamp
-        referenceTimestamp = buffers[referenceIdx]->metadata.timestampNs;
-
-        // Add closest images
-        int leftIdx  = referenceIdx - 1;
-        int rightIdx = referenceIdx + 1;
-
-        while(numSaveBuffers > 0 && (leftIdx > 0 || rightIdx < buffers.size())) {
-            int64_t leftDifference = std::numeric_limits<long>::max();
-            int64_t rightDifference = std::numeric_limits<long>::max();
-
-            if(leftIdx >= 0)
-                leftDifference = std::abs(buffers[leftIdx]->metadata.timestampNs - buffers[referenceIdx]->metadata.timestampNs);
-
-            if(rightIdx < buffers.size())
-                rightDifference = std::abs(buffers[rightIdx]->metadata.timestampNs - buffers[referenceIdx]->metadata.timestampNs);
-
-            // Add closest buffer to reference
-            if(leftDifference < rightDifference) {
-                images.push_back(buffers[leftIdx]);
-                --leftIdx;
-            }
-            else {
-                images.push_back(buffers[rightIdx]);
-                ++rightIdx;
-            }
-
-            --numSaveBuffers;
-        }
-
-        // Construct container and save
-        if(!images.empty()) {
-            std::vector<std::string> frames;
-            std::map<std::string, std::shared_ptr<RawImageBuffer>> frameBuffers;
-
-            auto it = images.begin();
-            int filenameIdx = 0;
-
-            while(it != images.end()) {
-                std::string filename = "frame" + std::to_string(filenameIdx) + ".raw";
-
-                frames.push_back(filename);
-                frameBuffers[filename] = *it;
-
-                ++it;
-                ++filenameIdx;
-            }
-
-            RawContainer rawContainer(mCameraDesc->metadata, settings, referenceTimestamp, false, writeDNG, frames, frameBuffers);
-
-            rawContainer.saveContainer(outputPath);
-        }
-        else {
-            LOGI("Failed to save, no buffers available");
-        }
+        return m;
     }
 
     bool RawImageConsumer::copyMetadata(RawImageMetadata& dst, const ACameraMetadata* src) {
@@ -381,32 +200,63 @@ namespace motioncam {
             return false;
         }
 
+        // ACAMERA_SENSOR_CALIBRATION_TRANSFORM1
+        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_CALIBRATION_TRANSFORM1, &metadataEntry) == ACAMERA_OK) {
+            dst.calibrationMatrix1 = getColorMatrix(metadataEntry);
+        }
+
+        // ACAMERA_SENSOR_CALIBRATION_TRANSFORM2
+        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_CALIBRATION_TRANSFORM2, &metadataEntry) == ACAMERA_OK) {
+            dst.calibrationMatrix2 = getColorMatrix(metadataEntry);
+        }
+
+        // ACAMERA_SENSOR_FORWARD_MATRIX1
+        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_FORWARD_MATRIX1, &metadataEntry) == ACAMERA_OK) {
+            dst.forwardMatrix1 = getColorMatrix(metadataEntry);
+        }
+
+        // ACAMERA_SENSOR_FORWARD_MATRIX2
+        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_FORWARD_MATRIX2, &metadataEntry) == ACAMERA_OK) {
+            dst.forwardMatrix2 = getColorMatrix(metadataEntry);
+        }
+
+        // ACAMERA_SENSOR_COLOR_TRANSFORM1
+        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_COLOR_TRANSFORM1, &metadataEntry) == ACAMERA_OK) {
+            dst.colorMatrix1 = getColorMatrix(metadataEntry);
+        }
+
+        // ACAMERA_SENSOR_COLOR_TRANSFORM2
+        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_COLOR_TRANSFORM2, &metadataEntry) == ACAMERA_OK) {
+            dst.colorMatrix2 = getColorMatrix(metadataEntry);
+        }
+
         return true;
     }
 
     void RawImageConsumer::onBufferReady(const std::shared_ptr<RawImageBuffer>& buffer) {
-        if(buffer->metadata.rawType == RawType::HDR)
-            mHdrBuffers.push_back(buffer);
-        else
-            mBufferManager->returnBuffer(buffer);
+        RawBufferManager::get().enqueueReadyBuffer(buffer);
     }
 
     void RawImageConsumer::doMatchMetadata() {
-        auto it = mPendingMetadata.begin();
+        using namespace std::chrono;
 
-        while(it != mPendingMetadata.end()) {
-            auto pendingBufferIt = mPendingBuffers.find(it->timestampNs);
+        auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+
+        RawImageMetadata metadata;
+
+        std::vector<RawImageMetadata> unmatched;
+
+        while(mPendingMetadata.try_dequeue(metadata)) {
+            auto pendingBufferIt = mPendingBuffers.find(metadata.timestampNs);
 
             // Found a match, set it to the image and remove from pending list
             if(pendingBufferIt != mPendingBuffers.end()) {
                 // Update the metadata of the image
-                pendingBufferIt->second->metadata = *it;
+                pendingBufferIt->second->metadata = metadata;
 
-                // Return buffer once ready
-                if(mEnableRawPreview && pendingBufferIt->second->metadata.rawType == RawType::ZSL) {
-                    if(!mPreprocessQueue.try_push(pendingBufferIt->second)) {
-                        onBufferReady(pendingBufferIt->second);
-                    }
+                // Return buffer to either preprocess queue or normal queue if raw preview is not enabled
+                if(mEnableRawPreview && mPreprocessQueue.size_approx() < 3 && pendingBufferIt->second->metadata.rawType == RawType::ZSL) {
+                    mPreprocessQueue.enqueue(pendingBufferIt->second);
                 }
                 else {
                     onBufferReady(pendingBufferIt->second);
@@ -414,24 +264,24 @@ namespace motioncam {
 
                 // Erase from pending buffer and metadata
                 mPendingBuffers.erase(pendingBufferIt);
-                it = mPendingMetadata.erase(it);
             }
             else {
-                ++it;
+                // If the metadata has not been matched within a reasonable amount of time we can
+                // return it to the queue
+                if(now - metadata.recvdTimestampMs < 5000) {
+                    unmatched.push_back(std::move(metadata));
+                }
+                else {
+                    LOGW("Discarding %ld metadata, too old.", metadata.recvdTimestampMs);
+                }
             }
         }
 
-        // Remove old entries that we never matched to a buffer
-        it = mPendingMetadata.begin();
-
-        while(mPendingMetadata.size() > mBufferManager->numBuffers() * 2) {
-            it = mPendingMetadata.erase(it);
-        }
+        mPendingMetadata.enqueue_bulk(unmatched.begin(), unmatched.size());
     }
 
     void RawImageConsumer::doSetupBuffers(size_t bufferLength) {
-        int memoryUseBytes = mBufferManager->memoryUseBytes();
-        int numBuffers = 0;
+        int memoryUseBytes = RawBufferManager::get().memoryUseBytes();
 
         LOGI("Setting up buffers");
 
@@ -447,8 +297,6 @@ namespace motioncam {
 #endif
 
         while(mRunning && memoryUseBytes + bufferLength < mMaximumMemoryUsageBytes) {
-            std::vector<std::shared_ptr<RawImageBuffer>> buffers;
-
             std::shared_ptr<RawImageBuffer> buffer;
 
 #ifdef GPU_CAMERA_PREVIEW
@@ -456,22 +304,15 @@ namespace motioncam {
 #else
             buffer = std::make_shared<RawImageBuffer>(std::make_unique<NativeHostBuffer>(bufferLength));
 #endif
-            buffers.push_back(buffer);
 
-            // Lock buffer manager and add the buffers
-            {
-                std::lock_guard<std::recursive_mutex> lock(mBufferMutex);
+            RawBufferManager::get().addBuffer(buffer);
 
-                mBufferManager->addBuffers(buffers);
-
-                memoryUseBytes = mBufferManager->memoryUseBytes();
-                numBuffers = mBufferManager->numBuffers();
-            }
+            memoryUseBytes = RawBufferManager::get().memoryUseBytes();
 
             LOGI("Memory use: %d, max: %zu", memoryUseBytes, mMaximumMemoryUsageBytes);
         }
 
-        LOGD("Finished setting up %d buffers", numBuffers);
+        LOGD("Finished setting up %d buffers", RawBufferManager::get().numBuffers());
     }
 
 #ifdef GPU_CAMERA_PREVIEW
@@ -571,11 +412,9 @@ namespace motioncam {
         bool previewSettled = false;
 
         while(mEnableRawPreview) {
-            if(!mPreprocessQueue.try_pop(buffer))
+            if(!mPreprocessQueue.wait_dequeue_timed(buffer, std::chrono::milliseconds(100))) {
                 continue;
-
-            if(!buffer)
-                continue;
+            }
 
             if(!outputCreated) {
                 outputBuffer = createCameraPreviewOutputBuffer(*buffer, downscaleFactor);
@@ -626,10 +465,7 @@ namespace motioncam {
 
             VERIFY_RESULT(CL_release(), "Failed to release CL context");
 
-            {
-                std::lock_guard<std::recursive_mutex> lock(mBufferMutex);
-                onBufferReady(buffer);
-            }
+            onBufferReady(buffer);
 
             processedFrames += 1;
 
@@ -703,8 +539,6 @@ namespace motioncam {
             // Wait for image
             if(!mImageQueue.wait_dequeue_timed(pendingImage, std::chrono::milliseconds(100))) {
                 // Try to match buffers even if no image has been added
-                std::lock_guard<std::recursive_mutex> lock(mBufferMutex);
-
                 doMatchMetadata();
                 continue;
             }
@@ -715,38 +549,34 @@ namespace motioncam {
             std::shared_ptr<RawImageBuffer> dst, previewBuffer;
 
             // Lock and get an image out
-            {
-                std::lock_guard<std::recursive_mutex> lock(mBufferMutex);
+            if(!mSetupBuffersThread) {
+                int length = 0;
+                uint8_t* data = nullptr;
 
-                if(!mSetupBuffersThread) {
-                    int length = 0;
-                    uint8_t* data = nullptr;
-
-                    // Get size of buffer
-                    if(AImage_getPlaneData(pendingImage.get(), 0, &data, &length) != AMEDIA_OK) {
-                        LOGE("Failed to get size of camera buffer!");
-                    }
-                    else {
-                        mSetupBuffersThread = std::make_shared<std::thread>(&RawImageConsumer::doSetupBuffers, this, static_cast<size_t>(length));
-                    }
-
-                    // Give the buffers thread a chance to create some buffers before we try to get one below.
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                // Get size of buffer
+                if(AImage_getPlaneData(pendingImage.get(), 0, &data, &length) != AMEDIA_OK) {
+                    LOGE("Failed to get size of camera buffer!");
+                }
+                else {
+                    mSetupBuffersThread = std::make_shared<std::thread>(&RawImageConsumer::doSetupBuffers, this, static_cast<size_t>(length));
                 }
 
-                dst = mBufferManager->allocateBuffer();
+                // Give the buffers thread a chance to create some buffers before we try to get one below.
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
 
-                // If we aren't able to allocate a buffer something is probably broken. We aren't
-                // matching metadata to buffers so we need to remove a pending buffer
-                if (!dst) {
-                    if (!mPendingBuffers.empty()) {
-                        auto it = mPendingBuffers.begin();
-                        dst = it->second;
+            dst = RawBufferManager::get().dequeueUnusedBuffer();
 
-                        mPendingBuffers.erase(it);
+            // If we aren't able to allocate a buffer something is probably broken. We aren't
+            // matching metadata to buffers so we need to remove a pending buffer
+            if (!dst) {
+                if (!mPendingBuffers.empty()) {
+                    auto it = mPendingBuffers.begin();
+                    dst = it->second;
 
-                        LOGW("Removing pending buffer");
-                    }
+                    mPendingBuffers.erase(it);
+
+                    LOGW("Removing pending buffer");
                 }
             }
 
@@ -827,29 +657,25 @@ namespace motioncam {
             }
 
             // Insert back
-            {
-                std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
-
-                if(!result) {
-                    LOGW("Got error, discarding buffer");
-                    mBufferManager->discardBuffer(dst);
-                }
-                else {
-                    auto imageIt = mPendingBuffers.find(timestamp);
-
-                    if (imageIt != mPendingBuffers.end()) {
-                        LOGW("Pending timestamp already exists!");
-
-                        mBufferManager->discardBuffer(imageIt->second);
-                        mPendingBuffers.erase(imageIt);
-                    }
-
-                    mPendingBuffers.insert(std::make_pair(timestamp, dst));
-                }
-
-                // Match buffers
-                doMatchMetadata();
+            if(!result) {
+                LOGW("Got error, discarding buffer");
+                RawBufferManager::get().discardBuffer(dst);
             }
+            else {
+                auto imageIt = mPendingBuffers.find(timestamp);
+
+                if (imageIt != mPendingBuffers.end()) {
+                    LOGW("Pending timestamp already exists!");
+
+                    RawBufferManager::get().discardBuffer(imageIt->second);
+                    mPendingBuffers.erase(imageIt);
+                }
+
+                mPendingBuffers.insert(std::make_pair(timestamp, dst));
+            }
+
+            // Match buffers
+            doMatchMetadata();
         }
 
         // Clear pending buffers
@@ -861,24 +687,19 @@ namespace motioncam {
         // Stop setup buffers thread and return all pending buffers
         std::shared_ptr<std::thread> bufferThread;
 
-        {
-            std::lock_guard<std::recursive_mutex> guard(mBufferMutex);
-
-            bufferThread = mSetupBuffersThread;
-            mSetupBuffersThread = nullptr;
-
-            // Return all pending buffers
-            auto it = mPendingBuffers.begin();
-            while(it != mPendingBuffers.end()) {
-                mBufferManager->discardBuffer(it->second);
-                ++it;
-            }
-
-            mPendingBuffers.clear();
+        // Return all pending buffers
+        auto it = mPendingBuffers.begin();
+        while(it != mPendingBuffers.end()) {
+            RawBufferManager::get().discardBuffer(it->second);
+            ++it;
         }
 
-        if(bufferThread)
-            bufferThread->join();
+        mPendingBuffers.clear();
+
+        if(mSetupBuffersThread)
+            mSetupBuffersThread->join();
+
+        mSetupBuffersThread = nullptr;
 
         LOGD("Exiting copy thread");
     }

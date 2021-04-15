@@ -10,15 +10,16 @@
 
 #include <motioncam/RawImageMetadata.h>
 
-#include <HalideBuffer.h>
+#ifdef GPU_CAMERA_PREVIEW
+    #include <HalideBuffer.h>
+#endif
+
 #include <queue/blockingconcurrentqueue.h>
-#include <atomic_queue/atomic_queue.h>
 #include <camera/NdkCameraMetadata.h>
 #include <media/NdkImage.h>
 
 namespace motioncam {
     // Forward declarations
-    class RawBufferManager;
     class RawPreviewListener;
 
     struct CameraDescription;
@@ -36,18 +37,6 @@ namespace motioncam {
 
         void queueImage(AImage* image);
         void queueMetadata(const ACameraMetadata* metadata, ScreenOrientation screenOrientation, RawType rawType);
-
-        void save(int64_t referenceTimestamp, int numSaveBuffers, const bool writeDNG, const PostProcessSettings& settings, const std::string& outputPath);
-        void save(const RawType rawType, const PostProcessSettings& settings, const std::string& outputPath);
-
-        void lockBuffers();
-        std::vector<std::shared_ptr<RawImageBuffer>> getBuffers();
-        std::shared_ptr<RawImageBuffer> getBuffer(int64_t timestamp);
-        std::shared_ptr<RawImageBuffer> lockLatest();
-        void unlockBuffers();
-
-        int getHdrBufferCount();
-        void cancelHdrBuffers();
 
         void enableRawPreview(std::shared_ptr<RawPreviewListener> listener, const int previewQuality);
         void updateRawPreviewSettings(
@@ -75,7 +64,6 @@ namespace motioncam {
 
     private:
         size_t mMaximumMemoryUsageBytes;
-        std::unique_ptr<RawBufferManager> mBufferManager;
         std::vector<std::shared_ptr<std::thread>> mConsumerThreads;
         std::shared_ptr<std::thread> mSetupBuffersThread;
         std::shared_ptr<std::thread> mPreprocessThread;
@@ -94,17 +82,13 @@ namespace motioncam {
         std::shared_ptr<CameraDescription> mCameraDesc;
         int mRawPreviewQuality;
 
-        std::recursive_mutex mBufferMutex;
-
         moodycamel::BlockingConcurrentQueue<std::shared_ptr<AImage>> mImageQueue;
-        atomic_queue::AtomicQueue2<std::shared_ptr<RawImageBuffer>, 2> mPreprocessQueue;
+        moodycamel::ConcurrentQueue<RawImageMetadata> mPendingMetadata;
+        moodycamel::BlockingConcurrentQueue<std::shared_ptr<RawImageBuffer>> mPreprocessQueue;
 
-        std::vector<RawImageMetadata> mPendingMetadata;
         std::map<int64_t, std::shared_ptr<RawImageBuffer>> mPendingBuffers;
 
         std::shared_ptr<RawPreviewListener> mPreviewListener;
-
-        std::vector<std::shared_ptr<RawImageBuffer>> mHdrBuffers;
     };
 }
 

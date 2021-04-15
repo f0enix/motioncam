@@ -73,7 +73,7 @@ std::vector<Halide::Runtime::Buffer<float>> createWaveletBuffers(int width, int 
         width = width / 2;
         height = height / 2;
         
-        buffers.emplace_back(width, height, 4, 2);
+        buffers.emplace_back(width, height, 4, 4);
     }
     
     return buffers;
@@ -116,9 +116,6 @@ extern "C" int extern_denoise(halide_buffer_t *in, int32_t width, int32_t height
                           inputBuffers[3],
                           inputBuffers[4],
                           inputBuffers[5],
-                          0,
-                          65535,
-                          65535,
                           weight*noiseSigma,
                           true,
                           1,
@@ -223,8 +220,8 @@ namespace motioncam {
 
     cv::Mat ImageProcessor::postProcess(std::vector<Halide::Runtime::Buffer<uint16_t>>& inputBuffers,
                                         const shared_ptr<HdrMetadata>& hdrMetadata,
-                                        const int offsetX,
-                                        const int offsetY ,
+                                        int offsetX,
+                                        int offsetY,
                                         const RawImageMetadata& metadata,
                                         const RawCameraMetadata& cameraMetadata,
                                         const PostProcessSettings& settings)
@@ -236,25 +233,31 @@ namespace motioncam {
             shadingMapBuffer[i] = ToHalideBuffer<float>(metadata.lensShadingMap[i]);
         }
 
-        cv::Mat cameraToSrgb;
+        cv::Mat cameraToPcs;
+        cv::Mat pcsToSrgb;
         cv::Vec3f cameraWhite;
 
         if(settings.temperature > 0 || settings.tint > 0) {
             Temperature t(settings.temperature, settings.tint);
 
-            createSrgbMatrix(cameraMetadata, t, cameraWhite, cameraToSrgb);
+            createSrgbMatrix(cameraMetadata, metadata, t, cameraWhite, cameraToPcs, pcsToSrgb);
         }
         else {
-            createSrgbMatrix(cameraMetadata, metadata.asShot, cameraWhite, cameraToSrgb);
+            createSrgbMatrix(cameraMetadata, metadata, metadata.asShot, cameraWhite, cameraToPcs, pcsToSrgb);
         }
 
-        Halide::Runtime::Buffer<float> cameraToSrgbBuffer = ToHalideBuffer<float>(cameraToSrgb);
+        Halide::Runtime::Buffer<float> cameraToPcsBuffer = ToHalideBuffer<float>(cameraToPcs);
+        Halide::Runtime::Buffer<float> pcsToSrgbBuffer = ToHalideBuffer<float>(pcsToSrgb);
 
+        // Trim a bit more from the edges to compensate from issues when registering/fusing
+        offsetX += 8;
+        offsetY += 8;
+        
         cv::Mat output((inputBuffers[0].height() - offsetY)*2, (inputBuffers[0].width() - offsetX)*2, CV_8UC3);
         
         Halide::Runtime::Buffer<uint8_t> outputBuffer(
             Halide::Runtime::Buffer<uint8_t>::make_interleaved(output.data, output.cols, output.rows, 3));
-        
+
         // Edges are garbage, don't process them
         outputBuffer.translate(0, offsetX);
         outputBuffer.translate(1, offsetY);
@@ -263,8 +266,6 @@ namespace motioncam {
             inputBuffers[i].set_host_dirty();
             shadingMapBuffer[i].set_host_dirty();
         }
-
-        cameraToSrgbBuffer.set_host_dirty();
         
         Halide::Runtime::Buffer<uint16_t> hdrInput;
         Halide::Runtime::Buffer<uint8_t> hdrMask;
@@ -304,7 +305,8 @@ namespace motioncam {
                     metadata.asShot[0],
                     metadata.asShot[1],
                     metadata.asShot[2],
-                    cameraToSrgbBuffer,
+                    cameraToPcsBuffer,
+                    pcsToSrgbBuffer,
                     shadingMapBuffer[0],
                     shadingMapBuffer[1],
                     shadingMapBuffer[2],
@@ -346,7 +348,7 @@ namespace motioncam {
         
         avgLuminance = std::exp(avgLuminance / (totalPixels + 1));
 
-        return std::min(keyValue / avgLuminance, 16.0f);
+        return std::max(1.0f, std::min(keyValue / avgLuminance, 32.0f));
     }
 
     float ImageProcessor::estimateExposureCompensation(const cv::Mat& histogram) {
@@ -378,7 +380,7 @@ namespace motioncam {
         cv::Mat preview(previewBuffer.height(), previewBuffer.width(), CV_8UC4, previewBuffer.data());
         cv::Mat histogram;
         
-        cv::cvtColor(preview, preview, cv::COLOR_RGBA2GRAY);
+        cv::cvtColor(preview, preview, cv::COLOR_BGRA2GRAY);
 
         vector<cv::Mat> inputImages     = { preview };
         const vector<int> channels      = { 0 };
@@ -395,8 +397,8 @@ namespace motioncam {
         }
         
         // Estimate blacks
-        const float maxDehazePercent = 0.005f; // Max 0.5% pixels
-        const int maxEndBin = 20; // Max bin
+        const float maxDehazePercent = 0.03f; // Max 3% pixels
+        const int maxEndBin = 30; // Max bin
 
         int endBin = 0;
 
@@ -415,6 +417,7 @@ namespace motioncam {
     cv::Mat ImageProcessor::estimateWhitePoint(const RawImageBuffer& rawBuffer,
                                                const RawCameraMetadata& cameraMetadata,
                                                float shadows,
+                                               float threshold,
                                                float& outWhitePoint) {
         PostProcessSettings settings;
         
@@ -425,7 +428,7 @@ namespace motioncam {
         cv::Mat preview(previewBuffer.height(), previewBuffer.width(), CV_8UC4, previewBuffer.data());
         cv::Mat histogram;
         
-        cv::cvtColor(preview, preview, cv::COLOR_RGBA2GRAY);
+        cv::cvtColor(preview, preview, cv::COLOR_BGRA2GRAY);
 
         vector<cv::Mat> inputImages     = { preview };
         const vector<int> channels      = { 0 };
@@ -446,7 +449,7 @@ namespace motioncam {
         for(endBin = histogram.rows - 1; endBin >= 128; endBin--) {
             float binPx = histogram.at<float>(endBin);
 
-            if(binPx < 0.995)
+            if(binPx < 0.997f)
                 break;
         }
 
@@ -464,7 +467,7 @@ namespace motioncam {
         // Start with basic initial values
         PostProcessSettings settings;
         
-        CameraProfile cameraProfile(cameraMetadata);
+        CameraProfile cameraProfile(cameraMetadata, rawBuffer.metadata);
         Temperature temperature;
         
         cameraProfile.temperatureFromVector(rawBuffer.metadata.asShot, temperature);
@@ -484,6 +487,7 @@ namespace motioncam {
         estimateWhitePoint(rawBuffer,
                            cameraMetadata,
                            settings.shadows,
+                           0.97f,
                            settings.whitePoint);
 
         // Update estimated settings
@@ -515,7 +519,7 @@ namespace motioncam {
         PostProcessSettings settings;
         
         // Calculate white balance from metadata
-        CameraProfile cameraProfile(cameraMetadata);
+        CameraProfile cameraProfile(cameraMetadata, rawBuffer.metadata);
         Temperature temperature;
         
         cameraProfile.temperatureFromVector(rawBuffer.metadata.asShot, temperature);
@@ -527,7 +531,7 @@ namespace motioncam {
         settings.shadows        = estimateShadows(histogram);
         settings.exposure       = estimateExposureCompensation(histogram);
         
-        auto preview = estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, settings.whitePoint);
+        auto preview = estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, 0.999f, settings.whitePoint);
         estimateBlacks(rawBuffer, cameraMetadata, settings.shadows, settings.blacks);
         
         //
@@ -579,30 +583,35 @@ namespace motioncam {
     }
 
     void ImageProcessor::createSrgbMatrix(const RawCameraMetadata& cameraMetadata,
+                                          const RawImageMetadata& rawImageMetadata,
                                           const Temperature& temperature,
                                           cv::Vec3f& cameraWhite,
-                                          cv::Mat& cameraToSrgb)
+                                          cv::Mat& outCameraToPcs,
+                                          cv::Mat& outPcsToSrgb)
     {
         cv::Mat pcsToCamera, cameraToPcs;
         cv::Mat pcsToSrgb, srgbToPcs;
         
-        CameraProfile cameraProfile(cameraMetadata);
+        CameraProfile cameraProfile(cameraMetadata, rawImageMetadata);
 
         cameraProfile.cameraToPcs(temperature, pcsToCamera, cameraToPcs, cameraWhite);
         motioncam::CameraProfile::pcsToSrgb(pcsToSrgb, srgbToPcs);
 
-        cameraToSrgb = pcsToSrgb * cameraToPcs;
+        cameraToPcs.copyTo(outCameraToPcs);
+        pcsToSrgb.copyTo(outPcsToSrgb);
     }
 
     void ImageProcessor::createSrgbMatrix(const RawCameraMetadata& cameraMetadata,
+                                          const RawImageMetadata& rawImageMetadata,
                                           const cv::Vec3f& asShot,
                                           cv::Vec3f& cameraWhite,
-                                          cv::Mat& cameraToSrgb)
+                                          cv::Mat& outCameraToPcs,
+                                          cv::Mat& outPcsToSrgb)
     {
         cv::Mat pcsToCamera, cameraToPcs;
         cv::Mat pcsToSrgb, srgbToPcs;
         
-        CameraProfile cameraProfile(cameraMetadata);
+        CameraProfile cameraProfile(cameraMetadata, rawImageMetadata);
         Temperature temperature;
 
         cv::Vec3f asShotVector = asShot;
@@ -622,7 +631,8 @@ namespace motioncam {
         cameraProfile.cameraToPcs(temperature, pcsToCamera, cameraToPcs, cameraWhite);
         motioncam::CameraProfile::pcsToSrgb(pcsToSrgb, srgbToPcs);
 
-        cameraToSrgb = pcsToSrgb * cameraToPcs;
+        cameraToPcs.copyTo(outCameraToPcs);
+        pcsToSrgb.copyTo(outPcsToSrgb);
     }
 
     Halide::Runtime::Buffer<uint8_t> ImageProcessor::createPreview(const RawImageBuffer& rawBuffer,
@@ -636,19 +646,22 @@ namespace motioncam {
             throw InvalidState("Invalid downscale factor");
         }
         
-        cv::Mat cameraToSrgb;
+        cv::Mat cameraToPcs;
+        cv::Mat pcsToSrgb;
         cv::Vec3f cameraWhite;
         
         if(settings.temperature > 0 || settings.tint > 0) {
             Temperature t(settings.temperature, settings.tint);
 
-            createSrgbMatrix(cameraMetadata, t, cameraWhite, cameraToSrgb);
+            createSrgbMatrix(cameraMetadata, rawBuffer.metadata, t, cameraWhite, cameraToPcs, pcsToSrgb);
         }
         else {
-            createSrgbMatrix(cameraMetadata, rawBuffer.metadata.asShot, cameraWhite, cameraToSrgb);
+            createSrgbMatrix(cameraMetadata, rawBuffer.metadata, rawBuffer.metadata.asShot, cameraWhite, cameraToPcs, pcsToSrgb);
         }
 
-        Halide::Runtime::Buffer<float> cameraToSrgbBuffer = ToHalideBuffer<float>(cameraToSrgb);
+        Halide::Runtime::Buffer<float> cameraToPcsBuffer = ToHalideBuffer<float>(cameraToPcs);
+        Halide::Runtime::Buffer<float> pcsToSrgbBuffer = ToHalideBuffer<float>(pcsToSrgb);
+
         Halide::Runtime::Buffer<float> shadingMapBuffer[4];
 
         for(int i = 0; i < 4; i++) {
@@ -710,8 +723,6 @@ namespace motioncam {
         Halide::Runtime::Buffer<uint8_t> outputBuffer =
             Halide::Runtime::Buffer<uint8_t>::make_interleaved(width, height, 4);
         
-        cameraToSrgbBuffer.set_host_dirty();
-
         method(
             inputBufferContext.getHalideBuffer(),
             shadingMapBuffer[0],
@@ -721,7 +732,8 @@ namespace motioncam {
             rawBuffer.metadata.asShot[0],
             rawBuffer.metadata.asShot[1],
             rawBuffer.metadata.asShot[2],
-            cameraToSrgbBuffer,
+            cameraToPcsBuffer,
+            pcsToSrgbBuffer,
             rawBuffer.width / 2 / downscaleFactor,
             rawBuffer.height / 2 / downscaleFactor,
             rawBuffer.rowStride,
@@ -742,6 +754,7 @@ namespace motioncam {
             settings.blueSaturation,
             settings.saturation,
             settings.greenSaturation,
+            settings.sharpen0,
             settings.sharpen1,
             settings.flipped,
             outputBuffer);
@@ -795,7 +808,7 @@ namespace motioncam {
                          scalePreview,
                          rawData->rawBuffer,
                          rawData->previewBuffer);
-        
+                        
         return rawData;
     }
 
@@ -803,11 +816,14 @@ namespace motioncam {
     {
 //        Measure measure("measureImage");
 
-        cv::Mat cameraToSrgb;
+        cv::Mat cameraToPcs;
+        cv::Mat pcsToSrgb;
         cv::Vec3f cameraWhite;
         
-        createSrgbMatrix(cameraMetadata, rawBuffer.metadata.asShot, cameraWhite, cameraToSrgb);
+        createSrgbMatrix(cameraMetadata, rawBuffer.metadata, rawBuffer.metadata.asShot, cameraWhite, cameraToPcs, pcsToSrgb);
 
+        cv::Mat cameraToSrgb = pcsToSrgb * cameraToPcs;
+        
         Halide::Runtime::Buffer<float> cameraToSrgbBuffer = ToHalideBuffer<float>(cameraToSrgb);
         Halide::Runtime::Buffer<float> shadingMapBuffer[4];
 
@@ -924,10 +940,13 @@ namespace motioncam {
         Halide::Runtime::Buffer<uint32_t> histogramBuffer(2u << 7u);
         Halide::Runtime::Buffer<float> shadingMapBuffer[4];
         
-        cv::Mat cameraToSrgb;
+        cv::Mat cameraToPcs;
+        cv::Mat pcsToSrgb;
         cv::Vec3f cameraWhite;
         
-        createSrgbMatrix(cameraMetadata, buffer.metadata.asShot, cameraWhite, cameraToSrgb);
+        createSrgbMatrix(cameraMetadata, buffer.metadata, buffer.metadata.asShot, cameraWhite, cameraToPcs, pcsToSrgb);
+
+        cv::Mat cameraToSrgb = pcsToSrgb * cameraToPcs;
 
         Halide::Runtime::Buffer<float> cameraToSrgbBuffer = ToHalideBuffer<float>(cameraToSrgb);
 
@@ -1004,22 +1023,12 @@ namespace motioncam {
         return exposureScale;
     }
 
-    void ImageProcessor::process(const std::string& inputPath,
-                                 const std::string& outputPath,
-                                 const ImageProcessorProgress& progressListener)
-    {
-        Measure measure("process()");
-
-        // Open RAW container
-        RawContainer rawContainer(inputPath);
-        
-        if(rawContainer.getFrames().empty()) {
-            progressListener.onError("No frames found");
-            return;
-        }
-                                
+    void ImageProcessor::process(RawContainer& rawContainer, const std::string& outputPath, const ImageProcessorProgress& progressListener) {
         // If this is a HDR capture then find the underexposed images.
         std::vector<std::shared_ptr<RawImageBuffer>> underexposedImages;
+        
+        // Started
+        progressListener.onProgressUpdate(0);
         
         if(rawContainer.isHdr()) {
             double maxEv = -1e10;
@@ -1066,23 +1075,24 @@ namespace motioncam {
                         bestSharpness = sharpness;
                         sharpestBuffer = frameName;
                     }
-                    
-                    frame->data->release();
+
+                    if(!rawContainer.isInMemory())
+                        frame->data->release();
                 }
                 
                 rawContainer.updateReferenceImage(sharpestBuffer);
             }
         }
 
-        auto referenceRawBuffer = rawContainer.getFrame(rawContainer.getReferenceImage());
-        
+        auto referenceRawBuffer = rawContainer.loadFrame(rawContainer.getReferenceImage());
+
         //
         // Denoise
         //
         
         ImageProgressHelper progressHelper(progressListener, static_cast<int>(rawContainer.getFrames().size()), 0);
         
-        std::vector<Halide::Runtime::Buffer<uint16_t>> denoiseOutput;        
+        std::vector<Halide::Runtime::Buffer<uint16_t>> denoiseOutput;
         denoiseOutput = denoise(rawContainer, progressHelper);
         
         progressHelper.denoiseCompleted();
@@ -1160,6 +1170,8 @@ namespace motioncam {
 
         cv::Mat outputImage;
         shared_ptr<HdrMetadata> hdrMetadata;
+        shared_ptr<RawImageBuffer> underExposedImage;
+        
         PostProcessSettings settings = rawContainer.getPostProcessSettings();
 
         if(!underexposedImages.empty()) {
@@ -1177,18 +1189,8 @@ namespace motioncam {
 
             // Check if there's any point even using the underexposed image (less than 0.5% in the >95% bins)
             float p = (sum / totalPixels) * 100.0f;
-            if(p < 0.5f) {
+            if(p < 0.1f) {
                 logger::log("Skipping HDR processing (" + std::to_string(p) + ")");
-
-                estimateBlacks(*referenceRawBuffer,
-                               rawContainer.getCameraMetadata(),
-                               settings.shadows,
-                               settings.blacks);
-
-                estimateWhitePoint(*referenceRawBuffer,
-                                   rawContainer.getCameraMetadata(),
-                                   settings.shadows,
-                                   settings.whitePoint);
             }
             // Try each underexposed image
             else {
@@ -1202,17 +1204,8 @@ namespace motioncam {
                     if(hdrMetadata->error < MAX_HDR_ERROR) {
                         // Reduce the shadows if applying HDR to avoid the image looking too flat due to
                         // extreme dynamic range compression
-                        settings.shadows = std::max(0.65f * settings.shadows, 2.0f);
-
-                        estimateBlacks(*referenceRawBuffer,
-                                       rawContainer.getCameraMetadata(),
-                                       settings.shadows,
-                                       settings.blacks);
-
-                        estimateWhitePoint(*(*underexposedFrameIt),
-                                           rawContainer.getCameraMetadata(),
-                                           settings.shadows * (1.0f/hdrMetadata->exposureScale),
-                                           settings.whitePoint);
+                        settings.shadows = std::max(0.85f * settings.shadows, 2.0f);
+                        underExposedImage = *underexposedFrameIt;
 
                         break;
                     }
@@ -1225,7 +1218,34 @@ namespace motioncam {
                 }
             }
         }
-       
+                
+        // Estimate settings if not supplied
+        if(settings.blacks < 0) {
+            estimateBlacks(*referenceRawBuffer,
+                           rawContainer.getCameraMetadata(),
+                           settings.shadows,
+                           settings.blacks);
+            
+            settings.blacks = std::max(0.01f, settings.blacks);
+        }
+
+        if(settings.whitePoint < 0) {
+            if(!underExposedImage) {
+                estimateWhitePoint(*referenceRawBuffer,
+                                   rawContainer.getCameraMetadata(),
+                                   settings.shadows,
+                                   0.999f,
+                                   settings.whitePoint);
+            }
+            else {
+                estimateWhitePoint(*underExposedImage,
+                                   rawContainer.getCameraMetadata(),
+                                   settings.shadows * (1.0f/hdrMetadata->exposureScale),
+                                   0.995f,
+                                   settings.whitePoint);
+            }
+        }
+
         outputImage = postProcess(
             denoiseOutput,
             hdrMetadata,
@@ -1257,6 +1277,23 @@ namespace motioncam {
                         outputPath);
         
         progressHelper.imageSaved();
+    }
+
+    void ImageProcessor::process(const std::string& inputPath,
+                                 const std::string& outputPath,
+                                 const ImageProcessorProgress& progressListener)
+    {
+        Measure measure("process()");
+
+        // Open RAW container
+        RawContainer rawContainer(inputPath);
+        
+        if(rawContainer.getFrames().empty()) {
+            progressListener.onError("No frames found");
+            return;
+        }
+        
+        process(rawContainer, outputPath, progressListener);
     }
     
     void ImageProcessor::addExifMetadata(const RawImageMetadata& metadata,
@@ -1362,11 +1399,14 @@ namespace motioncam {
         
         cv::Mat referenceFlowImage(reference->previewBuffer.height(), reference->previewBuffer.width(), CV_8U, reference->previewBuffer.data());
         Halide::Runtime::Buffer<float> fuseOutput(reference->rawBuffer.width(), reference->rawBuffer.height(), 4);
-
+        
         fuseOutput.fill(0);
         
         auto processFrames = rawContainer.getFrames();
         auto it = processFrames.begin();
+        
+        float motionVectorsWeight = 20*20;
+        float differenceWeight = std::min(31.0f, 0.9042386185f*reference->metadata.exposureTime/(1000.0f*1000.0f) + 0.8587127159f);
         
         while(it != processFrames.end()) {
             if(rawContainer.getReferenceImage() == *it) {
@@ -1386,10 +1426,13 @@ namespace motioncam {
             cv::Ptr<cv::DISOpticalFlow> opticalFlow =
                 cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_ULTRAFAST);
             
+            opticalFlow->setPatchSize(16);
+            opticalFlow->setPatchStride(8);
             opticalFlow->calc(referenceFlowImage, currentFlowImage, flow);
             
             Halide::Runtime::Buffer<float> flowBuffer =
                 Halide::Runtime::Buffer<float>::make_interleaved((float*) flow.data, flow.cols, flow.rows, 2);
+            
                         
             fuse_denoise(reference->rawBuffer,
                          current->rawBuffer,
@@ -1398,7 +1441,8 @@ namespace motioncam {
                          reference->rawBuffer.width(),
                          reference->rawBuffer.height(),
                          rawContainer.getCameraMetadata().whiteLevel,
-                         8,
+                         motionVectorsWeight,
+                         differenceWeight,
                          fuseOutput);
             
             progressHelper.nextFusedImage();
@@ -1425,7 +1469,7 @@ namespace motioncam {
                 float p = fuseOutput(x, y, c) / n - rawContainer.getCameraMetadata().blackLevel[c];
                 float s = EXPANDED_RANGE / (float) (rawContainer.getCameraMetadata().whiteLevel-rawContainer.getCameraMetadata().blackLevel[c]);
                 
-                denoiseInput(x, y, c) = static_cast<uint16_t>( std::max(0.0f, std::min(p * s, (float) EXPANDED_RANGE) )) ;
+                denoiseInput(x, y, c) = static_cast<uint16_t>( std::max(0.0f, std::min(p * s, (float) EXPANDED_RANGE) ) ) ;
             });
         }
         
@@ -1472,13 +1516,10 @@ namespace motioncam {
                               refWavelet[c][3],
                               refWavelet[c][4],
                               refWavelet[c][5],
-                              0,
-                              EXPANDED_RANGE,
-                              EXPANDED_RANGE,
-                              noiseSigma[c],
+                              rawContainer.getPostProcessSettings().spatialDenoiseAggressiveness*noiseSigma[c],
                               false,
                               1,
-                              rawContainer.getPostProcessSettings().spatialDenoiseAggressiveness,
+                              1,
                               outputBuffer);
 
             // Clean up
@@ -1803,18 +1844,7 @@ namespace motioncam {
 
         cv::Mat cameraToSrgb;
         cv::Vec3f cameraWhite;
-        
-        if(settings.temperature > 0 || settings.tint > 0) {
-            Temperature t(settings.temperature, settings.tint);
-
-            createSrgbMatrix(cameraMetadata, t, cameraWhite, cameraToSrgb);
-        }
-        else {
-            createSrgbMatrix(cameraMetadata, underexposed.metadata.asShot, cameraWhite, cameraToSrgb);
-        }
-
-        Halide::Runtime::Buffer<float> cameraToSrgbBuffer = ToHalideBuffer<float>(cameraToSrgb);
-        
+                
         // Warp the underexposed image
         cv::Mat alignedChannels[4];
         Halide::Runtime::Buffer<uint16_t> outputBuffer;
@@ -1836,6 +1866,20 @@ namespace motioncam {
         cv::GaussianBlur(mask, mask, cv::Size(15, 15), -1);
         cv::resize(mask, mask, cv::Size(mask.cols*2, mask.rows*2));
 
+        cv::Mat cameraToPcs;
+        cv::Mat pcsToSrgb;
+        
+        if(settings.temperature > 0 || settings.tint > 0) {
+            Temperature t(settings.temperature, settings.tint);
+
+            createSrgbMatrix(cameraMetadata, underexposed.metadata, t, cameraWhite, cameraToPcs, pcsToSrgb);
+        }
+        else {
+            createSrgbMatrix(cameraMetadata, underexposed.metadata, underexposed.metadata.asShot, cameraWhite, cameraToPcs, pcsToSrgb);
+        }
+
+        Halide::Runtime::Buffer<float> cameraToPcsBuffer = ToHalideBuffer<float>(cameraToPcs);
+
         linear_image(inputBuffers[0],
                     inputBuffers[1],
                     inputBuffers[2],
@@ -1847,7 +1891,7 @@ namespace motioncam {
                     cameraWhite[0],
                     cameraWhite[1],
                     cameraWhite[2],
-                    cameraToSrgbBuffer,
+                    cameraToPcsBuffer,
                     1,
                     inputBuffers[0].width(),
                     inputBuffers[0].height(),
@@ -1869,7 +1913,7 @@ namespace motioncam {
         hdrMetadata->hdrInput       = outputBuffer;
         hdrMetadata->mask           = ToHalideBuffer<uint8_t>(mask).copy();
         hdrMetadata->error          = error;
-        
+                
         return hdrMetadata;
     }
 }

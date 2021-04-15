@@ -146,9 +146,13 @@ public class PostProcessFragment extends Fragment implements
             setPreviewDirty();
         });
 
-        // Detail
-        mViewModel.sharpness.observe(getViewLifecycleOwner(), (value) -> dataBinding.sharpnessText.setText(String.format(Locale.US, "%d%%", mViewModel.sharpness.getValue())));
+        // Sharpness
+        mViewModel.sharpness.observe(getViewLifecycleOwner(), (value) -> {
+            dataBinding.sharpnessText.setText(String.format(Locale.US, "%d%%", mViewModel.sharpness.getValue()));
+            setPreviewDirty();
+        });
 
+        // Detail
         mViewModel.detail.observe(getViewLifecycleOwner(), (value) -> {
             dataBinding.detailText.setText(String.format(Locale.US, "%d%%", mViewModel.detail.getValue()));
             setPreviewDirty();
@@ -262,7 +266,7 @@ public class PostProcessFragment extends Fragment implements
         mViewModel.isFlipped.setValue(cameraFrontFacing);
 
         mNativeCamera = new NativeCameraSessionBridge(nativeCameraHandle);
-        mSelectedCamera = new NativeCameraInfo(cameraId, cameraFrontFacing, false);
+        mSelectedCamera = new NativeCameraInfo(cameraId, cameraFrontFacing, 0, 0);
 
         mNativeCamera.initImageProcessor();
 
@@ -285,6 +289,7 @@ public class PostProcessFragment extends Fragment implements
                 R.id.saturationSeekBar,
                 R.id.greensSaturationSeekBar,
                 R.id.bluesSeekBar,
+                R.id.sharpnessSeekBar,
                 R.id.detailSeekBar,
                 R.id.temperatureSeekBar,
                 R.id.tintSeekBar

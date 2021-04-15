@@ -29,6 +29,8 @@ namespace motioncam {
         const std::vector<uint8_t>& hostData();
         void copyHostData(const std::vector<uint8_t>& other);
 
+        std::unique_ptr<NativeBuffer> clone();
+
         void release();
 
     private:

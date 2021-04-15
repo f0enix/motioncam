@@ -69,7 +69,7 @@ namespace motioncam {
     public:
         CameraSession(
                 std::shared_ptr<CameraSessionListener> listener,
-                const std::shared_ptr<CameraDescription>& cameraDescription,
+                std::shared_ptr<CameraDescription>  cameraDescription,
                 std::shared_ptr<RawImageConsumer> rawImageConsumer);
 
         ~CameraSession();
@@ -141,6 +141,7 @@ namespace motioncam {
         void doOnCameraExposureStatusChanged(int32_t iso, int64_t exposureTime);
         void doCameraAutoExposureStateChanged(CameraExposureState state);
         void doCameraAutoFocusStateChanged(CameraFocusState state);
+        void doOnTriggerAfCompleted();
 
         void doOnInternalError(const std::string& e);
 
@@ -162,7 +163,6 @@ namespace motioncam {
 
     private:
         CameraCaptureSessionState mState;
-        bool mIsPaused;
         CameraMode mMode;
         int32_t mLastIso;
         int64_t mLastExposureTime;
@@ -170,7 +170,7 @@ namespace motioncam {
         CameraExposureState mLastExposureState;
         std::atomic<ScreenOrientation> mScreenOrientation;
         std::atomic<bool> mHdrCaptureInProgress;
-        std::atomic<bool> mHdrCaptureSequenceCompleted;
+        std::atomic<bool> mHdrCaptureSequenceCompleted{};
         std::chrono::steady_clock::time_point mHdrSequenceCompletedTimePoint;
         PostProcessSettings mHdrCaptureSettings;
         std::string mHdrCaptureOutputPath;

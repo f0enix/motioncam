@@ -91,6 +91,16 @@ namespace motioncam {
     void NativeClBuffer::copyHostData(const std::vector<uint8_t>& other) {
     }
 
+    std::unique_ptr<NativeBuffer> NativeClBuffer::clone() {
+        uint8_t* data = lock(false);
+
+        auto result =  std::make_unique<NativeHostBuffer>(data, mBufferLength);
+
+        unlock();
+
+        return result;
+    }
+
     void NativeClBuffer::release() {
         if (mClBuffer) {
             CL_releaseMemObject(mClBuffer);
