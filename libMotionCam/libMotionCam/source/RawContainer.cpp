@@ -42,12 +42,12 @@ namespace motioncam {
     }
 
     cv::Mat RawContainer::toMat3x3(const vector<Json>& array) {
+        if(array.size() < 9)
+            return cv::Mat();
+        
         cv::Mat mat(3, 3, CV_32F);
         cv::setIdentity(mat);
-        
-        if(array.size() < 9)
-            return mat;
-        
+
         auto* data = mat.ptr<float>(0);
 
         data[0] = array[0].number_value();

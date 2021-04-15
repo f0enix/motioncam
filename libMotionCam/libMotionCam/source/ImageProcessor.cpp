@@ -397,8 +397,8 @@ namespace motioncam {
         }
         
         // Estimate blacks
-        const float maxDehazePercent = 0.03f; // Max 3% pixels
-        const int maxEndBin = 30; // Max bin
+        const float maxDehazePercent = 0.035f; // Max 3.5% pixels
+        const int maxEndBin = 20; // Max bin
 
         int endBin = 0;
 
@@ -1669,13 +1669,13 @@ namespace motioncam {
         cv::Mat color1 = cameraMetadata.colorMatrix1;
         cv::Mat color2 = cameraMetadata.colorMatrix2;
         
-        dng_matrix_3by3 dngColor1 = dng_matrix_3by3( color1.at<float>(0, 0), color1.at<float>(0, 1), color1.at<float>(0, 2),
+        dng_matrix_3by3 dngColor1 = dng_matrix_3by3(color1.at<float>(0, 0), color1.at<float>(0, 1), color1.at<float>(0, 2),
                                                     color1.at<float>(1, 0), color1.at<float>(1, 1), color1.at<float>(1, 2),
-                                                    color1.at<float>(2, 0), color1.at<float>(2, 1), color1.at<float>(2, 2) );
+                                                    color1.at<float>(2, 0), color1.at<float>(2, 1), color1.at<float>(2, 2));
         
-        dng_matrix_3by3 dngColor2 = dng_matrix_3by3( color2.at<float>(0, 0), color2.at<float>(0, 1), color2.at<float>(0, 2),
+        dng_matrix_3by3 dngColor2 = dng_matrix_3by3(color2.at<float>(0, 0), color2.at<float>(0, 1), color2.at<float>(0, 2),
                                                     color2.at<float>(1, 0), color2.at<float>(1, 1), color2.at<float>(1, 2),
-                                                    color2.at<float>(2, 0), color2.at<float>(2, 1), color2.at<float>(2, 2) );
+                                                    color2.at<float>(2, 0), color2.at<float>(2, 1), color2.at<float>(2, 2));
         
         cameraProfile->SetColorMatrix1(dngColor1);
         cameraProfile->SetColorMatrix2(dngColor2);
@@ -1684,16 +1684,18 @@ namespace motioncam {
         cv::Mat forward1 = cameraMetadata.forwardMatrix1;
         cv::Mat forward2 = cameraMetadata.forwardMatrix2;
         
-        dng_matrix_3by3 dngForward1 = dng_matrix_3by3( forward1.at<float>(0, 0), forward1.at<float>(0, 1), forward1.at<float>(0, 2),
-                                                       forward1.at<float>(1, 0), forward1.at<float>(1, 1), forward1.at<float>(1, 2),
-                                                       forward1.at<float>(2, 0), forward1.at<float>(2, 1), forward1.at<float>(2, 2) );
-        
-        dng_matrix_3by3 dngForward2 = dng_matrix_3by3( forward2.at<float>(0, 0), forward2.at<float>(0, 1), forward2.at<float>(0, 2),
-                                                       forward2.at<float>(1, 0), forward2.at<float>(1, 1), forward2.at<float>(1, 2),
-                                                       forward2.at<float>(2, 0), forward2.at<float>(2, 1), forward2.at<float>(2, 2) );
-        
-        cameraProfile->SetForwardMatrix1(dngForward1);
-        cameraProfile->SetForwardMatrix2(dngForward2);
+        if(!forward1.empty() && !forward2.empty()) {
+            dng_matrix_3by3 dngForward1 = dng_matrix_3by3( forward1.at<float>(0, 0), forward1.at<float>(0, 1), forward1.at<float>(0, 2),
+                                                           forward1.at<float>(1, 0), forward1.at<float>(1, 1), forward1.at<float>(1, 2),
+                                                           forward1.at<float>(2, 0), forward1.at<float>(2, 1), forward1.at<float>(2, 2) );
+            
+            dng_matrix_3by3 dngForward2 = dng_matrix_3by3( forward2.at<float>(0, 0), forward2.at<float>(0, 1), forward2.at<float>(0, 2),
+                                                           forward2.at<float>(1, 0), forward2.at<float>(1, 1), forward2.at<float>(1, 2),
+                                                           forward2.at<float>(2, 0), forward2.at<float>(2, 1), forward2.at<float>(2, 2) );
+            
+            cameraProfile->SetForwardMatrix1(dngForward1);
+            cameraProfile->SetForwardMatrix2(dngForward2);
+        }
         
         uint32_t illuminant1 = 0;
         uint32_t illuminant2 = 0;

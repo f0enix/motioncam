@@ -20,21 +20,33 @@ namespace motioncam {
         cv::Mat calibration2 =
             imageMetadata.calibrationMatrix2.empty() ? cameraMetadata.calibrationMatrix2 : imageMetadata.calibrationMatrix2;
 
+        if(calibration1.empty())
+            calibration1 = cv::Mat::eye(3, 3, CV_32F);
+
+        if(calibration2.empty())
+            calibration2 = cv::Mat::eye(3, 3, CV_32F);
+
         //
 
         cv::Mat colorMatrix1 =
-            calibration1 * normalizeColorMatrix(imageMetadata.colorMatrix1.empty() ? cameraMetadata.colorMatrix1 : imageMetadata.colorMatrix1);
+            normalizeColorMatrix(imageMetadata.colorMatrix1.empty() ? cameraMetadata.colorMatrix1 : imageMetadata.colorMatrix1);
 
         cv::Mat colorMatrix2 =
-            calibration2 * normalizeColorMatrix(imageMetadata.colorMatrix2.empty() ? cameraMetadata.colorMatrix2 : imageMetadata.colorMatrix2);
+            normalizeColorMatrix(imageMetadata.colorMatrix2.empty() ? cameraMetadata.colorMatrix2 : imageMetadata.colorMatrix2);
 
         //
 
         cv::Mat forwardMatrix1 =
-            normalizeForwardMatrix(imageMetadata.forwardMatrix1.empty() ? cameraMetadata.forwardMatrix1 : imageMetadata.forwardMatrix1);
+            imageMetadata.forwardMatrix1.empty() ? cameraMetadata.forwardMatrix1 : imageMetadata.forwardMatrix1;
 
         cv::Mat forwardMatrix2 =
-            normalizeForwardMatrix(imageMetadata.forwardMatrix2.empty() ? cameraMetadata.forwardMatrix2 : imageMetadata.forwardMatrix2);
+            imageMetadata.forwardMatrix2.empty() ? cameraMetadata.forwardMatrix2 : imageMetadata.forwardMatrix2;
+
+        if(!forwardMatrix1.empty())
+            forwardMatrix1 = normalizeForwardMatrix(forwardMatrix1);
+
+        if(!forwardMatrix2.empty())
+            forwardMatrix2 = normalizeForwardMatrix(forwardMatrix2);
 
         //
 
