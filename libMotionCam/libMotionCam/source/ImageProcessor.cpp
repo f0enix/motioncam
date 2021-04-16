@@ -295,6 +295,15 @@ namespace motioncam {
             hdrInput = Halide::Runtime::Buffer<uint16_t>((uint16_t*) blankInput.data, blankInput.cols, blankInput.rows, 3);
         }
         
+        // Adjust sharpen threshold based
+        double a = 1.8;
+        if(!cameraMetadata.apertures.empty())
+            a = cameraMetadata.apertures[0];
+
+        double s = a*a;
+        double ev = std::log2(s / (metadata.exposureTime / (1.0e9))) - std::log2(metadata.iso / 100.0);
+        double sharpenThreshold = std::max(1.0, 1.5*ev + 8);
+                
         postprocess(inputBuffers[0],
                     inputBuffers[1],
                     inputBuffers[2],
@@ -325,6 +334,7 @@ namespace motioncam {
                     settings.greenSaturation,
                     settings.sharpen0,
                     settings.sharpen1,
+                    sharpenThreshold,
                     settings.chromaEps,
                     outputBuffer);
         
@@ -374,8 +384,13 @@ namespace motioncam {
         PostProcessSettings settings;
         
         settings.shadows = shadows;
+        settings.blacks = 0;
+        settings.contrast = 0.5f;
+        settings.chromaEps = 0;
+        settings.sharpen0 = 3;
+        settings.sharpen1 = 0;
         
-        auto previewBuffer = createPreview(rawBuffer, 4, cameraMetadata, settings);
+        auto previewBuffer = createPreview(rawBuffer, 2, cameraMetadata, settings);
         
         cv::Mat preview(previewBuffer.height(), previewBuffer.width(), CV_8UC4, previewBuffer.data());
         cv::Mat histogram;
@@ -395,10 +410,10 @@ namespace motioncam {
         for(int i = 1; i < histogram.rows; i++) {
             histogram.at<float>(i) += histogram.at<float>(i - 1);
         }
-        
+                
         // Estimate blacks
-        const float maxDehazePercent = 0.035f; // Max 3.5% pixels
-        const int maxEndBin = 20; // Max bin
+        const float maxDehazePercent = 0.05f;
+        const int maxEndBin = 17; // Max bin
 
         int endBin = 0;
 
@@ -417,13 +432,19 @@ namespace motioncam {
     cv::Mat ImageProcessor::estimateWhitePoint(const RawImageBuffer& rawBuffer,
                                                const RawCameraMetadata& cameraMetadata,
                                                float shadows,
+                                               float blacks,
                                                float threshold,
                                                float& outWhitePoint) {
         PostProcessSettings settings;
         
         settings.shadows = shadows;
-        
-        auto previewBuffer = createPreview(rawBuffer, 4, cameraMetadata, settings);
+        settings.blacks = blacks;
+        settings.contrast = 0.5f;
+        settings.chromaEps = 0;
+        settings.sharpen0 = 0;
+        settings.sharpen1 = 0;
+
+        auto previewBuffer = createPreview(rawBuffer, 2, cameraMetadata, settings);
         
         cv::Mat preview(previewBuffer.height(), previewBuffer.width(), CV_8UC4, previewBuffer.data());
         cv::Mat histogram;
@@ -449,7 +470,7 @@ namespace motioncam {
         for(endBin = histogram.rows - 1; endBin >= 128; endBin--) {
             float binPx = histogram.at<float>(endBin);
 
-            if(binPx < 0.997f)
+            if(binPx < threshold)
                 break;
         }
 
@@ -487,6 +508,7 @@ namespace motioncam {
         estimateWhitePoint(rawBuffer,
                            cameraMetadata,
                            settings.shadows,
+                           settings.blacks,
                            0.97f,
                            settings.whitePoint);
 
@@ -530,9 +552,10 @@ namespace motioncam {
         settings.tint           = static_cast<float>(temperature.tint());
         settings.shadows        = estimateShadows(histogram);
         settings.exposure       = estimateExposureCompensation(histogram);
-        
-        auto preview = estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, 0.999f, settings.whitePoint);
+
         estimateBlacks(rawBuffer, cameraMetadata, settings.shadows, settings.blacks);
+
+        auto preview = estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, settings.blacks, 0.999f, settings.whitePoint);
         
         //
         // Scene luminance
@@ -1220,31 +1243,31 @@ namespace motioncam {
         }
                 
         // Estimate settings if not supplied
-        if(settings.blacks < 0) {
+//        if(settings.blacks < 0) {
             estimateBlacks(*referenceRawBuffer,
                            rawContainer.getCameraMetadata(),
                            settings.shadows,
                            settings.blacks);
-            
-            settings.blacks = std::max(0.01f, settings.blacks);
-        }
+//        }
 
-        if(settings.whitePoint < 0) {
+//        if(settings.whitePoint < 0) {
             if(!underExposedImage) {
                 estimateWhitePoint(*referenceRawBuffer,
                                    rawContainer.getCameraMetadata(),
                                    settings.shadows,
-                                   0.999f,
+                                   settings.blacks,
+                                   0.9995f,
                                    settings.whitePoint);
             }
             else {
                 estimateWhitePoint(*underExposedImage,
                                    rawContainer.getCameraMetadata(),
                                    settings.shadows * (1.0f/hdrMetadata->exposureScale),
-                                   0.995f,
+                                   settings.blacks,
+                                   0.9995f,
                                    settings.whitePoint);
             }
-        }
+//        }
 
         outputImage = postProcess(
             denoiseOutput,

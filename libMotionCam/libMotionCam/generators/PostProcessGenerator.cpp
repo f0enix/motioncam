@@ -1547,6 +1547,7 @@ public:
     Input<float> greenSaturation{"greenSaturation"};
     Input<float> sharpen0{"sharpen0"};
     Input<float> sharpen1{"sharpen1"};
+    Input<float> sharpenThreshold{"sharpenThreshold"};    
     Input<float> chromaFilterWeight{"chromaFilterWeight"};
     
     Output<Buffer<uint8_t>> output{"output", 3};
@@ -1599,7 +1600,7 @@ private:
 
 void PostProcessGenerator::sharpen(Func sharpenInputY) {
     blur(blurOutput, blurOutputTmp, sharpenInputY);
-    blur3(blurOutput2, blurOutput2Tmp, blurOutput);
+    blur2(blurOutput2, blurOutput2Tmp, blurOutput);
     
     Func gaussianDiff0{"gaussianDiff0"}, gaussianDiff1{"gaussianDiff1"};
     
@@ -1608,8 +1609,8 @@ void PostProcessGenerator::sharpen(Func sharpenInputY) {
     
     Func m{"m"}, n{"n"};
 
-    m(v_x, v_y) = abs(cast<float>(gaussianDiff0(v_x, v_y)) / 64.0f);
-    n(v_x, v_y) = abs(cast<float>(gaussianDiff1(v_x, v_y)) / 32.0f);
+    m(v_x, v_y) = abs(cast<float>(gaussianDiff0(v_x, v_y)) / sharpenThreshold);
+    n(v_x, v_y) = abs(cast<float>(gaussianDiff1(v_x, v_y)) / sharpenThreshold);
 
     RDom r(-2, 2, -2, 2);
 

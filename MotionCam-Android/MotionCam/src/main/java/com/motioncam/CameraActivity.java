@@ -70,6 +70,7 @@ public class CameraActivity extends AppCompatActivity implements
     private static final int PERMISSION_REQUEST_CODE = 1;
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
     private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 8;
+    private static final float SHADOW_ESTIMATE_BIAS = 16.0f;
     public static final int SHADOW_UPDATE_FREQUENCY_MS = 500;
 
     private enum FocusState {
@@ -134,7 +135,7 @@ public class CameraActivity extends AppCompatActivity implements
                 if(mNativeCamera == null || mPostProcessSettings == null)
                     return;
 
-                float shadows = mNativeCamera.estimateShadows(12.0f);
+                float shadows = mNativeCamera.estimateShadows(SHADOW_ESTIMATE_BIAS);
                 if(shadows <= 0)
                     return;
 
@@ -374,7 +375,7 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.greenSaturation = 1.0f;
         mPostProcessSettings.blueSaturation = 1.0f;
         mPostProcessSettings.sharpen0 = 5.0f;
-        mPostProcessSettings.sharpen1 = 3.0f;
+        mPostProcessSettings.sharpen1 = 4.0f;
         mPostProcessSettings.whitePoint = -1;
         mPostProcessSettings.blacks = -1;
         mPostProcessSettings.tonemapVariance = 0.25f;

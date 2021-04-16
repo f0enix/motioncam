@@ -407,10 +407,10 @@ void ForwardTransformGenerator::forward0(Func& forwardOutput, Func& intermediate
                                                       expr[3]);
     
     forwardOutput(v_x, v_y, v_c, v_i) = select(v_c == 0, forwardTmp(v_x, v_y, v_c, v_i),
-                                        select(v_i == 0, (forwardTmp(v_x, v_y, v_c, 0) + forwardTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f),
-                                               v_i == 1, (forwardTmp(v_x, v_y, v_c, 1) + forwardTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
-                                               v_i == 2, (forwardTmp(v_x, v_y, v_c, 1) - forwardTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
-                                                         (forwardTmp(v_x, v_y, v_c, 0) - forwardTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f)));
+                                        select(v_i == 0, (forwardTmp(v_x, v_y, v_c, 0) + forwardTmp(v_x, v_y, v_c, 3)) * sqrtf(0.5f),
+                                               v_i == 1, (forwardTmp(v_x, v_y, v_c, 1) + forwardTmp(v_x, v_y, v_c, 2)) * sqrtf(0.5f),
+                                               v_i == 2, (forwardTmp(v_x, v_y, v_c, 1) - forwardTmp(v_x, v_y, v_c, 2)) * sqrtf(0.5f),
+                                                         (forwardTmp(v_x, v_y, v_c, 0) - forwardTmp(v_x, v_y, v_c, 3)) * sqrtf(0.5f)));
 }
 
 void ForwardTransformGenerator::forward1(Func& forwardOutput, Func& intermediateOutput, Func image) {
@@ -461,10 +461,10 @@ void ForwardTransformGenerator::forward1(Func& forwardOutput, Func& intermediate
                                                       expr[3]);
     
     forwardOutput(v_x, v_y, v_c, v_i) = select(v_c == 0, forwardTmp(v_x, v_y, v_c, v_i),
-                                        select(v_i == 0, (forwardTmp(v_x, v_y, v_c, 0) + forwardTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f),
-                                               v_i == 1, (forwardTmp(v_x, v_y, v_c, 1) + forwardTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
-                                               v_i == 2, (forwardTmp(v_x, v_y, v_c, 1) - forwardTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
-                                                         (forwardTmp(v_x, v_y, v_c, 0) - forwardTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f)));
+                                        select(v_i == 0, (forwardTmp(v_x, v_y, v_c, 0) + forwardTmp(v_x, v_y, v_c, 3)) * sqrtf(0.5f),
+                                               v_i == 1, (forwardTmp(v_x, v_y, v_c, 1) + forwardTmp(v_x, v_y, v_c, 2)) * sqrtf(0.5f),
+                                               v_i == 2, (forwardTmp(v_x, v_y, v_c, 1) - forwardTmp(v_x, v_y, v_c, 2)) * sqrtf(0.5f),
+                                                         (forwardTmp(v_x, v_y, v_c, 0) - forwardTmp(v_x, v_y, v_c, 3)) * sqrtf(0.5f)));
 }
 
 void ForwardTransformGenerator::generate() {
@@ -843,10 +843,10 @@ void InverseTransformGenerator::generate() {
 
         // Oriented wavelets
         spatialDenoise(v_x, v_y, v_c, v_i) = select(v_c == 0,  denoiseTmp(v_x, v_y, v_c, v_i),
-                                             select(v_i == 0, (denoiseTmp(v_x, v_y, v_c, 0) + denoiseTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f),
-                                                    v_i == 1, (denoiseTmp(v_x, v_y, v_c, 1) + denoiseTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
-                                                    v_i == 2, (denoiseTmp(v_x, v_y, v_c, 1) - denoiseTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
-                                                              (denoiseTmp(v_x, v_y, v_c, 0) - denoiseTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f)));
+                                             select(v_i == 0, (denoiseTmp(v_x, v_y, v_c, 0) + denoiseTmp(v_x, v_y, v_c, 3)) * sqrtf(0.5f),
+                                                    v_i == 1, (denoiseTmp(v_x, v_y, v_c, 1) + denoiseTmp(v_x, v_y, v_c, 2)) * sqrtf(0.5f),
+                                                    v_i == 2, (denoiseTmp(v_x, v_y, v_c, 1) - denoiseTmp(v_x, v_y, v_c, 2)) * sqrtf(0.5f),
+                                                              (denoiseTmp(v_x, v_y, v_c, 0) - denoiseTmp(v_x, v_y, v_c, 3)) * sqrtf(0.5f)));
 
         denoisedOutput.push_back(spatialDenoise);
     }
