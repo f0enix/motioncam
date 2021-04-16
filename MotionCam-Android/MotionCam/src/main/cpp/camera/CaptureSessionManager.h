@@ -38,7 +38,8 @@ namespace motioncam {
         void startCamera(
                 const std::string& cameraId,
                 std::shared_ptr<CameraSessionListener> listener,
-                std::shared_ptr<ANativeWindow> previewOutputWindow);
+                std::shared_ptr<ANativeWindow> previewOutputWindow,
+                bool setupForRawPreview);
         void pauseCamera(bool pause);
         void stopCamera();
 
@@ -49,18 +50,21 @@ namespace motioncam {
         void setFocusPoint(float focusX, float focusY, float exposureX, float exposureY);
         void setAutoFocus();
 
-        void enableRawPreview(std::shared_ptr<RawPreviewListener> listener);
-        void updateRawPreviewSettings(float shadows, float contrast, float saturation, float blacks, float whitePoint);
+        void enableRawPreview(std::shared_ptr<RawPreviewListener> listener, const int previewQuality, bool overrideWb);
+        void updateRawPreviewSettings(
+                float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset);
         void disableRawPreview();
 
         void updateOrientation(ScreenOrientation orientation);
 
-        std::vector<std::shared_ptr<RawImageBuffer>> getBuffers();
-        std::shared_ptr<RawImageBuffer> getBuffer(int64_t timestamp);
-        std::shared_ptr<RawImageBuffer> lockLatest();
-        void lockBuffers();
-        void unlockBuffers();
-        void captureImage(const long handle, const int numSaveImages, const bool writeDNG, const motioncam::PostProcessSettings& settings, const std::string& outputPath);
+        void captureHdrImage(
+            const int numImages,
+            const int baseIso,
+            const int64_t baseExposure,
+            const int hdrIso,
+            const int64_t hdrExposure,
+            const motioncam::PostProcessSettings& settings,
+            const std::string& outputPath);
 
     private:
         static bool isCameraSupported(const CameraDescription& cameraDescription);

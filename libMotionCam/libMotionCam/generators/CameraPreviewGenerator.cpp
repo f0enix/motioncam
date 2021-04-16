@@ -19,12 +19,13 @@ const Expr HALF_YUV_B = cast<float16_t>(0.114f);
 
 class CameraPreviewGenerator : public Halide::Generator<CameraPreviewGenerator> {
 public:
-    GeneratorParam<int> tonemap_levels {"tonemap_levels", 5};
-    GeneratorParam<int> downscaleFactor{"downscaleFactor", 2};
+    GeneratorParam<int> tonemap_levels{"tonemap_levels", 5};
+    GeneratorParam<int> downscale_factor{"downscale_factor", 2};
+    GeneratorParam<int> pixel_format{"pixel_format", 0};
 
     Input<Buffer<uint8_t>> input{"input", 1};
     Input<int> stride{"stride"};
-    Input<int> pixelFormat{"pixelFormat"};
+    Input<float[3]> asShotVector{"asShotVector"};
     Input<Buffer<float>> cameraToSrgb{"cameraToSrgb", 2};
     Input<bool> flipped{"flipped", false};
 
@@ -34,10 +35,7 @@ public:
     Input<int[4]> blackLevel{"blackLevel"};
     Input<int> whiteLevel{"whiteLevel"};
 
-    Input<float[4]> colorCorrectionGains{"colorCorrectionGains"};    
     Input<Buffer<float>[4]> shadingMap{"shadingMap", 2 };
-
-    Input<float[3]> asShotVector{"asShotVector"};
     Input<int> sensorArrangement{"sensorArrangement"};
 
     Input<float> tonemapVariance{"tonemapVariance"};
@@ -111,7 +109,7 @@ void CameraPreviewGenerator::linearScale16(Func& result, Func image, Expr fromWi
 Func CameraPreviewGenerator::downscale(Func f, Func& downx) {
     Func in{"downscaleIn"}, downy{"downy"}, result{"downscaled"};
 
-    const int downscale = downscaleFactor;
+    const int downscale = downscale_factor;
     RDom r(-downscale/2, downscale+1);
 
     in(v_x, v_y, v_c) = cast<float16_t>(f(v_x, v_y, v_c));
@@ -237,42 +235,48 @@ Func CameraPreviewGenerator::tonemap(Func input, Expr gain, Expr gamma, Expr var
     tonemapPyramid = buildPyramid(exposures, tonemap_levels);
     weightsPyramid = buildPyramid(weightsNormalized, tonemap_levels);
 
-    tonemapPyramid[0].first.in(tonemapPyramid[1].first)
-        .compute_at(tonemapPyramid[1].second, v_x)
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .gpu_threads(v_x, v_y);
-    
-    weightsPyramid[0].first.in(weightsPyramid[1].first)
-        .compute_at(weightsPyramid[1].second, v_x)
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .gpu_threads(v_x, v_y);
-
-    for(int level = 1; level < tonemap_levels; level++) {
-        tonemapPyramid[level].first
+    if (get_target().has_gpu_feature()) {
+        tonemapPyramid[0].first.in(tonemapPyramid[1].first)
+            .compute_at(tonemapPyramid[1].second, v_x)
             .reorder(v_c, v_x, v_y)
-            .compute_at(tonemapPyramid[level].second, v_x)
-            .unroll(v_c)
+            .gpu_threads(v_x, v_y);
+        
+        weightsPyramid[0].first.in(weightsPyramid[1].first)
+            .compute_at(weightsPyramid[1].second, v_x)
+            .reorder(v_c, v_x, v_y)
             .gpu_threads(v_x, v_y);
 
-        tonemapPyramid[level].second                
-            .compute_root()
-            .reorder(v_c, v_x, v_y)
-            .unroll(v_c)
-            .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
+        for(int level = 1; level < tonemap_levels; level++) {
+            tonemapPyramid[level].first
+                .reorder(v_c, v_x, v_y)
+                .compute_at(tonemapPyramid[level].second, v_x)
+                .gpu_threads(v_x, v_y);
 
-        weightsPyramid[level].first
-            .reorder(v_c, v_x, v_y)
-            .compute_at(weightsPyramid[level].second, v_x)
-            .unroll(v_c)
-            .gpu_threads(v_x, v_y);
+            tonemapPyramid[level].second                
+                .compute_root()
+                .reorder(v_c, v_x, v_y)
+                .gpu_tile(v_x, v_y, v_xi, v_yi, 4, 4);
 
-        weightsPyramid[level].second
-            .compute_root()
-            .reorder(v_c, v_x, v_y)
-            .unroll(v_c)
-            .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
+            weightsPyramid[level].first
+                .reorder(v_c, v_x, v_y)
+                .compute_at(weightsPyramid[level].second, v_x)
+                .gpu_threads(v_x, v_y);
+
+            weightsPyramid[level].second
+                .compute_root()
+                .reorder(v_c, v_x, v_y)
+                .gpu_tile(v_x, v_y, v_xi, v_yi, 4, 4);
+        }
+    }
+    else {
+        // TODO: Better schedule
+        for(int level = 0; level < tonemap_levels; level++) {
+            tonemapPyramid[level].first.compute_root();
+            tonemapPyramid[level].second.compute_root();
+
+            weightsPyramid[level].first.compute_root();
+            weightsPyramid[level].second.compute_root();
+        }
     }
 
     vector<Func> laplacianPyramid, combinedPyramid;
@@ -291,26 +295,29 @@ Func CameraPreviewGenerator::tonemap(Func input, Expr gain, Expr gamma, Expr var
         laplacian(v_x, v_y, v_c) = tonemapPyramid[level].second(v_x, v_y, v_c) - up(v_x, v_y, v_c);
 
         // Skip first level
-        if(level > 0) {
-            up
-                .reorder(v_c, v_x, v_y)
-                .unroll(v_c)
-                .compute_at(laplacian, v_x)
-                .gpu_threads(v_x, v_y);
+        if (get_target().has_gpu_feature()) {
+            if(level > 0) {
+                up
+                    .reorder(v_c, v_x, v_y)
+                    .compute_at(laplacian, v_x)
+                    .gpu_threads(v_x, v_y);
 
-            upIntermediate
-                .reorder(v_c, v_x, v_y)
-                .unroll(v_c)
-                .compute_at(laplacian, v_x)
-                .gpu_threads(v_x, v_y);
+                upIntermediate
+                    .reorder(v_c, v_x, v_y)
+                    .compute_at(laplacian, v_x)
+                    .gpu_threads(v_x, v_y);
 
-            laplacian
-                .compute_root()
-                .reorder(v_c, v_x, v_y)
-                .unroll(v_c)
-                .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
+                laplacian
+                    .compute_root()
+                    .reorder(v_c, v_x, v_y)
+                    .gpu_tile(v_x, v_y, v_xi, v_yi, 4, 4);
+            }
         }
-        
+        else {
+            // TODO: Better schedule
+            laplacian.compute_root();
+        }
+
         laplacianPyramid.push_back(laplacian);
     }
 
@@ -352,24 +359,30 @@ Func CameraPreviewGenerator::tonemap(Func input, Expr gain, Expr gamma, Expr var
         outputLvl(v_x, v_y, v_c) = combinedPyramid[level - 1](v_x, v_y, v_c) + up(v_x, v_y, v_c);
 
         // Skip last level
-        upIntermediate
-            .reorder(v_c, v_x, v_y)
-            .compute_at(outputLvl, v_x)
-            .unroll(v_c)
-            .gpu_threads(v_x, v_y);
+        if (get_target().has_gpu_feature()) {
+            upIntermediate
+                .reorder(v_c, v_x, v_y)
+                .compute_at(outputLvl, v_x)
+                .unroll(v_c)
+                .gpu_threads(v_x, v_y);
 
-        up
-            .reorder(v_c, v_x, v_y)
-            .compute_at(outputLvl, v_x)
-            .unroll(v_c)
-            .gpu_threads(v_x, v_y);
+            up
+                .reorder(v_c, v_x, v_y)
+                .compute_at(outputLvl, v_x)
+                .unroll(v_c)
+                .gpu_threads(v_x, v_y);
 
-        outputLvl
-            .compute_root()
-            .reorder(v_c, v_x, v_y)
-            .unroll(v_c)
-            .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
-    
+            outputLvl
+                .compute_root()
+                .reorder(v_c, v_x, v_y)
+                .unroll(v_c)
+                .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
+        }
+        else {
+            // TODO: Better schedule
+            outputLvl.compute_root();
+        }
+
         outputPyramid.push_back(outputLvl);
     }
 
@@ -421,44 +434,47 @@ void CameraPreviewGenerator::generate() {
         linearScale16(scaledShadingMap[c], shadingMap[c], shadingMap[c].width(), shadingMap[c].height(), width, height);
     }
 
-    // Fix pink highlights
+    if(pixel_format == static_cast<int>(RawFormat::RAW10)) {
+        Expr C_RAW10[4];
 
-    Expr C_RAW10[4], C_RAW16[4];
+        // RAW10
+        Expr Xc = (v_y<<1) * stride + (v_x>>1) * 5;
+        Expr Yc = ((v_y<<1) + 1) * stride + (v_x>>1) * 5;
 
-    // RAW10
-    Expr Xc = (v_y<<1) * stride + (v_x>>1) * 5;
-    Expr Yc = ((v_y<<1) + 1) * stride + (v_x>>1) * 5;
+        C_RAW10[0] = select( (v_x & 1) == 0,
+                            (inputRepeated(Xc)     << 2) | (inputRepeated(Xc + 4) & 0x03),
+                            (inputRepeated(Xc + 2) << 2) | (inputRepeated(Xc + 4) & 0x30) >> 4);
 
-    C_RAW10[0] = select( (v_x & 1) == 0,
-                        (inputRepeated(Xc)     << 2) | (inputRepeated(Xc + 4) & 0x03),
-                        (inputRepeated(Xc + 2) << 2) | (inputRepeated(Xc + 4) & 0x30) >> 4);
+        C_RAW10[1] = select( (v_x & 1) == 0,
+                            (inputRepeated(Xc + 1) << 2) | (inputRepeated(Xc + 4) & 0x0C) >> 2,
+                            (inputRepeated(Xc + 3) << 2) | (inputRepeated(Xc + 4) & 0xC0) >> 6);
 
-    C_RAW10[1] = select( (v_x & 1) == 0,
-                        (inputRepeated(Xc + 1) << 2) | (inputRepeated(Xc + 4) & 0x0C) >> 2,
-                        (inputRepeated(Xc + 3) << 2) | (inputRepeated(Xc + 4) & 0xC0) >> 6);
+        C_RAW10[2] = select( (v_x & 1) == 0,
+                            (inputRepeated(Yc)     << 2) | (inputRepeated(Yc + 4) & 0x03),
+                            (inputRepeated(Yc + 2) << 2) | (inputRepeated(Yc + 4) & 0x30) >> 4);
 
-    C_RAW10[2] = select( (v_x & 1) == 0,
-                        (inputRepeated(Yc)     << 2) | (inputRepeated(Yc + 4) & 0x03),
-                        (inputRepeated(Yc + 2) << 2) | (inputRepeated(Yc + 4) & 0x30) >> 4);
+        C_RAW10[3] = select( (v_x & 1) == 0,
+                            (inputRepeated(Yc + 1) << 2) | (inputRepeated(Yc + 4) & 0x0C) >> 2,
+                            (inputRepeated(Yc + 3) << 2) | (inputRepeated(Yc + 4) & 0xC0) >> 6);
+        
 
-    C_RAW10[3] = select( (v_x & 1) == 0,
-                        (inputRepeated(Yc + 1) << 2) | (inputRepeated(Yc + 4) & 0x0C) >> 2,
-                        (inputRepeated(Yc + 3) << 2) | (inputRepeated(Yc + 4) & 0xC0) >> 6);
-    
-    // RAW16
-    C_RAW16[0] = cast<uint16_t>(inputRepeated(v_y*2 * stride + v_x*4 + 0)) | cast<uint16_t>(inputRepeated(v_y*2 * stride + v_x*4 + 1) << 8);
-    C_RAW16[1] = cast<uint16_t>(inputRepeated(v_y*2 * stride + v_x*4 + 2)) | cast<uint16_t>(inputRepeated(v_y*2 * stride + v_x*4 + 3) << 8);
-    C_RAW16[2] = cast<uint16_t>(inputRepeated((v_y*2 + 1) * stride + v_x*4 + 0)) | cast<uint16_t>(inputRepeated((v_y*2 + 1) * stride + v_x*4 + 1) << 8);
-    C_RAW16[3] = cast<uint16_t>(inputRepeated((v_y*2 + 1) * stride + v_x*4 + 2)) | cast<uint16_t>(inputRepeated((v_y*2 + 1) * stride + v_x*4 + 3) << 8);
+        rawInput(v_x, v_y, v_c) = mux(v_c, { C_RAW10[0], C_RAW10[1], C_RAW10[2], C_RAW10[3] } );
 
-    Func inRaw10, inRaw16;
+    }
+    else if(pixel_format == static_cast<int>(RawFormat::RAW16)) {
+        Expr C_RAW16[4];
 
-    inRaw10(v_x, v_y, v_c) = mux(v_c, { C_RAW10[0], C_RAW10[1], C_RAW10[2], C_RAW10[3] } );
-    inRaw16(v_x, v_y, v_c) = mux(v_c, { C_RAW16[0], C_RAW16[1], C_RAW16[2], C_RAW16[3] } );
+        // RAW16
+        C_RAW16[0] = cast<uint16_t>(inputRepeated(v_y*2 * stride + v_x*4 + 0)) | cast<uint16_t>(inputRepeated(v_y*2 * stride + v_x*4 + 1) << 8);
+        C_RAW16[1] = cast<uint16_t>(inputRepeated(v_y*2 * stride + v_x*4 + 2)) | cast<uint16_t>(inputRepeated(v_y*2 * stride + v_x*4 + 3) << 8);
+        C_RAW16[2] = cast<uint16_t>(inputRepeated((v_y*2 + 1) * stride + v_x*4 + 0)) | cast<uint16_t>(inputRepeated((v_y*2 + 1) * stride + v_x*4 + 1) << 8);
+        C_RAW16[3] = cast<uint16_t>(inputRepeated((v_y*2 + 1) * stride + v_x*4 + 2)) | cast<uint16_t>(inputRepeated((v_y*2 + 1) * stride + v_x*4 + 3) << 8);
 
-    rawInput(v_x, v_y, v_c) =
-        select( pixelFormat == static_cast<int>(RawFormat::RAW10),  cast<float16_t>(inRaw10(v_x, v_y, v_c)),
-                                                                    cast<float16_t>(inRaw16(v_x, v_y, v_c)));
+        rawInput(v_x, v_y, v_c) = mux(v_c, { C_RAW16[0], C_RAW16[1], C_RAW16[2], C_RAW16[3] } );   
+    }
+    else {
+        throw std::runtime_error("invalid pixel format");
+    }
 
     demosaicInput(v_x, v_y, v_c) =
         select(sensorArrangement == static_cast<int>(SensorArrangement::RGGB),
@@ -511,7 +527,7 @@ void CameraPreviewGenerator::generate() {
     linearFunc.compute_root().unroll(v_c);
 
     linear(v_x, v_y, v_c) = cast<float16_t>(
-        (flippedDownscaled(v_x, v_y, v_c) - blackLevelFunc(v_c)) * shadingMapInput(v_x, v_y, v_c) * linearFunc(v_c));
+        (flippedDownscaled(v_x, v_y, v_c) - blackLevelFunc(v_c)) * linearFunc(v_c) * shadingMapInput(v_x, v_y, v_c));
 
     Func demosaiced;
 
@@ -523,18 +539,20 @@ void CameraPreviewGenerator::generate() {
 
     transform(colorCorrected, demosaiced, cameraToSrgb);
 
-    // Move to YUV space
+    Expr HALF_0_0 = cast<float16_t>(0.0f);
     Expr HALF_0_5 = cast<float16_t>(0.5f);
     Expr HALF_1_0 = cast<float16_t>(1.0f);
     Expr HALF_2_0 = cast<float16_t>(2.0f);
+    Expr HALF_4_0 = cast<float16_t>(4.0f);
 
+    // Move to YUV space
     Expr R = colorCorrected(v_x, v_y, 0);
     Expr G = colorCorrected(v_x, v_y, 1);
     Expr B = colorCorrected(v_x, v_y, 2);
 
     Expr Y = HALF_YUV_R*R + HALF_YUV_G*G + HALF_YUV_B*B;
-    Expr U = HALF_0_5 * (B - Y) / (HALF_1_0 - HALF_YUV_B) * cast<float16_t>(saturation) + HALF_0_5;
-    Expr V = HALF_0_5 * (R - Y) / (HALF_1_0 - HALF_YUV_R) * cast<float16_t>(saturation) + HALF_0_5;
+    Expr U = HALF_0_5 * (B - Y) / (HALF_1_0 - HALF_YUV_B) + HALF_0_5;
+    Expr V = HALF_0_5 * (R - Y) / (HALF_1_0 - HALF_YUV_R) + HALF_0_5;
 
     yuvOutput(v_x, v_y, v_c) = cast<float16_t>(
         select(v_c == 0, Y,
@@ -554,18 +572,28 @@ void CameraPreviewGenerator::generate() {
     R = Y + HALF_2_0*(V - HALF_0_5) * (HALF_1_0 - HALF_YUV_R);
     G = Y - HALF_2_0*(U - HALF_0_5) * (HALF_1_0 - HALF_YUV_B) * HALF_YUV_B / HALF_YUV_G - HALF_2_0*(V - HALF_0_5) * (HALF_1_0 - HALF_YUV_R) * HALF_YUV_R / HALF_YUV_G;
     B = Y + HALF_2_0*(U - HALF_0_5) * (HALF_1_0 - HALF_YUV_B);
-
-    tonemapOutputRgb(v_x, v_y, v_c) =
-        select(v_c == 0, R,
-               v_c == 1, G,
-                         B);
     
+    // Apply saturation in HSL space
+    Expr maxRgb = max(R, G, B);
+    Expr minRgb = min(R, G, B);
+
+    Expr P = (minRgb + maxRgb) / cast<float16_t>(2.0f);
+
+    Expr outR = (R - P) * cast<float16_t>(saturation) + P;
+    Expr outG = (G - P) * cast<float16_t>(saturation) + P;
+    Expr outB = (B - P) * cast<float16_t>(saturation) + P;
+
+    tonemapOutputRgb(v_x, v_y, v_c) = cast<float16_t>(
+        select(v_c == 0, clamp(outR, HALF_0_0, HALF_1_0),
+               v_c == 1, clamp(outG, HALF_0_0, HALF_1_0),
+                         clamp(outB, HALF_0_0, HALF_1_0)));
+
     // Finalize
     Expr b = HALF_2_0 - pow(HALF_2_0, cast<float16_t>(contrast));
     Expr a = HALF_2_0 - HALF_2_0 * b;
 
     // Gamma correct
-    Expr g = pow(v_i / cast<float16_t>(255.0f), HALF_1_0 / cast<float16_t>(gamma));
+    Expr g = pow(tonemapOutputRgb(v_x, v_y, v_c), HALF_1_0 / cast<float16_t>(gamma));
 
     // Apply a piecewise quadratic contrast curve
     Expr h0 = select(g > HALF_0_5,
@@ -575,54 +603,51 @@ void CameraPreviewGenerator::generate() {
     // Apply blacks/white point
     Expr h1 = (h0 - cast<float16_t>(blacks)) / cast<float16_t>(whitePoint);
 
-    gammaContrastLut(v_i) = cast<uint8_t>(clamp(h1 * cast<float16_t>(255) + HALF_0_5, cast<float16_t>(0), cast<float16_t>(255)));
-
-    if(get_target().has_gpu_feature())
-        gammaContrastLut.compute_root().gpu_tile(v_i, v_xi, 8);
-    else
-        gammaContrastLut.compute_root().vectorize(v_i, 8);
-
     output(v_x, v_y, v_c) =
-        select( v_c == 0, gammaContrastLut(saturating_cast<uint8_t>(tonemapOutputRgb(v_x, v_y, 0) * cast<float16_t>(255) + HALF_0_5)),
-                v_c == 1, gammaContrastLut(saturating_cast<uint8_t>(tonemapOutputRgb(v_x, v_y, 1) * cast<float16_t>(255) + HALF_0_5)),
-                v_c == 2, gammaContrastLut(saturating_cast<uint8_t>(tonemapOutputRgb(v_x, v_y, 2) * cast<float16_t>(255) + HALF_0_5)),
-                          255);
+        select(v_c < 3,
+            cast<uint8_t>(clamp(h1 * cast<float16_t>(255) + HALF_0_5, cast<float16_t>(0), cast<float16_t>(255))),
+            255);
 
     // Output interleaved
     output
         .dim(0).set_stride(4)
         .dim(2).set_stride(1);
 
-    demosaicInput
-        .reorder(v_c, v_x, v_y)
-        .compute_at(downscaled, v_x)
-        .vectorize(v_c)
-        .gpu_threads(v_x, v_y);
+    if (get_target().has_gpu_feature()) {
+        rawInput
+            .reorder(v_c, v_x, v_y)
+            .compute_at(downscaled, v_x)            
+            .gpu_threads(v_x, v_y);
 
-    downscaledTemp
-        .reorder(v_c, v_x, v_y)
-        .compute_at(downscaled, v_x)
-        .vectorize(v_c)
-        .gpu_threads(v_x, v_y);
+        downscaledTemp
+            .reorder(v_c, v_x, v_y)
+            .compute_at(downscaled, v_x)
+            .vectorize(v_c)
+            .gpu_threads(v_x, v_y);
 
-    downscaled
-        .compute_root()
-        .reorder(v_c, v_x, v_y)
-        .vectorize(v_c)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 4, 4);
- 
-    yuvOutput
-        .compute_root()
-        .reorder(v_c, v_x, v_y)
-        .vectorize(v_c)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
+        downscaled
+            .compute_root()
+            .reorder(v_c, v_x, v_y)        
+            .gpu_tile(v_x, v_y, v_xi, v_yi, 4, 4);
+     
+        yuvOutput
+            .compute_root()
+            .reorder(v_c, v_x, v_y)
+            .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
 
-    output
-        .bound(v_c, 0, 4)
-        .compute_root()
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
+        output
+            .bound(v_c, 0, 4)
+            .compute_root()
+            .reorder(v_c, v_x, v_y)
+            .unroll(v_c)
+            .gpu_tile(v_x, v_y, v_xi, v_yi, 8, 8);
+    }
+    else {
+        // TODO: Better schedule
+        downscaled.compute_root();
+        yuvOutput.compute_root();
+        output.compute_root();
+    }
 }
 
 HALIDE_REGISTER_GENERATOR(CameraPreviewGenerator, camera_preview_generator)

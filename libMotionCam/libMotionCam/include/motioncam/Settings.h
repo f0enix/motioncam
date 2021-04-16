@@ -37,28 +37,30 @@ namespace motioncam {
         
         int jpegQuality;
         bool flipped;
+        bool overrideWhiteBalance;
 
         PostProcessSettings() :
             spatialDenoiseAggressiveness(1.0f),
             temperature(-1),
             tint(-1),
-            chromaEps(8),
+            chromaEps(0),
             gamma(2.2f),
-            tonemapVariance(0.15f),
+            tonemapVariance(0.25f),
             shadows(1.0f),
             whitePoint(1.0f),
             exposure(0.0f),
             noiseSigma(0.0f),
             sceneLuminance(0.0f),
             contrast(0.5f),
-            sharpen0(2.5f),
-            sharpen1(1.3f),
+            sharpen0(4.0f),
+            sharpen1(3.0f),
             blacks(0.0f),
             saturation(1.0f),
             blueSaturation(1.0f),
             greenSaturation(1.0f),
             jpegQuality(95),
-            flipped(false)
+            flipped(false),
+            overrideWhiteBalance(false)
         {
         }
         
@@ -89,6 +91,7 @@ namespace motioncam {
             
             jpegQuality                     = getSetting(json, "jpegQuality",       jpegQuality);
             flipped                         = getSetting(json, "flipped",       	flipped);
+            overrideWhiteBalance            = getSetting(json, "overrideWhiteBalance", overrideWhiteBalance);
         }
         
         json11::Json toJson() const {
@@ -117,6 +120,7 @@ namespace motioncam {
 
             json["jpegQuality"]                     = jpegQuality;
             json["flipped"]                         = flipped;
+            json["overrideWhiteBalance"]            = overrideWhiteBalance;
             
             return json;
         }

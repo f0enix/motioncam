@@ -3,6 +3,7 @@
 #include <future>
 
 #include <motioncam/ImageProcessor.h>
+#include <motioncam/RawBufferManager.h>
 #include <motioncam/Settings.h>
 #include <motioncam/Exceptions.h>
 #include <motioncam/Logger.h>
@@ -79,12 +80,45 @@ jlong JNICALL Java_com_motioncam_processor_NativeProcessor_CreateProcessor(__unu
 }
 
 extern "C" JNIEXPORT
-jboolean JNICALL Java_com_motioncam_processor_NativeProcessor_ProcessFile(JNIEnv *env,
-                                            __unused jobject instance,
-                                            jlong processorObj,
-                                            jstring inputPath_,
-                                            jstring outputPath_,
-                                            jobject progressListener) {
+jboolean JNICALL Java_com_motioncam_processor_NativeProcessor_ProcessInMemory(
+        JNIEnv *env,
+        __unused jobject instance,
+        jlong processorObj,
+        jstring outputPath_,
+        jobject progressListener)
+{
+    auto* imageProcessor = reinterpret_cast<ImageProcessor*>(processorObj);
+    if(imageProcessor != gProcessorObj.get()) {
+        logger::log("Trying to use mismatched image processor pointer!");
+        return JNI_TRUE;
+    }
+
+    gListener = std::make_shared<ImageProcessListener>(env, progressListener);
+
+    const char *javaOutputPath = env->GetStringUTFChars(outputPath_, nullptr);
+    std::string outputPath(javaOutputPath);
+
+    env->ReleaseStringUTFChars(outputPath_, javaOutputPath);
+
+    auto container = RawBufferManager::get().peekPendingContainer();
+    if(!container)
+        return JNI_FALSE;
+
+    motioncam::ImageProcessor::process(*container, outputPath, *gListener);
+
+    RawBufferManager::get().clearPendingContainer();
+
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT
+jboolean JNICALL Java_com_motioncam_processor_NativeProcessor_ProcessFile(
+    JNIEnv *env,
+    __unused jobject instance,
+    jlong processorObj,
+    jstring inputPath_,
+    jstring outputPath_,
+    jobject progressListener) {
 
     auto* imageProcessor = reinterpret_cast<ImageProcessor*>(processorObj);
     if(imageProcessor != gProcessorObj.get()) {

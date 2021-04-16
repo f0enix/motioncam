@@ -7,6 +7,8 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 
+import com.motioncam.CameraActivity;
+import com.motioncam.DenoiseSettings;
 import com.motioncam.camera.AsyncNativeCameraOps;
 import com.motioncam.camera.NativeCameraBuffer;
 import com.motioncam.camera.NativeCameraInfo;
@@ -23,7 +25,7 @@ public class PostProcessViewModel extends ViewModel {
     public enum SpatialDenoiseAggressiveness {
         OFF(0.0f, 0),
         NORMAL(1.0f, 1),
-        HIGH(2.0f, 2);
+        HIGH(3.0f, 2);
 
         SpatialDenoiseAggressiveness(float weight, int optionValue) {
             mWeight = weight;
@@ -158,7 +160,7 @@ public class PostProcessViewModel extends ViewModel {
     }
 
     public float getDetailSetting() {
-        return 1.0f + getSetting(detail, CameraProfile.DEFAULT_DETAIL) / 50.0f;
+        return 1.0f + getSetting(detail, CameraProfile.DEFAULT_DETAIL) / 25.0f;
     }
 
     public SpatialDenoiseAggressiveness getSpatialDenoiseAggressivenessSetting() {
@@ -173,6 +175,7 @@ public class PostProcessViewModel extends ViewModel {
         SharedPreferences prefs = context.getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
 
         jpegQuality.setValue(prefs.getInt(SettingsViewModel.PREFS_KEY_JPEG_QUALITY, CameraProfile.DEFAULT_JPEG_QUALITY));
+        saveDng.setValue(prefs.getBoolean(SettingsViewModel.PREFS_KEY_SAVE_DNG, false));
     }
 
     public LiveData<PostProcessSettings> estimateSettings(
@@ -202,9 +205,12 @@ public class PostProcessViewModel extends ViewModel {
         final int iso = images.get(0).iso;
         final long shutterSpeed = images.get(0).exposureTime;
 
-        asyncNativeCameraOps.estimateSettings(images.get(0), false, (settings) -> {
+        asyncNativeCameraOps.estimateSettings(false, (settings) -> {
             // Load user settings
             load(context);
+
+            if(settings == null)
+                settings = new PostProcessSettings();
 
             // Set estimated settings to whatever we received
             mEstimatedSettings.setValue(settings.clone());
@@ -235,7 +241,8 @@ public class PostProcessViewModel extends ViewModel {
         whitePoint.setValue(Math.round(-200.0f * settings.whitePoint + 250.0f));
         contrast.setValue(Math.round(settings.contrast * 100));
         blacks.setValue(Math.round(settings.blacks * 400));
-        exposure.setValue(Math.round(settings.exposure * 4 + 16));
+        exposure.setValue(Math.round(settings.exposure * 4 + 16)); // Ignore this for now
+        exposure.setValue(16);
 
         // Saturation
         saturation.setValue(Math.round(settings.saturation * 100) / 2);
@@ -248,44 +255,14 @@ public class PostProcessViewModel extends ViewModel {
 
         // Detail
         sharpness.setValue(Math.round((settings.sharpen0 - 1.0f) * 25.0f));
-        detail.setValue(Math.round((settings.sharpen1 - 1.0f) * 50.0f));
-
-        float noiseSigma = settings.noiseSigma;
-        float sceneLuminance = settings.sceneLuminance;
-
-        // Move into next category if shadows are boosted a lot
-        if(settings.shadows > 7.99)
-            noiseSigma += 2.0f;
+        detail.setValue(Math.round((settings.sharpen1 - 1.0f) * 25.0f));
 
         // Denoise settings
-        PostProcessViewModel.SpatialDenoiseAggressiveness spatialNoise;
+        DenoiseSettings denoiseSettings = new DenoiseSettings(iso, shutterSpeed, settings.shadows);
+        PostProcessViewModel.SpatialDenoiseAggressiveness spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
 
-        if(iso <= 200 && shutterSpeed <= 10000000 && sceneLuminance > 0.25) {
-            numMergeImages.setValue(0);
-            spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
-            chromaEps.setValue(8.0f);
-        }
-        else if (noiseSigma < 4.0f) {
-            numMergeImages.setValue(2);
-            spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
-            chromaEps.setValue(8.0f);
-        }
-        else if (noiseSigma < 6.0f) {
-            numMergeImages.setValue(3);
-            spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
-            chromaEps.setValue(16.0f);
-        }
-        else if (noiseSigma < 8.0f) {
-            numMergeImages.setValue(5);
-            spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
-            chromaEps.setValue(32.0f);
-        }
-        else {
-            numMergeImages.setValue(7);
-            spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
-            chromaEps.setValue(32.0f);
-        }
-
+        numMergeImages.setValue(denoiseSettings.numMergeImages);
+        chromaEps.setValue(denoiseSettings.chromaEps);
         spatialDenoiseAggressiveness.setValue(spatialNoise.getOptionValue());
     }
 

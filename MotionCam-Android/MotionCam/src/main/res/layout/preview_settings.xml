@@ -618,7 +618,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:padding="@dimen/preview_settings_padding"
-                    android:text="Turn this option on to save a DNG file along side the JPEG"
+                    android:text="Save DNG file in addition to the JPEG file. Only the noise reduction settings apply to the DNG image."
                     android:textAppearance="@style/MotionCam.TextAppearance.Small"
                     android:textColor="@color/silver" />
 

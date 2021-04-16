@@ -122,28 +122,64 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="5dp"
-                    android:text="@string/debug_mode"
+                    android:text="@string/dual_exposure"
                     android:textAppearance="@style/MotionCam.TextAppearance.Small.Bold" />
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/debug_mode_help"
+                    android:text="@string/dual_exposure_help"
                     android:textAppearance="@style/MotionCam.TextAppearance.Small"
                     android:textColor="@color/silver" />
 
                 <CheckBox
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/enable_debug_mode"
+                    android:text="@string/enable_dual_exposure"
                     android:textAppearance="@style/MotionCam.TextAppearance.Small"
                     android:textColor="@color/white"
                     android:paddingTop="@dimen/seekBarPadding"
                     android:paddingBottom="@dimen/seekBarPadding"
-                    android:checked="@={viewModel.debugMode}"/>
+                    android:checked="@={viewModel.dualExposureControls}"/>
 
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="5dp"
+                    android:text="@string/camera_preview_quality"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small.Bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/camera_preview_quality_description"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
+                    android:textColor="@color/silver" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/cameraQualityPreviewText"
+                        android:layout_width="@dimen/preview_settings_value_width"
+                        android:layout_height="match_parent"
+                        android:gravity="end|center_vertical"
+                        android:textAppearance="@style/MotionCam.TextAppearance.Small" />
+
+                    <SeekBar
+                        android:id="@+id/cameraQualitySeekBar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="2"
+                        android:paddingTop="@dimen/seekBarPadding"
+                        android:paddingBottom="@dimen/seekBarPadding"
+                        android:theme="@style/Widget.AppCompat.SeekBar.Discrete"
+                        android:progress="@={viewModel.cameraPreviewQuality}" />
+                </LinearLayout>
             </LinearLayout>
-
         </LinearLayout>
     </ScrollView>
 </layout>

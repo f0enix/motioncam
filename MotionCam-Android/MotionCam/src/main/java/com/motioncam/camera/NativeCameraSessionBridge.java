@@ -11,11 +11,6 @@ import com.squareup.moshi.Moshi;
 import java.io.IOException;
 
 public class NativeCameraSessionBridge implements NativeCameraSessionListener, NativeCameraRawPreviewListener {
-    // Load our native camera library
-    static {
-        System.loadLibrary("native-camera");
-    }
-
     public final static long INVALID_NATIVE_HANDLE = -1;
 
     // Camera states
@@ -99,6 +94,9 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         void onCameraExposureStatus(int iso, long exposureTime);
         void onCameraAutoFocusStateChanged(CameraFocusState state);
         void onCameraAutoExposureStateChanged(CameraExposureState state);
+        void onCameraHdrImageCaptureProgress(int progress);
+        void onCameraHdrImageCaptureFailed();
+        void onCameraHdrImageCaptureCompleted();
     }
 
     public interface CameraRawPreviewListener {
@@ -160,10 +158,10 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         return GetSupportedCameras(mNativeCameraHandle);
     }
 
-    public void startCapture(NativeCameraInfo cameraInfo, Surface previewOutput) {
+    public void startCapture(NativeCameraInfo cameraInfo, Surface previewOutput, boolean setupForRawPreview) {
         ensureValidHandle();
 
-        if(!StartCapture(mNativeCameraHandle, cameraInfo.cameraId, previewOutput)) {
+        if(!StartCapture(mNativeCameraHandle, cameraInfo.cameraId, previewOutput, setupForRawPreview)) {
             throw new CameraException(GetLastError());
         }
     }
@@ -238,6 +236,16 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         CaptureImage(mNativeCameraHandle, bufferHandle, numSaveImages, writeDNG, json, outputPath);
     }
 
+    public void captureHdrImage(int numSaveImages, int baseIso, long baseExposure, int hdrIso, long hdrExposure, PostProcessSettings settings, String outputPath) {
+        ensureValidHandle();
+
+        // Serialize settings to json and pass to native code
+        JsonAdapter<PostProcessSettings> jsonAdapter = mJson.adapter(PostProcessSettings.class);
+        String json = jsonAdapter.toJson(settings);
+
+        CaptureHdrImage(mNativeCameraHandle, numSaveImages, baseIso, baseExposure, hdrIso, hdrExposure, json, outputPath);
+    }
+
     public Size getPreviewSize(int downscaleFactor) {
         ensureValidHandle();
 
@@ -262,10 +270,10 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         return GetAvailableImages(mNativeCameraHandle);
     }
 
-    public PostProcessSettings estimatePostProcessSettings(long bufferHandle, boolean basicSettings) throws IOException {
+    public PostProcessSettings estimatePostProcessSettings(boolean basicSettings) throws IOException {
         ensureValidHandle();
 
-        String settingsJson = EstimatePostProcessSettings(mNativeCameraHandle, bufferHandle, basicSettings);
+        String settingsJson = EstimatePostProcessSettings(mNativeCameraHandle, basicSettings);
         if(settingsJson == null) {
             return null;
         }
@@ -274,10 +282,10 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         return jsonAdapter.fromJson(settingsJson);
     }
 
-    public float estimateShadows() {
+    public float estimateShadows(float bias) {
         ensureValidHandle();
 
-        return EstimateShadows(mNativeCameraHandle);
+        return EstimateShadows(mNativeCameraHandle, bias);
     }
 
     public double measureSharpness(long bufferHandle) {
@@ -292,18 +300,19 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         return GetMetadata(mNativeCameraHandle, cameraInfo.cameraId);
     }
 
-    public void enableRawPreview(CameraRawPreviewListener listener) {
+    public void enableRawPreview(CameraRawPreviewListener listener, int previewQuality, boolean overrideWb) {
         ensureValidHandle();
 
         mRawPreviewListener = listener;
 
-        EnableRawPreview(mNativeCameraHandle, this);
+        EnableRawPreview(mNativeCameraHandle, this, previewQuality, overrideWb);
     }
 
-    public void setRawPreviewSettings(float shadows, float contrast, float saturation, float blacks, float whitePoint) {
+    public void setRawPreviewSettings(
+            float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset) {
         ensureValidHandle();
 
-        SetRawPreviewSettings(mNativeCameraHandle, shadows, contrast, saturation, blacks, whitePoint);
+        SetRawPreviewSettings(mNativeCameraHandle, shadows, contrast, saturation, blacks, whitePoint, tempOffset, tintOffset);
     }
 
     public void disableRawPreview() {
@@ -361,6 +370,21 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
     }
 
     @Override
+    public void onCameraHdrImageCaptureFailed() {
+        mListener.onCameraHdrImageCaptureFailed();
+    }
+
+    @Override
+    public void onCameraHdrImageCaptureProgress(int image) {
+        mListener.onCameraHdrImageCaptureProgress(image);
+    }
+
+    @Override
+    public void onCameraHdrImageCaptureCompleted() {
+        mListener.onCameraHdrImageCaptureCompleted();
+    }
+
+    @Override
     public Bitmap onRawPreviewBitmapNeeded(int width, int height) {
         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
 
@@ -392,7 +416,7 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
 
     private native NativeCameraInfo[] GetSupportedCameras(long handle);
 
-    private native boolean StartCapture(long handle, String cameraId, Surface previewSurface);
+    private native boolean StartCapture(long handle, String cameraId, Surface previewSurface, boolean setupForRawPreview);
     private native boolean StopCapture(long handle);
 
     private native boolean PauseCapture(long handle);
@@ -402,8 +426,8 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
     private native boolean SetAutoExposure(long handle);
     private native boolean SetExposureCompensation(long handle, float value);
 
-    private native boolean EnableRawPreview(long handle, NativeCameraRawPreviewListener listener);
-    private native boolean SetRawPreviewSettings(long handle, float shadows, float contrast, float saturation, float blacks, float whitePoint);
+    private native boolean EnableRawPreview(long handle, NativeCameraRawPreviewListener listener, int previewQuality, boolean overrideWb);
+    private native boolean SetRawPreviewSettings(long handle, float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOfset);
     private native boolean DisableRawPreview(long handle);
 
     private native boolean SetFocusPoint(long handle, float focusX, float focusY, float exposureX, float exposureY);
@@ -417,6 +441,7 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
     private native Size GetRawOutputSize(long handle, String cameraId);
     private native Size GetPreviewOutputSize(long handle, String cameraId, Size captureSize, Size displaySize);
     private native boolean CaptureImage(long handle, long bufferHandle, int numSaveImages, boolean writeDNG, String settings, String outputPath);
+    private native boolean CaptureHdrImage(long handle, int numImages, int baseIso, long baseExposure, int hdrIso, long hdrExposure, String settings, String outputPath);
 
     private native NativeCameraBuffer[] GetAvailableImages(long handle);
     private native Size GetPreviewSize(long handle, int downscaleFactor);
@@ -424,6 +449,6 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
 
     private native double MeasureSharpness(long handle, long bufferHandle);
 
-    private native float EstimateShadows(long handle);
-    private native String EstimatePostProcessSettings(long handle, long bufferHandle, boolean basicSettings);
+    private native float EstimateShadows(long handle, float bias);
+    private native String EstimatePostProcessSettings(long bufferHandle, boolean basicSettings);
 }

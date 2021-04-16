@@ -16,6 +16,9 @@ namespace motioncam {
         void onCameraExposureStatus(const int32_t iso, const int64_t exposureTime);
         void onCameraAutoFocusStateChanged(const CameraFocusState state);
         void onCameraAutoExposureStateChanged(const CameraExposureState state);
+        void onCameraHdrImageCaptureProgress(int progress);
+        void onCameraHdrImageCaptureCompleted();
+        void onCameraHdrImageCaptureFailed();
 
     private:
         JavaVM *mJavaVm;

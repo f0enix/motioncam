@@ -461,7 +461,8 @@ namespace motioncam {
     void CaptureSessionManager::startCamera(
             const std::string& cameraId,
             std::shared_ptr<CameraSessionListener> listener,
-            std::shared_ptr<ANativeWindow> previewOutputWindow)
+            std::shared_ptr<ANativeWindow> previewOutputWindow,
+            bool setupForRawPreview)
     {
         OutputConfiguration outputConfig;
 
@@ -487,7 +488,7 @@ namespace motioncam {
         LOGI("Opening camera %s", cameraId.c_str());
 
         mCameraSession = std::make_shared<CameraSession>(listener, cameraDesc, mImageConsumer);
-        mCameraSession->openCamera(outputConfig, mCameraManager, std::move(previewOutputWindow));
+        mCameraSession->openCamera(outputConfig, mCameraManager, std::move(previewOutputWindow), setupForRawPreview);
     }
 
     void CaptureSessionManager::stopCamera() {
@@ -506,46 +507,17 @@ namespace motioncam {
         }
     }
 
-    std::vector<std::shared_ptr<RawImageBuffer>> CaptureSessionManager::getBuffers() {
-        if(mImageConsumer)
-            return mImageConsumer->getBuffers();
-
-        return std::vector<std::shared_ptr<RawImageBuffer>>();
-    }
-
-    std::shared_ptr<RawImageBuffer> CaptureSessionManager::getBuffer(int64_t timestamp) {
-        if(mImageConsumer)
-            return mImageConsumer->getBuffer(timestamp);
-
-        return nullptr;
-    }
-
-    std::shared_ptr<RawImageBuffer> CaptureSessionManager::lockLatest() {
-        if(mImageConsumer)
-            return mImageConsumer->lockLatest();
-
-        return nullptr;
-    }
-
-    void CaptureSessionManager::lockBuffers() {
-        if(mImageConsumer)
-            mImageConsumer->lockBuffers();
-    }
-
-    void CaptureSessionManager::unlockBuffers() {
-        if(mImageConsumer)
-            mImageConsumer->unlockBuffers();
-    }
-
-    void CaptureSessionManager::captureImage(
-            const long handle,
-            const int numSaveImages,
-            const bool writeDNG,
+    void CaptureSessionManager::captureHdrImage(
+            const int numImages,
+            const int baseIso,
+            const int64_t baseExposure,
+            const int hdrIso,
+            const int64_t hdrExposure,
             const motioncam::PostProcessSettings& settings,
-            const std::string &outputPath)
+            const std::string& outputPath)
     {
-        if(mImageConsumer)
-            mImageConsumer->save(handle, numSaveImages, writeDNG, settings, outputPath);
+        if(mCameraSession)
+            mCameraSession->captureHdr(numImages, baseIso, baseExposure, hdrIso, hdrExposure, settings, outputPath);
     }
 
     void CaptureSessionManager::setManualExposure(int32_t iso, int64_t exposureTime) {
@@ -563,14 +535,17 @@ namespace motioncam {
             mCameraSession->setExposureCompensation(value);
     }
 
-    void CaptureSessionManager::enableRawPreview(std::shared_ptr<RawPreviewListener> listener) {
-        if(mImageConsumer)
-            mImageConsumer->enableRawPreview(std::move(listener));
+    void CaptureSessionManager::enableRawPreview(std::shared_ptr<RawPreviewListener> listener, const int previewQuality, bool overrideWb) {
+        if(mImageConsumer) {
+            mImageConsumer->enableRawPreview(std::move(listener), previewQuality);
+        }
     }
 
-    void CaptureSessionManager::updateRawPreviewSettings(float shadows, float contrast, float saturation, float blacks, float whitePoint) {
+    void CaptureSessionManager::updateRawPreviewSettings(
+            float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset)
+    {
         if(mImageConsumer)
-            mImageConsumer->updateRawPreviewSettings(shadows, contrast, saturation, blacks, whitePoint);
+            mImageConsumer->updateRawPreviewSettings(shadows, contrast, saturation, blacks, whitePoint, tempOffset, tintOffset);
     }
 
     void CaptureSessionManager::disableRawPreview() {

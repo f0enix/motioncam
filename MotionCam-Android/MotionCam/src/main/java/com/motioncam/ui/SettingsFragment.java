@@ -34,6 +34,25 @@ public class SettingsFragment extends Fragment {
         });
 
         mViewModel.jpegQuality.observe(getViewLifecycleOwner(), (value) -> dataBinding.jpegQualityText.setText(String.format(Locale.US, "%d%%", value)));
+        mViewModel.cameraPreviewQuality.observe(getViewLifecycleOwner(), (value) -> {
+            switch(value) {
+                case 0:
+                    dataBinding.cameraQualityPreviewText.setText(String.format(Locale.US, "Low"));
+                    break;
+
+                case 1:
+                    dataBinding.cameraQualityPreviewText.setText(String.format(Locale.US, "Medium"));
+                    break;
+
+                case 2:
+                    dataBinding.cameraQualityPreviewText.setText(String.format(Locale.US, "High"));
+                    break;
+            }
+        });
+
+        mViewModel.dualExposureControls.observe(getViewLifecycleOwner(), (value) -> {
+            dataBinding.cameraQualitySeekBar.setEnabled(value);
+        });
     }
 
     @Nullable

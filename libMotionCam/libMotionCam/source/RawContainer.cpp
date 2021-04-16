@@ -42,12 +42,12 @@ namespace motioncam {
     }
 
     cv::Mat RawContainer::toMat3x3(const vector<Json>& array) {
+        if(array.size() < 9)
+            return cv::Mat();
+        
         cv::Mat mat(3, 3, CV_32F);
         cv::setIdentity(mat);
-        
-        if(array.size() < 9)
-            return mat;
-        
+
         auto* data = mat.ptr<float>(0);
 
         data[0] = array[0].number_value();
@@ -157,34 +157,92 @@ namespace motioncam {
     RawContainer::RawContainer(const string& inputPath) :
         mZipReader(new util::ZipReader(inputPath)),
         mReferenceTimestamp(-1),
-        mWriteDNG(false)
+        mWriteDNG(false),
+        mIsHdr(false)
     {
         initialise();
     }
 
-    RawContainer::RawContainer(RawCameraMetadata cameraMetadata,
+    RawContainer::RawContainer(RawCameraMetadata& cameraMetadata,
                                const PostProcessSettings& postProcessSettings,
                                const int64_t referenceTimestamp,
+                               const bool isHdr,
                                const bool writeDNG,
-                               std::vector<string> frames,
-                               std::map<string, std::shared_ptr<RawImageBuffer>>  frameBuffers) :
-        mCameraMetadata(std::move(cameraMetadata)),
+                               const std::map<string, std::shared_ptr<RawImageBuffer>>& frameBuffers) :
+        mCameraMetadata(cameraMetadata),
         mPostProcessSettings(postProcessSettings),
         mReferenceTimestamp(referenceTimestamp),
+        mIsHdr(isHdr),
         mWriteDNG(writeDNG),
-        mFrames(std::move(frames)),
-        mFrameBuffers(std::move(frameBuffers))
+        mIsInMemory(true)
     {
+        if(frameBuffers.empty()) {
+            throw InvalidState("No frames");
+        }
+
+        // Clone buffers
+        for(const auto& p : frameBuffers) {
+            mFrameBuffers[p.first] = std::make_shared<RawImageBuffer>(*p.second);
+            mFrames.push_back(p.first);
+            
+            if(p.second->metadata.timestampNs == referenceTimestamp) {
+                mReferenceImage = p.first;
+            }
+        }
+        
+        if(mReferenceImage.empty()) {
+            mReferenceImage = mFrameBuffers.begin()->first;
+            mReferenceTimestamp = mFrameBuffers.begin()->second->metadata.timestampNs;
+        }
+    }
+
+    RawContainer::RawContainer(RawCameraMetadata& cameraMetadata,
+                               const PostProcessSettings& postProcessSettings,
+                               const int64_t referenceTimestamp,
+                               const bool isHdr,
+                               const bool writeDNG,
+                               std::map<string, std::shared_ptr<RawImageBuffer>>&& frameBuffers,
+                               std::unique_ptr<RawBufferManager::LockedBuffers>&& lockedBuffers) :
+        mCameraMetadata(cameraMetadata),
+        mPostProcessSettings(postProcessSettings),
+        mReferenceTimestamp(referenceTimestamp),
+        mIsHdr(isHdr),
+        mWriteDNG(writeDNG),
+        mIsInMemory(false),
+        mFrameBuffers(std::move(frameBuffers)),
+        mLockedBuffers(std::move(lockedBuffers))
+    {
+        if(mFrameBuffers.empty()) {
+            throw InvalidState("No frames");
+        }
+        
+        // Associate reference
+        auto it = mFrameBuffers.begin();
+        while(it != mFrameBuffers.end()) {
+            if(it->second->metadata.timestampNs == referenceTimestamp) {
+                mReferenceImage = it->first;
+            }
+            
+            mFrames.push_back(it->first);
+
+            ++it;
+        }
+        
+        if(mReferenceImage.empty()) {
+            mReferenceImage = mFrameBuffers.begin()->first;
+            mReferenceTimestamp = mFrameBuffers.begin()->second->metadata.timestampNs;
+        }
     }
 
     void RawContainer::saveContainer(const std::string& outputPath) {
         auto it = mFrames.begin();
         
         json11::Json::object metadataJson;
-        
-        // Save reference timestamp
+
+        // Save misc stuff
         metadataJson["referenceTimestamp"]  = std::to_string(mReferenceTimestamp);
         metadataJson["writeDNG"]            = mWriteDNG;
+        metadataJson["isHdr"]               = mIsHdr;
         
         // Global camera metadata
         metadataJson["colorIlluminant1"]    = color::IlluminantToString(mCameraMetadata.colorIlluminant1);
@@ -226,15 +284,6 @@ namespace motioncam {
             imageMetadata["rowStride"]   = frame->rowStride;
             imageMetadata["pixelFormat"] = toString(frame->pixelFormat);
 
-            vector<float> colorCorrectionGains = {
-                frame->metadata.colorCorrection[0],
-                frame->metadata.colorCorrection[1],
-                frame->metadata.colorCorrection[2],
-                frame->metadata.colorCorrection[3]
-            };
-            
-            imageMetadata["colorCorrectionGains"] = colorCorrectionGains;
-
             vector<float> asShot = {
                 frame->metadata.asShot[0],
                 frame->metadata.asShot[1],
@@ -248,6 +297,30 @@ namespace motioncam {
             imageMetadata["exposureTime"]           = (double) frame->metadata.exposureTime;
             imageMetadata["orientation"]            = static_cast<int>(frame->metadata.screenOrientation);
 
+            if(!frame->metadata.calibrationMatrix1.empty()) {
+                imageMetadata["calibrationMatrix1"]  = toJsonArray(frame->metadata.calibrationMatrix1);
+            }
+
+            if(!frame->metadata.calibrationMatrix2.empty()) {
+                imageMetadata["calibrationMatrix2"]  = toJsonArray(frame->metadata.calibrationMatrix2);
+            }
+
+            if(!frame->metadata.colorMatrix1.empty()) {
+                imageMetadata["colorMatrix1"]  = toJsonArray(frame->metadata.colorMatrix1);
+            }
+
+            if(!frame->metadata.colorMatrix2.empty()) {
+                imageMetadata["colorMatrix2"]  = toJsonArray(frame->metadata.colorMatrix2);
+            }
+
+            if(!frame->metadata.forwardMatrix1.empty()) {
+                imageMetadata["forwardMatrix1"]  = toJsonArray(frame->metadata.forwardMatrix1);
+            }
+
+            if(!frame->metadata.forwardMatrix2.empty()) {
+                imageMetadata["forwardMatrix2"]  = toJsonArray(frame->metadata.forwardMatrix2);
+            }
+            
             if(!frame->metadata.lensShadingMap.empty()) {
                 imageMetadata["lensShadingMapWidth"]    = frame->metadata.lensShadingMap[0].cols;
                 imageMetadata["lensShadingMapHeight"]   = frame->metadata.lensShadingMap[0].rows;
@@ -307,7 +380,8 @@ namespace motioncam {
         
         mReferenceTimestamp = std::stol(getOptionalStringSetting(json, "referenceTimestamp", "0"));
         mWriteDNG = getOptionalSetting(json, "writeDNG", false);
-        
+        mIsHdr = getOptionalSetting(json, "isHdr", false);
+
         // Black/white levels
         vector<Json> blackLevelValues = json["blackLevel"].array_items();
         for(auto& blackLevelValue : blackLevelValues) {
@@ -416,21 +490,34 @@ namespace motioncam {
             
             string timestamp                    = getRequiredSettingAsString(*it, "timestamp");
             buffer->metadata.timestampNs        = std::stol(timestamp);
-                
-            // Color correction
-            vector<Json> colorCorrectionItems = (*it)["colorCorrectionGains"].array_items();
-    
-            if(colorCorrectionItems.size() < 4)
-                throw InvalidState("Invalid metadata. Color correction gains are invalid");
-            
-            buffer->metadata.colorCorrection[0] = colorCorrectionItems[0].number_value();
-            buffer->metadata.colorCorrection[1] = colorCorrectionItems[1].number_value();
-            buffer->metadata.colorCorrection[2] = colorCorrectionItems[2].number_value();
-            buffer->metadata.colorCorrection[3] = colorCorrectionItems[3].number_value();
+
+            if(it->object_items().find("colorMatrix1") != it->object_items().end()) {
+                buffer->metadata.colorMatrix1 = toMat3x3((*it)["colorMatrix1"].array_items());
+            }
+
+            if(it->object_items().find("colorMatrix2") != it->object_items().end()) {
+                buffer->metadata.colorMatrix2 = toMat3x3((*it)["colorMatrix2"].array_items());
+            }
+
+            if(it->object_items().find("calibrationMatrix1") != it->object_items().end()) {
+                buffer->metadata.calibrationMatrix1 = toMat3x3((*it)["calibrationMatrix1"].array_items());
+            }
+
+            if(it->object_items().find("calibrationMatrix2") != it->object_items().end()) {
+                buffer->metadata.calibrationMatrix1 = toMat3x3((*it)["calibrationMatrix2"].array_items());
+            }
+
+            if(it->object_items().find("forwardMatrix1") != it->object_items().end()) {
+                buffer->metadata.calibrationMatrix1 = toMat3x3((*it)["forwardMatrix1"].array_items());
+            }
+
+            if(it->object_items().find("forwardMatrix2") != it->object_items().end()) {
+                buffer->metadata.calibrationMatrix1 = toMat3x3((*it)["forwardMatrix2"].array_items());
+            }
 
             // Lens shading maps
-            int lenShadingMapWidth  = getRequiredSettingAsInt(*it, "lensShadingMapWidth");
-            int lenShadingMapHeight = getRequiredSettingAsInt(*it, "lensShadingMapHeight");
+            int lenShadingMapWidth  = getOptionalSetting(*it, "lensShadingMapWidth", 0);
+            int lenShadingMapHeight = getOptionalSetting(*it, "lensShadingMapHeight", 0);
             
             // Make sure there are a reasonable number of points available
             if(lenShadingMapHeight < 4 || lenShadingMapWidth < 4) {
@@ -442,7 +529,7 @@ namespace motioncam {
                 cv::Mat m(lenShadingMapHeight, lenShadingMapWidth, CV_32F, cv::Scalar(1));
                 buffer->metadata.lensShadingMap.push_back(m);
             }
-                        
+            
             // Load points for shading map
             auto shadingMapPts = (*it)["lensShadingMap"].array_items();
             
@@ -503,11 +590,20 @@ namespace motioncam {
         return mWriteDNG;
     }
 
+    bool RawContainer::isHdr() const {
+        return mIsHdr;
+    }
+
     string RawContainer::getReferenceImage() const {
         return mReferenceImage;
     }
 
-    const std::vector<string>& RawContainer::getFrames() const {
+    void RawContainer::updateReferenceImage(const std::string& referenceName) {
+        mReferenceTimestamp = -1;
+        mReferenceImage = referenceName;
+    }
+
+    std::vector<string> RawContainer::getFrames() const {
         return mFrames;
     }
 
@@ -516,6 +612,10 @@ namespace motioncam {
         if(buffer == mFrameBuffers.end()) {
             throw IOException("Cannot find " + frame + " in container");
         }
+        
+        // If we've already loaded the data, return it
+        if(buffer->second->data->len() > 0)
+            return buffer->second;
         
         // Load the data into the buffer
         std::vector<uint8_t> data;
@@ -536,13 +636,14 @@ namespace motioncam {
         return buffer->second;
     }
 
-    void RawContainer::releaseFrame(const std::string& frame) const {
-        auto buffer = mFrameBuffers.find(frame);
-        
-        if(buffer == mFrameBuffers.end()) {
-            throw IOException("Cannot find " + frame + " in container");
+    void RawContainer::removeFrame(const std::string& frame) {
+        auto it = std::find(mFrames.begin(), mFrames.end(), frame);
+        if(it != mFrames.end()) {
+            mFrames.erase(it);
         }
-
-        buffer->second->data->release();
+        
+        auto bufferIt = mFrameBuffers.find(frame);
+        if(bufferIt != mFrameBuffers.end())
+            mFrameBuffers.erase(bufferIt);
     }
 }

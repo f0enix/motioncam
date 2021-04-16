@@ -10,8 +10,8 @@ namespace json11 {
 }
 
 namespace motioncam {
-    class RawCameraMetadata;
-    class RawImageMetadata;
+    struct RawCameraMetadata;
+    struct RawImageMetadata;
     class Temperature;
     
     //
@@ -20,7 +20,7 @@ namespace motioncam {
     
     class CameraProfile {
     public:
-        CameraProfile(const RawCameraMetadata& metadata);
+        CameraProfile(const RawCameraMetadata& metadata, const RawImageMetadata& imageMetadata);
         
         void temperatureFromVector(const cv::Vec3f& asShotVector, Temperature& outTemperature);
         void cameraToPcs(const Temperature& temperature, cv::Mat& outPcsToCamera, cv::Mat& outCameraToPcs, cv::Vec3f& outCameraWhite) const;

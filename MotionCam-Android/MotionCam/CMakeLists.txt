@@ -116,17 +116,37 @@ set_target_properties(exiv2-xmp PROPERTIES IMPORTED_LOCATION
 # Halide libraries
 #
 
-add_library(camera_preview2 STATIC IMPORTED)
-set_target_properties(camera_preview2 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview2.a)
+add_library(camera_preview2_raw10 STATIC IMPORTED)
+set_target_properties(camera_preview2_raw10 PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview2_raw10.a)
 
-add_library(camera_preview3 STATIC IMPORTED)
-set_target_properties(camera_preview3 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview3.a)
+add_library(camera_preview3_raw10 STATIC IMPORTED)
+set_target_properties(camera_preview3_raw10 PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview3_raw10.a)
 
-add_library(camera_preview4 STATIC IMPORTED)
-set_target_properties(camera_preview4 PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview4.a)
+add_library(camera_preview4_raw10 STATIC IMPORTED)
+set_target_properties(camera_preview4_raw10 PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview4_raw10.a)
+
+add_library(camera_preview2_raw16 STATIC IMPORTED)
+set_target_properties(camera_preview2_raw16 PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview2_raw16.a)
+
+add_library(camera_preview3_raw16 STATIC IMPORTED)
+set_target_properties(camera_preview3_raw16 PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview3_raw16.a)
+
+add_library(camera_preview4_raw16 STATIC IMPORTED)
+set_target_properties(camera_preview4_raw16 PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/camera_preview4_raw16.a)
+
+add_library(hdr_mask STATIC IMPORTED)
+set_target_properties(hdr_mask PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/hdr_mask.a)
+
+add_library(linear_image STATIC IMPORTED)
+set_target_properties(linear_image PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/linear_image.a)
 
 add_library(generate_edges STATIC IMPORTED)
 set_target_properties(generate_edges PROPERTIES IMPORTED_LOCATION
@@ -200,6 +220,10 @@ add_library(postprocess STATIC IMPORTED)
 set_target_properties(postprocess PROPERTIES IMPORTED_LOCATION
         ${libmotioncam-src}/halide/${ANDROID_ABI}/postprocess.a)
 
+add_library(fuse_denoise STATIC IMPORTED)
+set_target_properties(fuse_denoise PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/fuse_denoise.a)
+
 add_library(forward_transform STATIC IMPORTED)
 set_target_properties(forward_transform PROPERTIES IMPORTED_LOCATION
         ${libmotioncam-src}/halide/${ANDROID_ABI}/forward_transform.a)
@@ -212,9 +236,13 @@ add_library(inverse_transform STATIC IMPORTED)
 set_target_properties(inverse_transform PROPERTIES IMPORTED_LOCATION
         ${libmotioncam-src}/halide/${ANDROID_ABI}/inverse_transform.a)
 
-add_library(halide_runtime STATIC IMPORTED)
-set_target_properties(halide_runtime PROPERTIES IMPORTED_LOCATION
-        ${libmotioncam-src}/halide/${ANDROID_ABI}/halide_runtime.a)
+add_library(halide_runtime_host STATIC IMPORTED)
+set_target_properties(halide_runtime_host PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/halide_runtime_host.a)
+
+add_library(halide_runtime_opencl STATIC IMPORTED)
+set_target_properties(halide_runtime_opencl PROPERTIES IMPORTED_LOCATION
+        ${libmotioncam-src}/halide/${ANDROID_ABI}/halide_runtime_opencl.a)
 
 #
 # OpenCV
@@ -323,6 +351,7 @@ add_library( # Sets the name of the library.
         ${libmotioncam-src}/source/Color.cpp
         ${libmotioncam-src}/source/ImageOps.cpp
         ${libmotioncam-src}/source/ImageProcessor.cpp
+        ${libmotioncam-src}/source/CameraPreview.cpp
         ${libmotioncam-src}/source/Logger.cpp
         ${libmotioncam-src}/source/Measure.cpp
         ${libmotioncam-src}/source/RawBufferManager.cpp
@@ -348,18 +377,7 @@ target_include_directories(motion-cam PUBLIC
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DDNG_SUPPORT -DqAndroid -DqDNGThreadSafe")
 
-# Creates and names a library, sets it as either STATIC
-# or SHARED, and provides the relative paths to its source code.
-# You can define multiple libraries, and CMake builds them for you.
-# Gradle automatically packages shared libraries with your APK.
-
-add_library( # Sets the name of the library.
-        native-camera
-
-        # Sets the library as a shared library.
-        SHARED
-
-        # Provides a relative path to your source file(s).
+set(native-camera-cpp
         src/main/cpp/NativeCamera.cpp
         src/main/cpp/Processor.cpp
         src/main/cpp/JavaUtils.cpp
@@ -371,6 +389,31 @@ add_library( # Sets the name of the library.
         src/main/cpp/camera/NativeClBuffer.cpp
         src/main/cpp/camera/RawImageConsumer.cpp
 )
+
+# Creates and names a library, sets it as either STATIC
+# or SHARED, and provides the relative paths to its source code.
+# You can define multiple libraries, and CMake builds them for you.
+# Gradle automatically packages shared libraries with your APK.
+
+add_library( # Sets the name of the library.
+        native-camera-host
+
+        # Sets the library as a shared library.
+        SHARED
+
+        ${native-camera-cpp}
+)
+
+add_library( # Sets the name of the library.
+        native-camera-opencl
+
+        # Sets the library as a shared library.
+        SHARED
+
+        ${native-camera-cpp}
+)
+
+target_compile_definitions(native-camera-opencl PRIVATE GPU_CAMERA_PREVIEW=1)
 
 # Searches for a specified prebuilt library and stores the path as a
 # variable. Because CMake includes system libraries in the search path by
@@ -385,7 +428,7 @@ find_library(z z)
 # can link multiple libraries, such as libraries you define in this
 # build script, prebuilt third-party libraries, or system libraries.
 
-target_link_libraries(native-camera
+set(native-camera-libs
         motion-cam
         dng-sdk
 
@@ -395,9 +438,8 @@ target_link_libraries(native-camera
         libexpat
 
         # Halide libraries
-        camera_preview2
-        camera_preview3
-        camera_preview4
+        hdr_mask
+        linear_image
         generate_edges
         measure_image
         deinterleave_raw
@@ -414,10 +456,10 @@ target_link_libraries(native-camera
         preview_landscape8
         preview_reverse_landscape8
         postprocess
+        fuse_denoise
         forward_transform
         fuse_image
         inverse_transform
-        halide_runtime
 
         # Thirdparty libraries
         opencv-calib3d
@@ -450,4 +492,21 @@ target_link_libraries(native-camera
         EGL
         ${log}
         ${z}
-        )
+)
+
+
+target_link_libraries(native-camera-host
+        halide_runtime_host
+        ${native-camera-libs}
+)
+
+target_link_libraries(native-camera-opencl
+        halide_runtime_opencl
+        ${native-camera-libs}
+        camera_preview2_raw10
+        camera_preview3_raw10
+        camera_preview4_raw10
+        camera_preview2_raw16
+        camera_preview3_raw16
+        camera_preview4_raw16
+)

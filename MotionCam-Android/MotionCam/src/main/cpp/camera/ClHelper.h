@@ -3,6 +3,8 @@
 
 #include <string>
 
+#ifdef GPU_CAMERA_PREVIEW
+
 #ifdef __ANDROID__
     #define CL_TARGET_OPENCL_VERSION 120
     #include <CL/cl.h>
@@ -37,5 +39,7 @@ namespace motioncam {
             const cl_event* event_wait_list,
             cl_event* event);
 }
+
+#endif
 
 #endif //MOTIONCAM_ANDROID_CLHELPER_H

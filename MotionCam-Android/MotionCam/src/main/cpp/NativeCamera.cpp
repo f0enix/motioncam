@@ -5,6 +5,7 @@
 
 #include <motioncam/Settings.h>
 #include <motioncam/ImageProcessor.h>
+#include <motioncam/RawBufferManager.h>
 
 #include "NativeCameraBridgeListener.h"
 #include "NativeRawPreviewListener.h"
@@ -15,12 +16,10 @@
 #include "camera/CameraSessionListener.h"
 #include "camera/RawPreviewListener.h"
 #include "camera/CaptureSessionManager.h"
-#include "camera/RawImageConsumer.h"
 
 using namespace motioncam;
 
 static const jlong INVALID_NATIVE_OBJ = -1;
-static const int SHARPEST_NUM_IMAGES_TO_PICK_FROM = 6;
 
 namespace {
     std::shared_ptr<NativeRawPreviewListener> gRawPreviewListener = nullptr;
@@ -115,7 +114,8 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_StartCaptur
         JNIEnv *env, jobject instance,
         jlong sessionHandle,
         jstring jcameraId,
-        jobject previewSurface)
+        jobject previewSurface,
+        jboolean setupForRawPreview)
 {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(sessionHandle);
     if(!sessionManager) {
@@ -134,7 +134,7 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_StartCaptur
     try {
         std::shared_ptr<ANativeWindow> window(ANativeWindow_fromSurface(env, previewSurface), ANativeWindow_release);
 
-        sessionManager->startCamera(cameraId, gCameraSessionListener, window);
+        sessionManager->startCamera(cameraId, gCameraSessionListener, window, setupForRawPreview);
     }
     catch(const CameraSessionException& e) {
         gLastError = e.what();
@@ -265,6 +265,7 @@ jobject JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_GetPreviewOu
 
     return nullptr;
 }
+
 extern "C" JNIEXPORT
 jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_CaptureImage(
         JNIEnv *env,
@@ -311,46 +312,12 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_CaptureImag
         return JNI_FALSE;
     }
 
+    auto cameraId = sessionManager->getSelectedCameraId();
+    auto metadata = sessionManager->getCameraDescription(cameraId)->metadata;
+
     motioncam::PostProcessSettings settings(json);
 
-    // If there's no buffer handle, we'll lock the buffers and pick the sharpest from the most recent few
-    if(bufferHandle < 0) {
-        sessionManager->lockBuffers();
-
-        auto buffers = sessionManager->getBuffers();
-        if(!buffers.empty()) {
-            auto it = buffers.end() - 1;
-            int numImages = SHARPEST_NUM_IMAGES_TO_PICK_FROM;
-
-            auto cameraId = sessionManager->getSelectedCameraId();
-            auto metadata = sessionManager->getCameraDescription(cameraId)->metadata;
-
-            double bestSharpness = 1e-10;
-            int64_t sharpestBuffer = -1;
-
-            while(numImages > 0) {
-                double sharpness = gImageProcessor->measureSharpness(*(*it));
-
-                if(sharpness > bestSharpness) {
-                    bestSharpness = sharpness;
-                    sharpestBuffer = (*it)->metadata.timestampNs;
-                }
-
-                if(it == buffers.begin())
-                    break;
-
-                --numImages;
-                --it;
-            }
-
-            sessionManager->captureImage(sharpestBuffer, saveNumImages, writeDNG, settings, std::string(outputPath));
-        }
-
-        sessionManager->unlockBuffers();
-    }
-    else {
-        sessionManager->captureImage(bufferHandle, saveNumImages, writeDNG, settings, std::string(outputPath));
-    }
+    RawBufferManager::get().save(metadata, bufferHandle, saveNumImages, writeDNG, settings, std::string(outputPath));
 
     return JNI_TRUE;
 }
@@ -460,7 +427,9 @@ jobject JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_GetMetadata(
 }
 
 extern "C" JNIEXPORT
-jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EnableRawPreview(JNIEnv *env, jobject thiz, jlong sessionHandle, jobject listener) {
+jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EnableRawPreview(
+        JNIEnv *env, jobject thiz, jlong sessionHandle, jobject listener, jint previewQuality, jboolean overrideWb)
+{
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(sessionHandle);
 
     if(!sessionManager) {
@@ -473,7 +442,7 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EnableRawPr
 
     gRawPreviewListener = std::make_shared<NativeRawPreviewListener>(env, listener);
 
-    sessionManager->enableRawPreview(gRawPreviewListener);
+    sessionManager->enableRawPreview(gRawPreviewListener, previewQuality, overrideWb);
 
     return JNI_TRUE;
 }
@@ -546,28 +515,32 @@ JNIEXPORT jobjectArray JNICALL Java_com_motioncam_camera_NativeCameraSessionBrid
         return nullptr;
     }
 
-    // Return available buffers
-    auto availableBuffers = sessionManager->getBuffers();
-
     // Construct result
     jclass nativeCameraBufferClass = env->FindClass("com/motioncam/camera/NativeCameraBuffer");
+    jobjectArray result = nullptr;
 
-    jobjectArray result = env->NewObjectArray(static_cast<jsize>(availableBuffers.size()), nativeCameraBufferClass, nullptr);
+    // Return available buffers
+    auto lockedBuffers = RawBufferManager::get().consumeAllBuffers();
+    if(!lockedBuffers)
+        return nullptr;
+
+    auto buffers = lockedBuffers->getBuffers();
+
+    result = env->NewObjectArray(static_cast<jsize>(buffers.size()), nativeCameraBufferClass, nullptr);
     if(result == nullptr)
         return nullptr;
 
-    for(size_t i = 0; i < availableBuffers.size(); i++) {
+    for (size_t i = 0; i < buffers.size(); i++) {
         jobject obj =
                 env->NewObject(
                         nativeCameraBufferClass,
                         env->GetMethodID(nativeCameraBufferClass, "<init>", "(JIJIII)V"),
-                        availableBuffers[i]->metadata.timestampNs,
-                        availableBuffers[i]->metadata.iso,
-                        availableBuffers[i]->metadata.exposureTime,
-                        static_cast<int>(availableBuffers[i]->metadata.screenOrientation),
-                        availableBuffers[i]->width,
-                        availableBuffers[i]->height
-                );
+                        buffers[i]->metadata.timestampNs,
+                        buffers[i]->metadata.iso,
+                        buffers[i]->metadata.exposureTime,
+                        static_cast<int>(buffers[i]->metadata.screenOrientation),
+                        buffers[i]->width,
+                        buffers[i]->height);
 
         env->SetObjectArrayElement(result, i, obj);
     }
@@ -589,17 +562,17 @@ Java_com_motioncam_camera_NativeCameraSessionBridge_GetPreviewSize(
     }
 
     // Get first available buffer and return size divided by downscale factor
-    auto availableBuffers = sessionManager->getBuffers();
-    if(availableBuffers.empty())
+    jobject captureSize = nullptr;
+
+    auto lockedBuffer = RawBufferManager::get().consumeLatestBuffer();
+    if(!lockedBuffer || lockedBuffer->getBuffers().empty())
         return nullptr;
 
-    auto imageBuffer = sessionManager->getBuffer(availableBuffers[0]->metadata.timestampNs);
-    if(!imageBuffer)
-        return nullptr;
+    auto imageBuffer = lockedBuffer->getBuffers().front();
 
     // Return as Size instance
     jclass cls = env->FindClass("android/util/Size");
-    jobject captureSize =
+    captureSize =
             env->NewObject(
                     cls,
                     env->GetMethodID(cls, "<init>", "(II)V"),
@@ -622,11 +595,7 @@ Java_com_motioncam_camera_NativeCameraSessionBridge_CreateImagePreview(
         jobject dst)
 {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
-    if(!sessionManager) {
-        return JNI_FALSE;
-    }
-
-    if(!gImageProcessor) {
+    if(!sessionManager || !gImageProcessor) {
         return JNI_FALSE;
     }
 
@@ -651,19 +620,13 @@ Java_com_motioncam_camera_NativeCameraSessionBridge_CreateImagePreview(
 
     motioncam::PostProcessSettings settings(json);
 
-    auto imageBuffer = sessionManager->getBuffer(bufferHandle);
-    if(!imageBuffer) {
+    auto lockedBuffer = RawBufferManager::get().consumeBuffer(bufferHandle);
+    if(!lockedBuffer || lockedBuffer->getBuffers().empty()) {
         LOGE("Failed to get image buffer");
         return JNI_FALSE;
     }
 
-    if(!gImageProcessor) {
-        return JNI_FALSE;
-    }
-
-    auto capturedBuffers = sessionManager->getBuffers();
-    auto it = capturedBuffers.begin();
-    int64_t matchTimestampDiff = 1e10;
+    auto imageBuffer = lockedBuffer->getBuffers().front();
 
     // Create preview from image buffer
     auto cameraId = sessionManager->getSelectedCameraId();
@@ -732,15 +695,11 @@ JNIEXPORT jdouble JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_Me
         return JNI_FALSE;
     }
 
-    // Get first available buffer and return size divided by downscale factor
-    auto availableBuffers = sessionManager->getBuffers();
-    if(availableBuffers.empty())
-        return 0;
-
-    auto imageBuffer = sessionManager->getBuffer(bufferHandle);
-    if(!imageBuffer)
+    auto lockedBuffer = RawBufferManager::get().consumeBuffer(bufferHandle);
+    if(!lockedBuffer || lockedBuffer->getBuffers().empty())
         return -1e10;
 
+    auto imageBuffer = lockedBuffer->getBuffers().front();
     auto cameraId = sessionManager->getSelectedCameraId();
     auto metadata = sessionManager->getCameraDescription(cameraId)->metadata;
 
@@ -752,7 +711,6 @@ JNIEXPORT jstring JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_Es
         JNIEnv *env,
         jobject thiz,
         jlong handle,
-        jlong bufferHandle,
         jboolean basicSettings)
 {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
@@ -761,32 +719,19 @@ JNIEXPORT jstring JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_Es
     }
 
     motioncam::PostProcessSettings settings;
-    std::shared_ptr<RawImageBuffer> imageBuffer;
-    bool needUnlock = false;
 
-    if(bufferHandle < 0) {
-        imageBuffer = sessionManager->lockLatest();
-        needUnlock = true;
-    }
-    else {
-        imageBuffer = sessionManager->getBuffer(bufferHandle);
-    }
-
-    if(!imageBuffer) {
-        LOGE("Failed to lock image buffer");
+    auto lockedBuffer = RawBufferManager::get().consumeLatestBuffer();
+    if(!lockedBuffer || lockedBuffer->getBuffers().empty())
         return nullptr;
-    }
 
+    auto imageBuffer = lockedBuffer->getBuffers().front();
     auto cameraId = sessionManager->getSelectedCameraId();
     auto metadata = sessionManager->getCameraDescription(cameraId)->metadata;
 
-    if(basicSettings)
+    if (basicSettings)
         gImageProcessor->estimateBasicSettings(*imageBuffer, metadata, settings);
     else
         gImageProcessor->estimateSettings(*imageBuffer, metadata, settings);
-
-    if(needUnlock)
-        sessionManager->unlockBuffers();
 
     auto settingsJson = settings.toJson();
     return env->NewStringUTF(settingsJson.dump().c_str());
@@ -815,17 +760,15 @@ JNIEXPORT jobjectArray JNICALL Java_com_motioncam_camera_NativeCameraSessionBrid
         auto desc = sessionManager->getCameraDescription(supportedCameras[i]);
 
         jstring jcameraId = env->NewStringUTF(supportedCameras[i].c_str());
-        jboolean supportsLinearPreview =
-                std::find(desc->tonemapModes.begin(), desc->tonemapModes.end(), ACAMERA_TONEMAP_MODE_CONTRAST_CURVE) != desc->tonemapModes.end();
 
         jobject obj =
                 env->NewObject(
                         nativeCameraInfoClass,
-                        env->GetMethodID(nativeCameraInfoClass, "<init>", "(Ljava/lang/String;ZZ)V"),
+                        env->GetMethodID(nativeCameraInfoClass, "<init>", "(Ljava/lang/String;ZII)V"),
                         jcameraId,
                         desc->lensFacing == ACAMERA_LENS_FACING_FRONT,
-                        supportsLinearPreview
-                );
+                        desc->exposureCompensationRange[0],
+                        desc->exposureCompensationRange[1]);
 
         env->DeleteLocalRef(jcameraId);
 
@@ -863,24 +806,31 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_SetExposure
 }
 
 extern "C" JNIEXPORT
-jfloat JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EstimateShadows(JNIEnv *env, jobject thiz, jlong handle) {
+jfloat JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EstimateShadows(JNIEnv *env, jobject thiz, jlong handle, jfloat bias) {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
     if(!sessionManager) {
-        return 1.0f;
+        return -1.0f;
     }
 
-    std::shared_ptr<RawImageBuffer> imageBuffer = sessionManager->lockLatest();
-    if(!imageBuffer) {
-        return 1.0f;
-    }
+    auto lockedBuffer = RawBufferManager::get().consumeLatestBuffer();
+    if(!lockedBuffer || lockedBuffer->getBuffers().empty())
+        return -1;
 
     auto cameraId = sessionManager->getSelectedCameraId();
     auto metadata = sessionManager->getCameraDescription(cameraId)->metadata;
-    PostProcessSettings postProcessSettings;
+    auto imageBuffer = lockedBuffer->getBuffers().front();
 
-    sessionManager->unlockBuffers();
+    cv::Mat histogram = motioncam::ImageProcessor::calcHistogram(metadata, *imageBuffer, false, 8);
 
-    return gImageProcessor->estimateShadows(*imageBuffer, metadata, postProcessSettings);
+    double a = 1.8;
+    if(!metadata.apertures.empty())
+        a = metadata.apertures[0];
+
+    double s = a*a;
+    double ev = std::log2(s / (imageBuffer->metadata.exposureTime / (1.0e9))) - std::log2(imageBuffer->metadata.iso / 100.0);
+    double keyValue = 1.03 - bias / (bias + std::log10(std::pow(10.0, ev) + 1));
+
+    return motioncam::ImageProcessor::estimateShadows(histogram, keyValue);
 }
 
 extern "C" JNIEXPORT
@@ -892,14 +842,71 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_SetRawPrevi
         jfloat contrast,
         jfloat saturation,
         jfloat blacks,
-        jfloat whitePoint)
+        jfloat whitePoint,
+        jfloat tempOffset,
+        jfloat tintOffset)
 {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
     if(!sessionManager) {
         return JNI_FALSE;
     }
 
-    sessionManager->updateRawPreviewSettings(shadows, contrast, saturation, blacks, whitePoint);
+    sessionManager->updateRawPreviewSettings(
+            shadows, contrast, saturation, blacks, whitePoint, tempOffset, tintOffset);
+
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT
+jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_CaptureHdrImage(
+    JNIEnv *env,
+    jobject thiz,
+    jlong handle,
+    jint numImages,
+    jint baseIso,
+    jlong baseExposure,
+    jint hdrIso,
+    jlong hdrExposure,
+    jstring postProcessSettings_,
+    jstring outputPath_)
+{
+    std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
+    if(!sessionManager) {
+        return JNI_FALSE;
+    }
+
+    const char *coutputPath = env->GetStringUTFChars(outputPath_, nullptr);
+    if(coutputPath == nullptr) {
+        LOGE("Failed to get output path");
+        return JNI_FALSE;
+    }
+
+    std::string outputPath(coutputPath);
+
+    env->ReleaseStringUTFChars(outputPath_, coutputPath);
+
+    const char* cjsonString = env->GetStringUTFChars(postProcessSettings_, nullptr);
+    if(cjsonString == nullptr) {
+        LOGE("Failed to get settings");
+        return JNI_FALSE;
+    }
+
+    std::string settingsJson(cjsonString);
+
+    env->ReleaseStringUTFChars(outputPath_, cjsonString);
+
+    // Parse post process settings
+    std::string err;
+    json11::Json json = json11::Json::parse(settingsJson, err);
+
+    // Can't parse the settings
+    if(!err.empty()) {
+        return JNI_FALSE;
+    }
+
+    motioncam::PostProcessSettings settings(json);
+
+    sessionManager->captureHdrImage(numImages, baseIso, baseExposure, hdrIso, hdrExposure, settings, outputPath);
 
     return JNI_TRUE;
 }

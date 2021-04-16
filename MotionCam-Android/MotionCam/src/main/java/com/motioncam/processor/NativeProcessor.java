@@ -2,22 +2,33 @@ package com.motioncam.processor;
 
 public class NativeProcessor {
     private static final long INVALID_OBJECT = -1;
-    private long mNativeObject = INVALID_OBJECT;
 
-    public void processFile(String inputPath, String outputPath, NativeProcessorProgressListener listener) {
-        mNativeObject = CreateProcessor();
-        if(mNativeObject == INVALID_OBJECT) {
+    public boolean processInMemory(String outputPath, NativeProcessorProgressListener listener) {
+        long handle = CreateProcessor();
+        if(handle == INVALID_OBJECT) {
             throw new IllegalStateException(GetLastError());
         }
 
-        ProcessFile(mNativeObject, inputPath, outputPath, listener);
+        boolean result = ProcessInMemory(handle, outputPath, listener);
 
-        DestroyProcessor(mNativeObject);
+        DestroyProcessor(handle);
 
-        mNativeObject = INVALID_OBJECT;
+        return result;
+    }
+
+    public void processFile(String inputPath, String outputPath, NativeProcessorProgressListener listener) {
+        long handle = CreateProcessor();
+        if(handle == INVALID_OBJECT) {
+            throw new IllegalStateException(GetLastError());
+        }
+
+        ProcessFile(handle, inputPath, outputPath, listener);
+
+        DestroyProcessor(handle);
     }
 
     native long CreateProcessor();
+    native boolean ProcessInMemory(long processorObj, String outputPath, NativeProcessorProgressListener progressListener);
     native boolean ProcessFile(long processorObj, String inputPath, String outputPath, NativeProcessorProgressListener progressListener);
     native void DestroyProcessor(long processorObj);
     native String GetLastError();
