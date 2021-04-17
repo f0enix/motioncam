@@ -374,8 +374,8 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.saturation = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, 1.0f);
         mPostProcessSettings.greenSaturation = 1.0f;
         mPostProcessSettings.blueSaturation = 1.0f;
-        mPostProcessSettings.sharpen0 = 5.0f;
-        mPostProcessSettings.sharpen1 = 4.0f;
+        mPostProcessSettings.sharpen0 = 4.5f;
+        mPostProcessSettings.sharpen1 = 3.5f;
         mPostProcessSettings.whitePoint = -1;
         mPostProcessSettings.blacks = -1;
         mPostProcessSettings.tonemapVariance = 0.25f;
@@ -696,8 +696,7 @@ public class CameraActivity extends AppCompatActivity implements
                     .setDuration(250)
                     .start();
 
-            mAsyncNativeCameraOps.estimateSettings(true, estimatedSettings ->
-                {
+            mAsyncNativeCameraOps.estimateSettings(true, estimatedSettings -> {
                     if(estimatedSettings == null || mNativeCamera == null)
                         return;
 
@@ -711,7 +710,7 @@ public class CameraActivity extends AppCompatActivity implements
                         cameraExposure = Math.round(mExposureTime * Math.pow(2.0f, estimatedSettings.exposure));
 
                         // Reduce shadows to account for the increase in exposure
-                        settings.shadows = settings.shadows / (float) Math.pow(2.0f, estimatedSettings.exposure);
+                        settings.shadows = Math.max(2.0f, settings.shadows / (float) Math.pow(2.0f, estimatedSettings.exposure));
                     }
 
                     CameraManualControl.Exposure baseExposure = CameraManualControl.Exposure.Create(
@@ -724,7 +723,8 @@ public class CameraActivity extends AppCompatActivity implements
                             CameraManualControl.GetClosestIso(mIsoValues, mIso)
                     );
 
-                    DenoiseSettings denoiseSettings = new DenoiseSettings(baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), settings.shadows);
+                    DenoiseSettings denoiseSettings =
+                            new DenoiseSettings(baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), settings.shadows);
 
                     Log.i(TAG, "Requested HDR capture (denoiseSettings=" + denoiseSettings.toString() + ")");
 

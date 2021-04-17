@@ -193,6 +193,7 @@ public class PostProcessFragment extends Fragment implements
 
         // Flip if front facing
         postProcessSettings.flipped = mSelectedCamera.isFrontFacing;
+        postProcessSettings.exposure = 0.0f;
 
         // Set adapter for preview pager
         PreviewAdapter pagerAdapter =

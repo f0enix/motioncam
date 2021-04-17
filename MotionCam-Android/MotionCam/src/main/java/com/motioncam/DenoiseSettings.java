@@ -32,31 +32,31 @@ public class DenoiseSettings {
         }
         else if(ev > 9.99) {
             this.spatialWeight  = 0.0f;
-            chromaEps           = 1.5f;
+            chromaEps           = 2.0f;
             mergeImages         = 2;
         }
         else if(ev > 7.99) {
-            this.spatialWeight  = 0.0f;
-            chromaEps           = 4.0f;
+            this.spatialWeight  = 0.5f;
+            chromaEps           = 8.0f;
             mergeImages         = 4;
         }
         else if(ev > 5.99) {
-            this.spatialWeight  = 0.0f;
-            chromaEps           = 6.0f;
+            this.spatialWeight  = 1.0f;
+            chromaEps           = 8.0f;
             mergeImages         = 6;
         }
         else if(ev > 3.99) {
-            this.spatialWeight  = 0.5f;
-            chromaEps           = 6.0f;
+            this.spatialWeight  = 1.5f;
+            chromaEps           = 16.0f;
             mergeImages         = 8;
         }
         else if(ev > 1.99) {
-            this.spatialWeight  = 1.0f;
-            chromaEps           = 12.0f;
+            this.spatialWeight  = 2.0f;
+            chromaEps           = 16.0f;
             mergeImages         = 10;
         }
         else {
-            this.spatialWeight  = 1.0f;
+            this.spatialWeight  = 4.0f;
             chromaEps           = 20.0f;
             mergeImages         = 12;
         }
@@ -69,6 +69,11 @@ public class DenoiseSettings {
         if(shadows >= 7.99) {
             mergeImages += 2;
             chromaEps   += 4;
+        }
+
+        // Limit capture to 3 seconds
+        if(mergeImages * (exposure / 1.0e9) > 3.0f) {
+            mergeImages = (int) Math.round(3.0f / (exposure / 1.0e9));
         }
 
         this.numMergeImages = mergeImages;

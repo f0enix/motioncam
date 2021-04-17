@@ -302,8 +302,8 @@ namespace motioncam {
 
         double s = a*a;
         double ev = std::log2(s / (metadata.exposureTime / (1.0e9))) - std::log2(metadata.iso / 100.0);
-        double sharpenThreshold = std::max(1.0, 1.5*ev + 8);
-                
+        double sharpenThreshold = std::max(8.0, 1.5*ev + 8);
+        
         postprocess(inputBuffers[0],
                     inputBuffers[1],
                     inputBuffers[2],
@@ -356,7 +356,7 @@ namespace motioncam {
             totalPixels += histogram.at<float>(i);
         }
         
-        avgLuminance = std::exp(avgLuminance / (totalPixels + 1));
+        avgLuminance = std::exp(avgLuminance / (totalPixels + 1e-5f));
 
         return std::max(1.0f, std::min(keyValue / avgLuminance, 32.0f));
     }
@@ -364,9 +364,13 @@ namespace motioncam {
     float ImageProcessor::estimateExposureCompensation(const cv::Mat& histogram) {
         int bin = 0;
 
+        const float threshold = 1e-4f;
+        float total = 0.0f;
+        
         // Exposure compensation
         for(int i = histogram.cols - 1; i >= 0; i--) {
-            if(histogram.at<float>(i) > 0.0f) {
+            total += histogram.at<float>(i);
+            if(total >= threshold) {
                 bin = i;
                 break;
             }
@@ -387,7 +391,7 @@ namespace motioncam {
         settings.blacks = 0;
         settings.contrast = 0.5f;
         settings.chromaEps = 0;
-        settings.sharpen0 = 3;
+        settings.sharpen0 = 0;
         settings.sharpen1 = 0;
         
         auto previewBuffer = createPreview(rawBuffer, 2, cameraMetadata, settings);
@@ -412,8 +416,8 @@ namespace motioncam {
         }
                 
         // Estimate blacks
-        const float maxDehazePercent = 0.05f;
-        const int maxEndBin = 17; // Max bin
+        const float maxDehazePercent = 0.03f;
+        const int maxEndBin = 20; // Max bin
 
         int endBin = 0;
 
@@ -467,7 +471,7 @@ namespace motioncam {
 
         // Estimate white point
         int endBin = 0;
-        for(endBin = histogram.rows - 1; endBin >= 128; endBin--) {
+        for(endBin = histogram.rows - 1; endBin >= 192; endBin--) {
             float binPx = histogram.at<float>(endBin);
 
             if(binPx < threshold)
@@ -509,7 +513,7 @@ namespace motioncam {
                            cameraMetadata,
                            settings.shadows,
                            settings.blacks,
-                           0.97f,
+                           0.995f,
                            settings.whitePoint);
 
         // Update estimated settings
@@ -555,7 +559,8 @@ namespace motioncam {
 
         estimateBlacks(rawBuffer, cameraMetadata, settings.shadows, settings.blacks);
 
-        auto preview = estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, settings.blacks, 0.999f, settings.whitePoint);
+        auto preview =
+            estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, settings.blacks, 0.995f, settings.whitePoint);
         
         //
         // Scene luminance
@@ -1012,7 +1017,12 @@ namespace motioncam {
             
             histogram /= histogram.at<float>(histogram.cols - 1);
         }
-                
+        else {
+            for(int i = 0; i < histogram.cols; i++) {
+                histogram.at<float>(i) /= (halfWidth/downscale * halfHeight/downscale);
+            }
+        }
+        
         return histogram;
     }
 
@@ -1108,7 +1118,7 @@ namespace motioncam {
         }
 
         auto referenceRawBuffer = rawContainer.loadFrame(rawContainer.getReferenceImage());
-
+        
         //
         // Denoise
         //
@@ -1243,20 +1253,20 @@ namespace motioncam {
         }
                 
         // Estimate settings if not supplied
-//        if(settings.blacks < 0) {
+        if(settings.blacks < 0) {
             estimateBlacks(*referenceRawBuffer,
                            rawContainer.getCameraMetadata(),
                            settings.shadows,
                            settings.blacks);
-//        }
+        }
 
-//        if(settings.whitePoint < 0) {
+        if(settings.whitePoint < 0) {
             if(!underExposedImage) {
                 estimateWhitePoint(*referenceRawBuffer,
                                    rawContainer.getCameraMetadata(),
                                    settings.shadows,
                                    settings.blacks,
-                                   0.9995f,
+                                   0.995f,
                                    settings.whitePoint);
             }
             else {
@@ -1264,10 +1274,10 @@ namespace motioncam {
                                    rawContainer.getCameraMetadata(),
                                    settings.shadows * (1.0f/hdrMetadata->exposureScale),
                                    settings.blacks,
-                                   0.9995f,
+                                   0.995f,
                                    settings.whitePoint);
             }
-//        }
+        }
 
         outputImage = postProcess(
             denoiseOutput,
@@ -1539,7 +1549,7 @@ namespace motioncam {
                               refWavelet[c][3],
                               refWavelet[c][4],
                               refWavelet[c][5],
-                              rawContainer.getPostProcessSettings().spatialDenoiseAggressiveness*noiseSigma[c],
+                              4.0*noiseSigma[c],
                               false,
                               1,
                               1,
