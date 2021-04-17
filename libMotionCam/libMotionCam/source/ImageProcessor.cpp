@@ -1214,19 +1214,20 @@ namespace motioncam {
             auto hist = calcHistogram(rawContainer.getCameraMetadata(), *referenceRawBuffer, false, 4);
             const int bound = (int) (hist.cols * 0.95f);
             float sum = 0;
-            const int totalPixels = (referenceRawBuffer->width * referenceRawBuffer->height) / 64;
 
             for(int x = hist.cols - 1; x >= bound; x--) {
                 sum += hist.at<float>(x);
             }
 
             // Check if there's any point even using the underexposed image (less than 0.5% in the >95% bins)
-            float p = (sum / totalPixels) * 100.0f;
+            float p = sum * 100.0f;
             if(p < 0.1f) {
                 logger::log("Skipping HDR processing (" + std::to_string(p) + ")");
             }
             // Try each underexposed image
             else {
+                logger::log("Using HDR processing (" + std::to_string(p) + ")");
+                
                 while(underexposedFrameIt != underexposedImages.end()) {
                     hdrMetadata =
                         prepareHdr(rawContainer.getCameraMetadata(),
