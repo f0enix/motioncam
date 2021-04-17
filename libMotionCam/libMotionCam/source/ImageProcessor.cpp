@@ -1549,7 +1549,7 @@ namespace motioncam {
                               refWavelet[c][3],
                               refWavelet[c][4],
                               refWavelet[c][5],
-                              4.0*noiseSigma[c],
+                              rawContainer.getPostProcessSettings().spatialDenoiseAggressiveness*noiseSigma[c],
                               false,
                               1,
                               1,
