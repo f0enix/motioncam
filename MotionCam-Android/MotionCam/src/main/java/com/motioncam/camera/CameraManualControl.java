@@ -195,9 +195,7 @@ public class CameraManualControl {
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_6, ISO.ISO_3200),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_5, ISO.ISO_3200),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_4, ISO.ISO_3200),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_3, ISO.ISO_3200),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_0__4, ISO.ISO_3200),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_0__5, ISO.ISO_3200)
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_3, ISO.ISO_3200)
     };
 
     public static Exposure MapToExposureLine(double cameraAperture, Exposure exposure) {

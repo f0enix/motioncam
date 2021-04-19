@@ -302,7 +302,7 @@ namespace motioncam {
 
         double s = a*a;
         double ev = std::log2(s / (metadata.exposureTime / (1.0e9))) - std::log2(metadata.iso / 100.0);
-        double sharpenThreshold = std::max(8.0, 1.5*ev + 8);
+        double sharpenThreshold = std::max(4.0, 1.5*ev + 8);
         
         postprocess(inputBuffers[0],
                     inputBuffers[1],
@@ -416,11 +416,11 @@ namespace motioncam {
         }
                 
         // Estimate blacks
-        const float maxDehazePercent = 0.03f;
+        const float maxDehazePercent = 0.005f;
         const int maxEndBin = 20; // Max bin
 
         int endBin = 0;
-
+        
         for(endBin = 0; endBin < maxEndBin; endBin++) {
             float binPx = histogram.at<float>(endBin);
 
@@ -428,7 +428,7 @@ namespace motioncam {
                 break;
         }
 
-        outBlacks = static_cast<float>(endBin) / static_cast<float>(histogram.rows - 1);
+        outBlacks = static_cast<float>(std::max(0, endBin - 1)) / static_cast<float>(histogram.rows - 1);
 
         return preview;
     }

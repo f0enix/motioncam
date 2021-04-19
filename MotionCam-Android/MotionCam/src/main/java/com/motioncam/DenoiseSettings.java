@@ -56,7 +56,7 @@ public class DenoiseSettings {
             mergeImages         = 10;
         }
         else {
-            this.spatialWeight  = 4.0f;
+            this.spatialWeight  = 3.0f;
             chromaEps           = 20.0f;
             mergeImages         = 12;
         }
