@@ -2,7 +2,9 @@
 
 Motion Cam is a camera application for Android that replaces the entire camera pipeline. It consumes RAW images and uses computational photography to combine multiple images to reduce noise.
 
-You can install it from the [Play Store](https://play.google.com/store/apps/details?id=com.motioncam)
+
+You can install the latest version from [GitHub](https://github.com/mirsadm/motioncam/releases)
+or a slightly out of date version from the [Play Store](https://play.google.com/store/apps/details?id=com.motioncam)
 
 #### Dual exposure
 
@@ -29,6 +31,10 @@ The amount of noise present in the image is used to determine how many RAW image
 ### Demosaicing
 
 Most modern cameras use a bayer filter. This means the RAW image is subsampled and consists of 25% red, 25% blue and 50% green pixels. There are more green pixels because human vision is most sensitive to green light. The output from the denoising algorithm is demosaiced and colour corrected into an sRGB image. Motion Cam uses the algorithm [Color filter array demosaicking: New method and performance measures by Lu and Tan](https://pdfs.semanticscholar.org/37d2/87334f29698e451282f162cb4bc4f1f352d9.pdf).
+
+### HDR and Highlight recovery
+
+The HDR mode captures an additional underexposed image which is merged to recover the highlights.
 
 ### Tonemapping
 
