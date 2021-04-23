@@ -112,6 +112,15 @@ add_library(exiv2-xmp STATIC IMPORTED)
 set_target_properties(exiv2-xmp PROPERTIES IMPORTED_LOCATION
         ${thirdparty-libs}/exiv2/lib/libexiv2-xmp.a)
 
+
+#
+# zstd
+#
+
+add_library(zstd STATIC IMPORTED)
+set_target_properties(zstd PROPERTIES IMPORTED_LOCATION
+        ${thirdparty-libs}/zstd/lib/libzstd.a)
+
 #
 # Halide libraries
 #
@@ -371,6 +380,7 @@ target_include_directories(motion-cam PUBLIC
         ${thirdparty-libs}/queue
         ${thirdparty-libs}/atomic_queue
         ${thirdparty-libs}/exiv2/include
+        ${thirdparty-libs}/zstd/include
         ${thirdparty-libs}/dng_sdk
         ${thirdparty-libs}/opencv/include
         ${thirdparty-libs}/opencv/thirdparty/include)
@@ -431,6 +441,7 @@ find_library(z z)
 set(native-camera-libs
         motion-cam
         dng-sdk
+        zstd
 
         # Exiv2
         exiv2

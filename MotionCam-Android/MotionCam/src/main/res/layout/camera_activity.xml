@@ -95,18 +95,6 @@
         app:layout_constraintStart_toStartOf="@+id/cameraFrame"
         app:layout_constraintTop_toTopOf="@+id/cameraFrame">
 
-        <TextView
-            android:id="@+id/hintText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:padding="5dp"
-            android:drawableStart="@drawable/baseline_cancel_24"
-            android:drawablePadding="5dp"
-            android:gravity="center_vertical"
-            android:text="@string/hint_text"
-            android:textAppearance="@style/MotionCam.TextAppearance.Small"
-            android:textColor="@color/white"/>
-
         <LinearLayout
             android:id="@+id/exposureCompFrame"
             android:layout_width="match_parent"
@@ -203,16 +191,19 @@
                 android:layout_gravity="center"
                 android:src="@drawable/capture_btn" />
 
-            <ProgressBar
-                android:id="@+id/hdrProgressBar"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="85dp"
-                android:layout_height="85dp"
+            <com.mikhaellopez.circularprogressbar.CircularProgressBar
+                android:id="@+id/captureProgressBar"
+                android:layout_width="65dp"
+                android:layout_height="65dp"
                 android:layout_gravity="center"
                 android:indeterminate="false"
-                android:progress="50"
-                android:progressDrawable="@drawable/progress_circular"
-                android:visibility="invisible" />
+                android:visibility="gone"
+                app:cpb_progress="50"
+                app:cpb_background_progressbar_color="@android:color/transparent"
+                app:cpb_background_progressbar_width="5dp"
+                app:cpb_progressbar_color="#ffffff"
+                app:cpb_progressbar_width="5dp"
+                app:cpb_round_border="false"/>
 
             <ImageView
                 android:id="@+id/settingsBtn"

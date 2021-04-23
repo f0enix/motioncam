@@ -104,7 +104,7 @@ namespace motioncam {
                                      cv::Mat& outCameraToPcs,
                                      cv::Mat& outPcsToSrgb);
 
-        static std::vector<Halide::Runtime::Buffer<uint16_t>> denoise(const RawContainer& rawContainer, ImageProgressHelper& progressHelper);
+        static std::vector<Halide::Runtime::Buffer<uint16_t>> denoise(RawContainer& rawContainer, ImageProgressHelper& progressHelper);
         
         static void addExifMetadata(const RawImageMetadata& metadata,
                                     const cv::Mat& thumbnail,

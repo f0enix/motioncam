@@ -106,12 +106,12 @@ public class ProcessorService extends IntentService {
                     saveToFiles(mRawContainerPath, "application/zip", Environment.DIRECTORY_DOCUMENTS);
 
                 if (mTempFileDng.exists()) {
-                    saveToMediaStore(mTempFileDng, "image/x-adobe-dng", Environment.DIRECTORY_DCIM);
+                    saveToMediaStore(mTempFileDng, "image/x-adobe-dng", Environment.DIRECTORY_DCIM + File.separator + "Camera");
                     mTempFileDng.delete();
                 }
 
                 if (mTempFileJpeg.exists()) {
-                    saveToMediaStore(mTempFileJpeg, "image/jpeg", Environment.DIRECTORY_DCIM);
+                    saveToMediaStore(mTempFileJpeg, "image/jpeg", Environment.DIRECTORY_DCIM + File.separator + "Camera");
                     mTempFileJpeg.delete();
                 }
             }
@@ -131,12 +131,16 @@ public class ProcessorService extends IntentService {
                 if(mTempFileDng.exists()) {
                     File outputFileDng = new File(outputDirectory, mOutputFileNameDng);
 
+                    Log.e(TAG, "Writing to " + outputFileDng.getPath());
+
                     FileUtils.copyFile(mTempFileDng, outputFileDng);
                     mTempFileDng.delete();
                 }
 
                 if(mTempFileJpeg.exists()) {
                     File outputFileJpeg = new File(outputDirectory, mOutputFileNameJpeg);
+
+                    Log.e(TAG, "Writing to " + outputFileJpeg.getPath());
 
                     FileUtils.copyFile(mTempFileJpeg, outputFileJpeg);
                     mTempFileJpeg.delete();

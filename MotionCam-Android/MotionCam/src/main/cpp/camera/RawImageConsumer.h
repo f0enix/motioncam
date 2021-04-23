@@ -46,7 +46,7 @@ namespace motioncam {
         void setWhiteBalanceOverride(bool override);
 
     private:
-        static bool copyMetadata(RawImageMetadata& dst, const ACameraMetadata* src);
+        bool copyMetadata(RawImageMetadata& dst, const ACameraMetadata* src);
         void onBufferReady(const std::shared_ptr<RawImageBuffer>& buffer);
 
         void doSetupBuffers(size_t bufferLength);
@@ -81,6 +81,7 @@ namespace motioncam {
 
         std::shared_ptr<CameraDescription> mCameraDesc;
         int mRawPreviewQuality;
+        bool mCopyCaptureColorTransform;
 
         moodycamel::BlockingConcurrentQueue<std::shared_ptr<AImage>> mImageQueue;
         moodycamel::ConcurrentQueue<RawImageMetadata> mPendingMetadata;

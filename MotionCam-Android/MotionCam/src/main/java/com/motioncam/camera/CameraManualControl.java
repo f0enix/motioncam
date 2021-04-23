@@ -191,11 +191,13 @@ public class CameraManualControl {
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_10, ISO.ISO_2000),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_10, ISO.ISO_2500),
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_10, ISO.ISO_3200),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_8, ISO.ISO_3200),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_6, ISO.ISO_3200),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_5, ISO.ISO_3200),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_4, ISO.ISO_3200),
-            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_3, ISO.ISO_3200)
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_10, ISO.ISO_6400),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_8, ISO.ISO_6400),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_6, ISO.ISO_6400),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_5, ISO.ISO_6400),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_4, ISO.ISO_6400),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_3, ISO.ISO_6400),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_0__5, ISO.ISO_6400)
     };
 
     public static Exposure MapToExposureLine(double cameraAperture, Exposure exposure) {

@@ -364,7 +364,7 @@ namespace motioncam {
     float ImageProcessor::estimateExposureCompensation(const cv::Mat& histogram) {
         int bin = 0;
 
-        const float threshold = 1e-4f;
+        const float threshold = 1e-2f;
         float total = 0.0f;
         
         // Exposure compensation
@@ -1238,7 +1238,7 @@ namespace motioncam {
                     if(hdrMetadata->error < MAX_HDR_ERROR) {
                         // Reduce the shadows if applying HDR to avoid the image looking too flat due to
                         // extreme dynamic range compression
-                        settings.shadows = std::max(0.85f * settings.shadows, 2.0f);
+                        settings.shadows = std::max(0.90f * settings.shadows, 2.0f);
                         underExposedImage = *underexposedFrameIt;
 
                         break;
@@ -1321,7 +1321,7 @@ namespace motioncam {
 
         // Open RAW container
         RawContainer rawContainer(inputPath);
-        
+
         if(rawContainer.getFrames().empty()) {
             progressListener.onError("No frames found");
             return;
@@ -1421,7 +1421,8 @@ namespace motioncam {
         return cv::mean(output)[0];
     }
 
-    std::vector<Halide::Runtime::Buffer<uint16_t>> ImageProcessor::denoise(const RawContainer& rawContainer, ImageProgressHelper& progressHelper) {
+    std::vector<Halide::Runtime::Buffer<uint16_t>> ImageProcessor::denoise(RawContainer& rawContainer, ImageProgressHelper& progressHelper)
+    {
         Measure measure("denoise()");
         
         typedef Halide::Runtime::Buffer<float> WaveletBuffer;

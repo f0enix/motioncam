@@ -207,7 +207,8 @@ namespace motioncam {
             pixelFormat(PixelFormat::RAW10),
             width(0),
             height(0),
-            rowStride(0)
+            rowStride(0),
+            isCompressed(false)
         {
         }
         
@@ -216,7 +217,8 @@ namespace motioncam {
             pixelFormat(PixelFormat::RAW10),
             width(0),
             height(0),
-            rowStride(0)
+            rowStride(0),
+            isCompressed(false)
         {
         }
 
@@ -225,7 +227,8 @@ namespace motioncam {
             pixelFormat(other.pixelFormat),
             width(other.width),
             height(other.height),
-            rowStride(other.rowStride)
+            rowStride(other.rowStride),
+            isCompressed(other.isCompressed)
         {
             data = other.data->clone();
         }
@@ -236,7 +239,8 @@ namespace motioncam {
                 pixelFormat(other.pixelFormat),
                 width(other.width),
                 height(other.height),
-                rowStride(other.rowStride)
+                rowStride(other.rowStride),
+                isCompressed(other.isCompressed)
         {
         }
 
@@ -247,6 +251,7 @@ namespace motioncam {
             width = obj.width;
             height = obj.height;
             rowStride = obj.rowStride;
+            isCompressed = obj.isCompressed;
 
             return *this;
         }
@@ -257,6 +262,7 @@ namespace motioncam {
         int32_t width;
         int32_t height;
         int32_t rowStride;
+        bool isCompressed;
     };
 
     struct RawCameraMetadata {

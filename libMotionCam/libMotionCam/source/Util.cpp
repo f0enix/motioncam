@@ -26,15 +26,15 @@ namespace motioncam {
         }
     
         void ZipWriter::addFile(const std::string& filename, const std::string& data) {
-            addFile(filename, vector<uint8_t>(data.begin(), data.end()));
+            addFile(filename, vector<uint8_t>(data.begin(), data.end()), data.size());
         }
 
-        void ZipWriter::addFile(const std::string& filename, const std::vector<uint8_t>& data) {
+        void ZipWriter::addFile(const std::string& filename, const std::vector<uint8_t>& data, const size_t numBytes) {
             if(m_commited) {
                 throw IOException("Can't add " + filename + " because archive has been commited");
             }
             
-            if(!mz_zip_writer_add_mem(&m_zip, filename.c_str(), data.data(), data.size(), MZ_NO_COMPRESSION)) {
+            if(!mz_zip_writer_add_mem(&m_zip, filename.c_str(), data.data(), numBytes, MZ_NO_COMPRESSION)) {
                 throw IOException("Can't add " + filename);
             }
         }

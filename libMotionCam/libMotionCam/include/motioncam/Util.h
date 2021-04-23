@@ -17,7 +17,7 @@ namespace motioncam {
             ~ZipWriter();
             
             void addFile(const std::string& filename, const std::string& data);
-            void addFile(const std::string& filename, const std::vector<uint8_t>& data);
+            void addFile(const std::string& filename, const std::vector<uint8_t>& data, const size_t numBytes);
             
             void commit();
             

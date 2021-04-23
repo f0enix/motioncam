@@ -109,8 +109,13 @@ namespace motioncam {
         std::shared_ptr<ACaptureSessionOutput> rawSessionOutput;
         std::shared_ptr<ACameraOutputTarget> rawOutputTarget;
 
+        std::shared_ptr<ACaptureSessionOutput> jpegSessionOutput;
+        std::shared_ptr<ACameraOutputTarget> jpegOutputTarget;
+
         // Image reader
         std::shared_ptr<AImageReader> rawImageReader;
+        std::shared_ptr<AImageReader> jpegImageReader;
+
         AImageReader_ImageListener rawImageListener;
     };
 
@@ -368,6 +373,60 @@ namespace motioncam {
         pushEvent(EventAction::ACTION_CAPTURE_HDR, data);
     }
 
+    ACaptureRequest* CameraSession::createCaptureRequest(const ACameraDevice_request_template requestTemplate) {
+        ACaptureRequest* captureRequest = nullptr;
+
+        if(ACameraDevice_createCaptureRequest(mSessionContext->activeCamera.get(), requestTemplate, &captureRequest) != ACAMERA_OK)
+            throw CameraSessionException("Failed to create capture request");
+
+        const uint8_t captureIntent         = ACAMERA_CONTROL_CAPTURE_INTENT_ZERO_SHUTTER_LAG;
+        const uint8_t controlMode           = ACAMERA_CONTROL_MODE_AUTO;
+        const uint8_t tonemapMode           = ACAMERA_TONEMAP_MODE_HIGH_QUALITY;
+        const uint8_t shadingMode           = ACAMERA_SHADING_MODE_HIGH_QUALITY;
+        const uint8_t colorCorrectionMode   = ACAMERA_COLOR_CORRECTION_MODE_HIGH_QUALITY;
+        const uint8_t lensShadingMapStats   = ACAMERA_STATISTICS_LENS_SHADING_MAP_MODE_ON;
+        const uint8_t lensShadingMapApplied = ACAMERA_SENSOR_INFO_LENS_SHADING_APPLIED_FALSE;
+        const uint8_t antiBandingMode       = ACAMERA_CONTROL_AE_ANTIBANDING_MODE_AUTO;
+        const uint8_t noiseReduction        = ACAMERA_NOISE_REDUCTION_MODE_HIGH_QUALITY;
+
+
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_CAPTURE_INTENT, 1, &captureIntent);
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_MODE, 1, &controlMode);
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_SHADING_MODE, 1, &shadingMode);
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_STATISTICS_LENS_SHADING_MAP_MODE, 1, &lensShadingMapStats);
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_SENSOR_INFO_LENS_SHADING_APPLIED, 1, &lensShadingMapApplied);
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AE_ANTIBANDING_MODE, 1, &antiBandingMode);
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_NOISE_REDUCTION_MODE, 1, &noiseReduction);
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_COLOR_CORRECTION_MODE, 1, &colorCorrectionMode);
+
+        // Enable OIS
+        uint8_t omode = ACAMERA_LENS_OPTICAL_STABILIZATION_MODE_ON;
+
+        for(auto& oisMode : mCameraDescription->oisModes) {
+            if(oisMode == ACAMERA_LENS_OPTICAL_STABILIZATION_MODE_ON) {
+                LOGD("Enabling OIS");
+                ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_LENS_OPTICAL_STABILIZATION_MODE, 1, &omode);
+                break;
+            }
+        }
+
+        uint8_t aeMode  = ACAMERA_CONTROL_AE_MODE_ON;
+        uint8_t afMode  = ACAMERA_CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+        uint8_t awbMode = ACAMERA_CONTROL_AWB_MODE_AUTO;
+
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AWB_MODE, 1, &awbMode);
+
+        uint8_t afTrigger = ACAMERA_CONTROL_AF_TRIGGER_IDLE;
+        uint8_t aeTrigger = ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER_IDLE;
+
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER, 1, &afTrigger);
+        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 1, &aeTrigger);
+
+        return captureRequest;
+    }
+
     void CameraSession::setupPreviewCaptureOutput(CameraCaptureSessionContext& state, bool setupForRawPreview) {
         ACaptureSessionOutput* sessionOutput = nullptr;
         ACameraOutputTarget* outputTarget = nullptr;
@@ -387,7 +446,7 @@ namespace motioncam {
             throw CameraSessionException("Failed to add preview output to session container");
 
         if(!setupForRawPreview) {
-            if (ACaptureRequest_addTarget(mSessionContext->repeatCaptureRequest->captureRequest, outputTarget) != ACAMERA_OK)
+            if (ACaptureRequest_addTarget(state.repeatCaptureRequest->captureRequest, outputTarget) != ACAMERA_OK)
                 throw CameraSessionException("Failed to add RAW output target");
         }
     }
@@ -444,57 +503,44 @@ namespace motioncam {
                 throw CameraSessionException("Failed to add HDR RAW output target");
     }
 
-    ACaptureRequest* CameraSession::createCaptureRequest() {
-        ACaptureRequest* captureRequest = nullptr;
+    void CameraSession::setupJpegCaptureOutput(CameraCaptureSessionContext& state) {
+        AImageReader* imageReader = nullptr;
 
-        if(ACameraDevice_createCaptureRequest(mSessionContext->activeCamera.get(), TEMPLATE_ZERO_SHUTTER_LAG, &captureRequest) != ACAMERA_OK)
-            throw CameraSessionException("Failed to create capture request");
+        media_status_t result =
+                AImageReader_new(
+                        640,
+                        480,
+                        AIMAGE_FORMAT_YUV_420_888,
+                        2,
+                        &imageReader);
 
-        const uint8_t captureIntent         = ACAMERA_CONTROL_CAPTURE_INTENT_ZERO_SHUTTER_LAG;
-        const uint8_t controlMode           = ACAMERA_CONTROL_MODE_AUTO;
-        const uint8_t tonemapMode           = ACAMERA_TONEMAP_MODE_FAST;
-        const uint8_t shadingMode           = ACAMERA_SHADING_MODE_FAST;
-        const uint8_t colorCorrectionMode   = ACAMERA_COLOR_CORRECTION_MODE_HIGH_QUALITY;
-        const uint8_t lensShadingMapStats   = ACAMERA_STATISTICS_LENS_SHADING_MAP_MODE_ON;
-        const uint8_t lensShadingMapApplied = ACAMERA_SENSOR_INFO_LENS_SHADING_APPLIED_FALSE;
-        const uint8_t antiBandingMode       = ACAMERA_CONTROL_AE_ANTIBANDING_MODE_AUTO;
-        const uint8_t noiseReduction        = ACAMERA_NOISE_REDUCTION_MODE_FAST;
-
-        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_CAPTURE_INTENT, 1, &captureIntent);
-        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_MODE, 1, &controlMode);
-        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_SHADING_MODE, 1, &shadingMode);
-        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_STATISTICS_LENS_SHADING_MAP_MODE, 1, &lensShadingMapStats);
-        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_SENSOR_INFO_LENS_SHADING_APPLIED, 1, &lensShadingMapApplied);
-        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AE_ANTIBANDING_MODE, 1, &antiBandingMode);
-        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_NOISE_REDUCTION_MODE, 1, &noiseReduction);
-        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_COLOR_CORRECTION_MODE, 1, &colorCorrectionMode);
-
-        // Enable OIS
-        uint8_t omode = ACAMERA_LENS_OPTICAL_STABILIZATION_MODE_ON;
-
-        for(auto& oisMode : mCameraDescription->oisModes) {
-            if(oisMode == ACAMERA_LENS_OPTICAL_STABILIZATION_MODE_ON) {
-                LOGD("Enabling OIS");
-                ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_LENS_OPTICAL_STABILIZATION_MODE, 1, &omode);
-                break;
-            }
+        if (result != AMEDIA_OK) {
+            throw CameraSessionException(std::string("Failed to create JPEG image reader") + " (" + std::to_string(result) + ")");
         }
 
-        uint8_t aeMode  = ACAMERA_CONTROL_AE_MODE_ON;
-        uint8_t afMode  = ACAMERA_CONTROL_AF_MODE_CONTINUOUS_PICTURE;
-        uint8_t awbMode = ACAMERA_CONTROL_AWB_MODE_AUTO;
+        state.jpegImageReader = std::shared_ptr<AImageReader>(imageReader, AImageReader_delete);
 
-        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
-        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
-        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AWB_MODE, 1, &awbMode);
+        // Set up RAW output
+        ANativeWindow* nativeWindow = nullptr;
+        ACaptureSessionOutput* sessionOutput = nullptr;
+        ACameraOutputTarget* outputTarget = nullptr;
 
-        uint8_t afTrigger = ACAMERA_CONTROL_AF_TRIGGER_IDLE;
-        uint8_t aeTrigger = ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER_IDLE;
+        AImageReader_getWindow(imageReader, &nativeWindow);
 
-        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER, 1, &aeTrigger);
-        ACaptureRequest_setEntry_u8(captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 1, &afTrigger);
+        if (ACaptureSessionOutput_create(nativeWindow, &sessionOutput) != ACAMERA_OK)
+            throw CameraSessionException("Failed to create JPEG image reader capture session output");
 
-        return captureRequest;
+        state.jpegSessionOutput = std::shared_ptr<ACaptureSessionOutput>(sessionOutput, ACaptureSessionOutput_free);
+
+        if (ACameraOutputTarget_create(nativeWindow, &outputTarget) != ACAMERA_OK)
+            throw CameraSessionException("Failed to create JPEG target");
+
+        state.jpegOutputTarget = std::shared_ptr<ACameraOutputTarget>(outputTarget, ACameraOutputTarget_free);
+
+        if (ACaptureSessionOutputContainer_add(state.captureSessionContainer.get(), sessionOutput) != ACAMERA_OK)
+            throw CameraSessionException("Failed to add JPEG session output to container");
+
+        // Don't add any capture requests since we are not needing this output
     }
 
     void CameraSession::doOpenCamera(bool setupForRawPreview) {
@@ -529,11 +575,15 @@ namespace motioncam {
         mSessionContext->captureSessionContainer = std::shared_ptr<ACaptureSessionOutputContainer>(container, ACaptureSessionOutputContainer_free);
 
         // Create capture request
-        mSessionContext->repeatCaptureRequest = std::make_shared<CaptureRequest>(createCaptureRequest(), true);
+        mSessionContext->repeatCaptureRequest = std::make_shared<CaptureRequest>(createCaptureRequest(TEMPLATE_ZERO_SHUTTER_LAG), true);
 
         // Create HDR requests
-        mSessionContext->hdrCaptureRequests[0] = std::make_shared<CaptureRequest>(createCaptureRequest(), false);
-        mSessionContext->hdrCaptureRequests[1] = std::make_shared<CaptureRequest>(createCaptureRequest(), false);
+        mSessionContext->hdrCaptureRequests[0] = std::make_shared<CaptureRequest>(createCaptureRequest(TEMPLATE_ZERO_SHUTTER_LAG), false);
+        mSessionContext->hdrCaptureRequests[1] = std::make_shared<CaptureRequest>(createCaptureRequest(TEMPLATE_ZERO_SHUTTER_LAG), false);
+
+        // Set up a JPEG output that we don't use. For some reason without it the camera auto
+        // focus does not work properly
+        setupJpegCaptureOutput(*mSessionContext);
 
         // Set up output for preview
         setupPreviewCaptureOutput(*mSessionContext, setupForRawPreview);
@@ -574,8 +624,11 @@ namespace motioncam {
         LOGD("Closing camera device");
         mSessionContext->activeCamera = nullptr;
 
-        LOGD("Closing image reader");
+        LOGD("Closing RAW image reader");
         mSessionContext->rawImageReader = nullptr;
+
+        LOGD("Closing JPEG image reader");
+        mSessionContext->jpegImageReader = nullptr;
 
         // Free capture request
         if(mSessionContext->previewOutputTarget && mSessionContext->repeatCaptureRequest->isPreviewOutput)
@@ -586,6 +639,7 @@ namespace motioncam {
 
         mSessionContext->previewOutputTarget    = nullptr;
         mSessionContext->rawOutputTarget        = nullptr;
+        mSessionContext->jpegOutputTarget       = nullptr;
 
         // Clear session container
         if(mSessionContext->captureSessionContainer) {
@@ -594,11 +648,15 @@ namespace motioncam {
 
             if(mSessionContext->rawSessionOutput)
                 ACaptureSessionOutputContainer_remove(mSessionContext->captureSessionContainer.get(), mSessionContext->rawSessionOutput.get());
+
+            if(mSessionContext->jpegSessionOutput)
+                ACaptureSessionOutputContainer_remove(mSessionContext->captureSessionContainer.get(), mSessionContext->jpegSessionOutput.get());
         }
 
         mSessionContext->captureSessionContainer    = nullptr;
         mSessionContext->previewSessionOutput       = nullptr;
         mSessionContext->rawSessionOutput           = nullptr;
+        mSessionContext->jpegSessionOutput          = nullptr;
         mSessionContext->nativeWindow               = nullptr;
 
         // Stop image consumer
@@ -610,13 +668,16 @@ namespace motioncam {
         if(mMode == CameraMode::AUTO) {
             uint8_t aeMode  = ACAMERA_CONTROL_AE_MODE_ON;
             uint8_t afMode  = ACAMERA_CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+            uint8_t afTrigger = ACAMERA_CONTROL_AF_TRIGGER_IDLE;
+            uint8_t aeTrigger = ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER_IDLE;
 
             ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
             ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
             ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_EXPOSURE_COMPENSATION, 1, &mExposureCompensation);
             ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_SENSITIVITY, 0, nullptr);
             ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_EXPOSURE_TIME, 0, nullptr);
-            ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 0, nullptr);
+            ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 1, &afTrigger);
+            ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER, 1, &aeTrigger);
             ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_REGIONS, 0, nullptr);
             ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_REGIONS, 0, nullptr);
 
@@ -695,7 +756,7 @@ namespace motioncam {
         }
 
         // Stop existing capture
-        ACameraCaptureSession_abortCaptures(mSessionContext->captureSession.get());
+//        ACameraCaptureSession_abortCaptures(mSessionContext->captureSession.get());
 
         uint8_t afMode      = ACAMERA_CONTROL_AF_MODE_AUTO;
         uint8_t afTrigger   = ACAMERA_CONTROL_AF_TRIGGER_START;
@@ -704,13 +765,8 @@ namespace motioncam {
         ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 1, &afTrigger);
 
         // Set the focus region
-
-        // Clamp between 0 and 1
-        focusX = std::max(0.0, std::min(1.0, focusX));
-        focusY = std::max(0.0, std::min(1.0, focusY));
-
-        int w = 100;//static_cast<int>(static_cast<float>(mCameraDescription->sensorSize[2]) * 0.05f);
-        int h = 100;//static_cast<int>(static_cast<float>(mCameraDescription->sensorSize[3]) * 0.05f);
+        int w = static_cast<int>(static_cast<float>(mCameraDescription->sensorSize[2]) * 0.10f);
+        int h = static_cast<int>(static_cast<float>(mCameraDescription->sensorSize[3]) * 0.10f);
 
         int px = static_cast<int>(static_cast<float>(mCameraDescription->sensorSize[0] + mCameraDescription->sensorSize[2]) * focusX);
         int py = static_cast<int>(static_cast<float>(mCameraDescription->sensorSize[1] + mCameraDescription->sensorSize[3]) * focusY);
@@ -729,26 +785,23 @@ namespace motioncam {
 
         // Set auto exposure region if supported
         if(mCameraDescription->maxAeRegions > 0) {
-            uint8_t aeTrigger = ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER_START;
-
-            exposureX = std::max(0.0, std::min(1.0, exposureX));
-            exposureY = std::max(0.0, std::min(1.0, exposureY));
-
-            int sx = static_cast<int>((mCameraDescription->sensorSize[0] + mCameraDescription->sensorSize[2]) * exposureX);
-            int sy = static_cast<int>((mCameraDescription->sensorSize[1] + mCameraDescription->sensorSize[3]) * exposureY);
-
-            int32_t aeRegion[5] = { (int) (sx - w), (int) (sy - h),
-                                    (int) (sx + w), (int) (sy + h),
-                                    1000 };
-
+//            uint8_t aeTrigger = ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER_START;
+//
+//            int sx = static_cast<int>((mCameraDescription->sensorSize[0] + mCameraDescription->sensorSize[2]) * exposureX);
+//            int sy = static_cast<int>((mCameraDescription->sensorSize[1] + mCameraDescription->sensorSize[3]) * exposureY);
+//
+//            int32_t aeRegion[5] = { sx - w, sy - h,
+//                                    sx + w, sy + h,
+//                                    1000 };
+//
 //            aeRegion[0] = std::max(mCameraDescription->sensorSize[0], aeRegion[0]);
 //            aeRegion[1] = std::max(mCameraDescription->sensorSize[1], aeRegion[1]);
 //
 //            aeRegion[2] = std::min(mCameraDescription->sensorSize[2] - 1, aeRegion[2]);
 //            aeRegion[3] = std::min(mCameraDescription->sensorSize[3] - 1, aeRegion[3]);
-
-            ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_REGIONS, 5, &aeRegion[0]);
-            ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER, 1, &aeTrigger);
+//
+//            ACaptureRequest_setEntry_i32(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_REGIONS, 5, &aeRegion[0]);
+//            ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER, 1, &aeTrigger);
         }
 
         if (ACameraCaptureSession_capture(
@@ -771,6 +824,8 @@ namespace motioncam {
         LOGI("Setting auto focus");
 
         doRepeatCapture();
+
+//        doSetFocusPoint(0.5f, 0.5f, 0.5f, 0.5f);
     }
 
     void CameraSession::doCaptureHdr(int numImages, int baseIso, int64_t baseExposure, int hdrIso, int64_t hdrExposure) {
@@ -844,7 +899,7 @@ namespace motioncam {
         mHdrCaptureInProgress = false;
 
         LOGI("HDR capture completed. Saving data.");
-        RawBufferManager::get().saveHdr(mCameraDescription->metadata, mHdrCaptureSettings, mHdrCaptureOutputPath);
+        RawBufferManager::get().save(RawType::HDR, -1, false, mCameraDescription->metadata, mHdrCaptureSettings, mHdrCaptureOutputPath);
 
         mSessionListener->onCameraHdrImageCaptureCompleted();
     }
@@ -1055,7 +1110,9 @@ namespace motioncam {
     void CameraSession::onRawImageAvailable(AImageReader *imageReader) {
         AImage *image = nullptr;
 
-        while (AImageReader_acquireLatestImage(imageReader, &image) == AMEDIA_OK) {
+//        LOGI("Image AVAILABLE");
+
+        while (AImageReader_acquireNextImage(imageReader, &image) == AMEDIA_OK) {
             mImageConsumer->queueImage(image);
         }
 
@@ -1108,8 +1165,8 @@ namespace motioncam {
         uint8_t aeTrigger = ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER_IDLE;
 
         ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
-        ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER, 1, &aeTrigger);
-        ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 1, &afTrigger);
+        ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER, 0, nullptr);
+        ACaptureRequest_setEntry_u8(mSessionContext->repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 0, nullptr);
 
         camera_status_t result = ACameraCaptureSession_setRepeatingRequest(
                 mSessionContext->captureSession.get(),

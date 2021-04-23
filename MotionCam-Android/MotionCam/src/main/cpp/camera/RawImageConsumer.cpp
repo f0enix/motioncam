@@ -27,6 +27,7 @@
 
 namespace motioncam {
     static const int COPY_THREADS = 1; // More than one copy thread breaks RAW preview
+    static const int MINIMUM_BUFFERS = 16;
 
 #ifdef GPU_CAMERA_PREVIEW
     void VERIFY_RESULT(int32_t errCode, const std::string& errString)
@@ -43,6 +44,7 @@ namespace motioncam {
         mRunning(false),
         mEnableRawPreview(false),
         mRawPreviewQuality(4),
+        mCopyCaptureColorTransform(true),
         mOverrideWhiteBalance(false),
         mShadows(1.0f),
         mContrast(0.5f),
@@ -200,34 +202,43 @@ namespace motioncam {
             return false;
         }
 
-        // ACAMERA_SENSOR_CALIBRATION_TRANSFORM1
-        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_CALIBRATION_TRANSFORM1, &metadataEntry) == ACAMERA_OK) {
-            dst.calibrationMatrix1 = getColorMatrix(metadataEntry);
-        }
+        // If the color transform is not part of the request we won't attempt tp copy it
+        if(mCopyCaptureColorTransform) {
+            // ACAMERA_SENSOR_CALIBRATION_TRANSFORM1
+            if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_CALIBRATION_TRANSFORM1, &metadataEntry) == ACAMERA_OK) {
+                dst.calibrationMatrix1 = getColorMatrix(metadataEntry);
+            }
 
-        // ACAMERA_SENSOR_CALIBRATION_TRANSFORM2
-        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_CALIBRATION_TRANSFORM2, &metadataEntry) == ACAMERA_OK) {
-            dst.calibrationMatrix2 = getColorMatrix(metadataEntry);
-        }
+            // ACAMERA_SENSOR_CALIBRATION_TRANSFORM2
+            if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_CALIBRATION_TRANSFORM2, &metadataEntry) == ACAMERA_OK) {
+                dst.calibrationMatrix2 = getColorMatrix(metadataEntry);
+            }
 
-        // ACAMERA_SENSOR_FORWARD_MATRIX1
-        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_FORWARD_MATRIX1, &metadataEntry) == ACAMERA_OK) {
-            dst.forwardMatrix1 = getColorMatrix(metadataEntry);
-        }
+            // ACAMERA_SENSOR_FORWARD_MATRIX1
+            if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_FORWARD_MATRIX1, &metadataEntry) == ACAMERA_OK) {
+                dst.forwardMatrix1 = getColorMatrix(metadataEntry);
+            }
 
-        // ACAMERA_SENSOR_FORWARD_MATRIX2
-        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_FORWARD_MATRIX2, &metadataEntry) == ACAMERA_OK) {
-            dst.forwardMatrix2 = getColorMatrix(metadataEntry);
-        }
+            // ACAMERA_SENSOR_FORWARD_MATRIX2
+            if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_FORWARD_MATRIX2, &metadataEntry) == ACAMERA_OK) {
+                dst.forwardMatrix2 = getColorMatrix(metadataEntry);
+            }
 
-        // ACAMERA_SENSOR_COLOR_TRANSFORM1
-        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_COLOR_TRANSFORM1, &metadataEntry) == ACAMERA_OK) {
-            dst.colorMatrix1 = getColorMatrix(metadataEntry);
-        }
+            // ACAMERA_SENSOR_COLOR_TRANSFORM1
+            if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_COLOR_TRANSFORM1, &metadataEntry) == ACAMERA_OK) {
+                dst.colorMatrix1 = getColorMatrix(metadataEntry);
+            }
+            else {
+                mCopyCaptureColorTransform = false;
+            }
 
-        // ACAMERA_SENSOR_COLOR_TRANSFORM2
-        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_COLOR_TRANSFORM2, &metadataEntry) == ACAMERA_OK) {
-            dst.colorMatrix2 = getColorMatrix(metadataEntry);
+            // ACAMERA_SENSOR_COLOR_TRANSFORM2
+            if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_COLOR_TRANSFORM2, &metadataEntry) == ACAMERA_OK) {
+                dst.colorMatrix2 = getColorMatrix(metadataEntry);
+            }
+            else {
+                mCopyCaptureColorTransform = false;
+            }
         }
 
         return true;
@@ -255,7 +266,10 @@ namespace motioncam {
                 pendingBufferIt->second->metadata = metadata;
 
                 // Return buffer to either preprocess queue or normal queue if raw preview is not enabled
-                if(mEnableRawPreview && mPreprocessQueue.size_approx() < 3 && pendingBufferIt->second->metadata.rawType == RawType::ZSL) {
+                if( mEnableRawPreview &&
+                    mPreprocessQueue.size_approx() < 3 &&
+                    pendingBufferIt->second->metadata.rawType == RawType::ZSL)
+                {
                     mPreprocessQueue.enqueue(pendingBufferIt->second);
                 }
                 else {
@@ -272,7 +286,7 @@ namespace motioncam {
                     unmatched.push_back(std::move(metadata));
                 }
                 else {
-                    LOGW("Discarding %ld metadata, too old.", metadata.recvdTimestampMs);
+                    LOGD("Discarding %ld metadata, too old.", metadata.recvdTimestampMs);
                 }
             }
         }
@@ -296,7 +310,10 @@ namespace motioncam {
         }
 #endif
 
-        while(mRunning && memoryUseBytes + bufferLength < mMaximumMemoryUsageBytes) {
+        while(  mRunning
+                && memoryUseBytes + bufferLength < mMaximumMemoryUsageBytes
+                && RawBufferManager::get().numBuffers() < MINIMUM_BUFFERS)
+        {
             std::shared_ptr<RawImageBuffer> buffer;
 
 #ifdef GPU_CAMERA_PREVIEW
@@ -488,6 +505,10 @@ namespace motioncam {
         if(outputCreated)
             releaseCameraPreviewOutputBuffer(outputBuffer);
 
+        while(mPreprocessQueue.try_dequeue(buffer)) {
+            RawBufferManager::get().discardBuffer(buffer);
+        }
+
 #endif
         LOGD("Exiting preprocess thread");
     }
@@ -519,6 +540,8 @@ namespace motioncam {
     void RawImageConsumer::disableRawPreview() {
         if(!mEnableRawPreview)
             return;
+
+        LOGI("Disabling RAW preview mode");
 
         mEnableRawPreview = false;
         mPreprocessThread->join();
@@ -567,21 +590,9 @@ namespace motioncam {
 
             dst = RawBufferManager::get().dequeueUnusedBuffer();
 
-            // If we aren't able to allocate a buffer something is probably broken. We aren't
-            // matching metadata to buffers so we need to remove a pending buffer
-            if (!dst) {
-                if (!mPendingBuffers.empty()) {
-                    auto it = mPendingBuffers.begin();
-                    dst = it->second;
-
-                    mPendingBuffers.erase(it);
-
-                    LOGW("Removing pending buffer");
-                }
-            }
-
             // If there are no buffers available, we can't do anything useful here
             if(!dst) {
+                LOGW("Out of buffers");
                 continue;
             }
 

@@ -4,6 +4,7 @@
 #include "motioncam/RawContainer.h"
 #include "motioncam/Util.h"
 #include "motioncam/Logger.h"
+#include "motioncam/Measure.h"
 
 namespace motioncam {
 
@@ -57,8 +58,9 @@ namespace motioncam {
     std::shared_ptr<RawImageBuffer> RawBufferManager::dequeueUnusedBuffer() {
         std::shared_ptr<RawImageBuffer> buffer;
 
-        if(mUnusedBuffers.try_dequeue(buffer))
+        if(mUnusedBuffers.try_dequeue(buffer)) {
             return buffer;
+        }
         
         {
             std::lock_guard<std::recursive_mutex> lock(mMutex);
@@ -106,18 +108,30 @@ namespace motioncam {
         std::lock_guard<std::recursive_mutex> lock(mMutex);
 
         std::move(buffers.begin(), buffers.end(), std::back_inserter(mReadyBuffers));
+
+        logger::log(std::to_string(mReadyBuffers.size() + mUnusedBuffers.size_approx()));
     }
 
-    void RawBufferManager::saveHdr(RawCameraMetadata& metadata, const PostProcessSettings& settings, const std::string& outputPath)
+    void RawBufferManager::save(
+            const RawType type,
+            const int64_t referenceTimestamp,
+            const bool writeDNG,
+            RawCameraMetadata& metadata,
+            const PostProcessSettings& settings,
+            const std::string& outputPath)
     {
         std::vector<std::shared_ptr<RawImageBuffer>> buffers;
-        
+
         {
             std::lock_guard<std::recursive_mutex> lock(mMutex);
-            
+
+            if (mReadyBuffers.empty())
+                return;
+
             auto it = mReadyBuffers.begin();
+
             while (it != mReadyBuffers.end()) {
-                if((*it)->metadata.rawType == RawType::HDR) {
+                if((*it)->metadata.rawType == type) {
                     buffers.push_back(*it);
                     it = mReadyBuffers.erase(it);
                 }
@@ -125,59 +139,29 @@ namespace motioncam {
                     ++it;
                 }
             }
-        }
-        
-        if(buffers.empty())
-            return;
-            
-        std::map<std::string, std::shared_ptr<RawImageBuffer>> frameBuffers;
 
-        auto it = buffers.begin();
-        int filenameIdx = 0;
-
-        while(it != buffers.end()) {
-            std::string filename = "frame" + std::to_string(filenameIdx) + ".raw";
-
-            frameBuffers[filename] = *it;
-
-            ++it;
-            ++filenameIdx;
         }
 
-        const bool isHdr = true;
-        const bool writeDng = false;
-        int64_t referenceTimestamp = -1;
-
-        if(!mPendingContainer) {
-            logger::log("Processing container in memory");
-
-            mPendingContainer = std::make_shared<RawContainer>(
+        // Copy the buffers
+        auto rawContainer = std::make_shared<RawContainer>(
                 metadata,
                 settings,
                 referenceTimestamp,
-                isHdr,
-                writeDng,
-                frameBuffers);
+                type == RawType::HDR,
+                writeDNG,
+                buffers);
+
+        if(mPendingContainer) {
+            rawContainer->save(outputPath);
         }
         else {
-            std::unique_ptr<LockedBuffers> lockedBuffers = std::unique_ptr<LockedBuffers>(new LockedBuffers());
-            
-            auto rawContainer = std::make_shared<RawContainer>(
-                metadata,
-                settings,
-                referenceTimestamp,
-                isHdr,
-                writeDng,
-                std::move(frameBuffers),
-                std::move(lockedBuffers));
-
-            logger::log("Writing container to file system");
-            
-            rawContainer->saveContainer(outputPath);
+            mPendingContainer = rawContainer;
         }
-        
-        for(auto buffer : buffers) {
-            mUnusedBuffers.enqueue(buffer);
+
+        // Return buffers
+        {
+            std::lock_guard<std::recursive_mutex> lock(mMutex);
+            mReadyBuffers.insert(mReadyBuffers.end(), buffers.begin(), buffers.end());
         }
     }
 
@@ -188,110 +172,95 @@ namespace motioncam {
                                 const PostProcessSettings& settings,
                                 const std::string& outputPath)
     {
-        std::vector<std::shared_ptr<RawImageBuffer>> allBuffers;
-        std::vector<std::shared_ptr<RawImageBuffer>> buffers;
+        Measure measure("RawBufferManager::save()");
         
+        std::vector<std::shared_ptr<RawImageBuffer>> buffers;
+
         {
             std::lock_guard<std::recursive_mutex> lock(mMutex);
-            
+
             if(mReadyBuffers.empty())
                 return;
-    
-            allBuffers = std::move(mReadyBuffers);
-            mReadyBuffers.clear();
-        }
 
-        // Find reference frame
-        int referenceIdx = static_cast<int>(allBuffers.size()) - 1;
+            // Find reference frame
+            int referenceIdx = static_cast<int>(mReadyBuffers.size()) - 1;
 
-        for(int i = 0; i < allBuffers.size(); i++) {
-            if(allBuffers[i]->metadata.timestampNs == referenceTimestamp) {
-                referenceIdx = i;
-                buffers.push_back(allBuffers[i]);
-                break;
+            for(int i = 0; i < mReadyBuffers.size(); i++) {
+                if(mReadyBuffers[i]->metadata.timestampNs == referenceTimestamp) {
+                    referenceIdx = i;
+                    buffers.push_back(mReadyBuffers[i]);
+
+                    mReadyBuffers[i] = nullptr;
+                    break;
+                }
+            }
+
+            // Update timestamp
+            referenceTimestamp = mReadyBuffers[referenceIdx]->metadata.timestampNs;
+
+            // Add closest images
+            int leftIdx  = referenceIdx - 1;
+            int rightIdx = referenceIdx + 1;
+
+            while(numSaveBuffers > 0 && (leftIdx > 0 || rightIdx < mReadyBuffers.size())) {
+                int64_t leftDifference = std::numeric_limits<long>::max();
+                int64_t rightDifference = std::numeric_limits<long>::max();
+
+                if(leftIdx >= 0)
+                    leftDifference = std::abs(mReadyBuffers[leftIdx]->metadata.timestampNs - mReadyBuffers[referenceIdx]->metadata.timestampNs);
+
+                if(rightIdx < mReadyBuffers.size())
+                    rightDifference = std::abs(mReadyBuffers[rightIdx]->metadata.timestampNs - mReadyBuffers[referenceIdx]->metadata.timestampNs);
+
+                // Add closest buffer to reference
+                if(leftDifference < rightDifference) {
+                    buffers.push_back(mReadyBuffers[leftIdx]);
+                    mReadyBuffers[leftIdx] = nullptr;
+
+                    --leftIdx;
+                }
+                else {
+                    buffers.push_back(mReadyBuffers[rightIdx]);
+                    mReadyBuffers[rightIdx] = nullptr;
+
+                    ++rightIdx;
+                }
+
+                --numSaveBuffers;
+            }
+
+            // Clear out buffers we intend to copy
+            auto it = mReadyBuffers.begin();
+            while(it != mReadyBuffers.end()) {
+                if(*it == nullptr) {
+                    it = mReadyBuffers.erase(it);
+                }
+                else {
+                    ++it;
+                }
             }
         }
 
-        // Update timestamp
-        referenceTimestamp = allBuffers[referenceIdx]->metadata.timestampNs;
+        // Copy the buffers
+        auto rawContainer = std::make_shared<RawContainer>(
+                metadata,
+                settings,
+                referenceTimestamp,
+                false,
+                writeDNG,
+                buffers);
 
-        // Add closest images
-        int leftIdx  = referenceIdx - 1;
-        int rightIdx = referenceIdx + 1;
-
-        while(numSaveBuffers > 0 && (leftIdx > 0 || rightIdx < allBuffers.size())) {
-            int64_t leftDifference = std::numeric_limits<long>::max();
-            int64_t rightDifference = std::numeric_limits<long>::max();
-
-            if(leftIdx >= 0)
-                leftDifference = std::abs(allBuffers[leftIdx]->metadata.timestampNs - allBuffers[referenceIdx]->metadata.timestampNs);
-
-            if(rightIdx < mReadyBuffers.size())
-                rightDifference = std::abs(allBuffers[rightIdx]->metadata.timestampNs - allBuffers[referenceIdx]->metadata.timestampNs);
-
-            // Add closest buffer to reference
-            if(leftDifference < rightDifference) {
-                buffers.push_back(allBuffers[leftIdx]);
-                --leftIdx;
-            }
-            else {
-                buffers.push_back(allBuffers[rightIdx]);
-                ++rightIdx;
-            }
-
-            --numSaveBuffers;
+        if(mPendingContainer) {
+            rawContainer->save(outputPath);
+        }
+        else {
+            mPendingContainer = rawContainer;
         }
 
-        // Construct container and save
-        if(!buffers.empty()) {
-            std::map<std::string, std::shared_ptr<RawImageBuffer>> frameBuffers;
-
-            auto it = buffers.begin();
-            int filenameIdx = 0;
-
-            while(it != buffers.end()) {
-                std::string filename = "frame" + std::to_string(filenameIdx) + ".raw";
-
-                frameBuffers[filename] = *it;
-
-                ++it;
-                ++filenameIdx;
-            }
-            
-            if(!mPendingContainer) {
-                logger::log("Processing container in memory");
-
-                mPendingContainer = std::make_shared<RawContainer>(
-                    metadata,
-                    settings,
-                    referenceTimestamp,
-                    false,
-                    writeDNG,
-                    frameBuffers);
-            }
-            else {
-                std::unique_ptr<LockedBuffers> lockedBuffers = std::unique_ptr<LockedBuffers>(new LockedBuffers({buffers}));
-
-                auto rawContainer = std::make_shared<RawContainer>(
-                    metadata,
-                    settings,
-                    referenceTimestamp,
-                    false,
-                    writeDNG,
-                    std::move(frameBuffers),
-                    std::move(lockedBuffers));
-    
-                logger::log("Writing container to file system");
-                
-                rawContainer->saveContainer(outputPath);
-            }
-        }
-                        
         // Return buffers
         {
             std::lock_guard<std::recursive_mutex> lock(mMutex);
-
-            mReadyBuffers = allBuffers;
+            mReadyBuffers.insert(mReadyBuffers.end(), buffers.begin(), buffers.end());
         }
     }
 
@@ -333,7 +302,7 @@ namespace motioncam {
         if(it != mReadyBuffers.end()) {
             auto lockedBuffers = std::unique_ptr<LockedBuffers>(new LockedBuffers( { *it }));
             mReadyBuffers.erase(it);
-            
+
             return lockedBuffers;
         }
 
@@ -345,7 +314,7 @@ namespace motioncam {
 
         auto lockedBuffers = std::unique_ptr<LockedBuffers>(new LockedBuffers(mReadyBuffers));
         mReadyBuffers.clear();
-        
+
         return lockedBuffers;
     }
 }

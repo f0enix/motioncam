@@ -142,7 +142,17 @@ jboolean JNICALL Java_com_motioncam_processor_NativeProcessor_ProcessFile(
 
     gListener = std::make_shared<ImageProcessListener>(env, progressListener);
 
-    motioncam::ImageProcessor::process(inputPath, outputPath, *gListener);
+    try {
+        motioncam::ImageProcessor::process(inputPath, outputPath, *gListener);
+    }
+    catch(std::runtime_error& e) {
+        jclass exClass = env->FindClass("java/lang/RuntimeException");
+        if (exClass == NULL) {
+            return JNI_FALSE;
+        }
+
+        env->ThrowNew(exClass, e.what());
+    }
 
     return JNI_TRUE;
 }

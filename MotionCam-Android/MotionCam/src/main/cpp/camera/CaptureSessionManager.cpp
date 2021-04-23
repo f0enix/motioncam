@@ -16,7 +16,7 @@
 #include "Logger.h"
 
 namespace motioncam {
-    const int MAX_PREVIEW_PIXELS = 1280*720;
+    const int MAX_PREVIEW_PIXELS = 1920*1080;
 
     namespace {
         color::Illuminant getIlluminant(acamera_metadata_enum_android_sensor_reference_illuminant1_t illuminant) {
@@ -377,7 +377,7 @@ namespace motioncam {
 
     bool CaptureSessionManager::getRawConfiguration(const CameraDescription& cameraDesc, OutputConfiguration& rawConfiguration) {
         auto outputConfigs = cameraDesc.outputConfigs;
-        auto rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW10);
+        auto rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW16); //raw16/10 as config??
 
         if (rawIt == outputConfigs.end()) {
             rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW16);
@@ -403,11 +403,11 @@ namespace motioncam {
     {
         auto outputConfigs = cameraDesc.outputConfigs;
 
-        OutputConfiguration closestConfig = { AIMAGE_FORMAT_YUV_420_888, DisplayDimension() };
+        OutputConfiguration closestConfig = { AIMAGE_FORMAT_PRIVATE, DisplayDimension() };
         bool foundConfig = false;
 
         // Find the closest preview configuration to our display resolution
-        auto yuvIt = outputConfigs.find(AIMAGE_FORMAT_YUV_420_888);
+        auto yuvIt = outputConfigs.find(AIMAGE_FORMAT_PRIVATE);
 
         if (yuvIt != outputConfigs.end()) {
             auto configurations = (*yuvIt).second;

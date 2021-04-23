@@ -22,16 +22,8 @@ namespace motioncam {
                      const int64_t referenceTimestamp,
                      const bool isHdr,
                      const bool writeDNG,
-                     const std::map<std::string, std::shared_ptr<RawImageBuffer>>& frameBuffers);
+                     const std::vector<std::shared_ptr<RawImageBuffer>>& buffers);
 
-        RawContainer(RawCameraMetadata& cameraMetadata,
-                     const PostProcessSettings& postProcessSettings,
-                     const int64_t referenceTimestamp,
-                     const bool isHdr,
-                     const bool writeDNG,
-                     std::map<std::string, std::shared_ptr<RawImageBuffer>>&& frameBuffers,
-                     std::unique_ptr<RawBufferManager::LockedBuffers>&& lockedBuffers);
-        
         const RawCameraMetadata& getCameraMetadata() const;
         const PostProcessSettings& getPostProcessSettings() const;
 
@@ -46,7 +38,7 @@ namespace motioncam {
         std::shared_ptr<RawImageBuffer> loadFrame(const std::string& frame) const;
         void removeFrame(const std::string& frame);
         
-        void saveContainer(const std::string& outputPath);
+        void save(const std::string& outputPath);
         
         bool isInMemory() const { return mIsInMemory; };
         
@@ -77,7 +69,7 @@ namespace motioncam {
         bool mIsInMemory;
         std::vector<std::string> mFrames;
         std::map<std::string, std::shared_ptr<RawImageBuffer>> mFrameBuffers;
-        std::unique_ptr<RawBufferManager::LockedBuffers> mLockedBuffers;
+        std::unique_ptr<RawBufferManager::LockedBuffers> mLockedBuffers;        
     };
 }
 

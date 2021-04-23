@@ -57,9 +57,12 @@ namespace motioncam {
         std::unique_ptr<LockedBuffers> consumeAllBuffers();
         std::unique_ptr<LockedBuffers> consumeBuffer(int64_t timestampNs);
         
-        void saveHdr(RawCameraMetadata& metadata,
-                     const PostProcessSettings& settings,
-                     const std::string& outputPath);
+        void save(const RawType type,
+                  const int64_t referenceTimestamp,
+                  const bool writeDNG,
+                  RawCameraMetadata& metadata,
+                  const PostProcessSettings& settings,
+                  const std::string& outputPath);
 
         void save(RawCameraMetadata& metadata,
                   int64_t referenceTimestamp,
@@ -80,6 +83,8 @@ namespace motioncam {
 
         moodycamel::ConcurrentQueue<std::shared_ptr<RawImageBuffer>> mUnusedBuffers;
         std::shared_ptr<RawContainer> mPendingContainer;
+
+        std::atomic<int> balance;
     };
 
 } // namespace motioncam
