@@ -377,7 +377,7 @@ namespace motioncam {
 
     bool CaptureSessionManager::getRawConfiguration(const CameraDescription& cameraDesc, OutputConfiguration& rawConfiguration) {
         auto outputConfigs = cameraDesc.outputConfigs;
-        auto rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW16); //raw16/10 as config??
+        auto rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW10); //raw16/10 as config??
 
         if (rawIt == outputConfigs.end()) {
             rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW16);

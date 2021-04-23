@@ -311,8 +311,8 @@ namespace motioncam {
 #endif
 
         while(  mRunning
-                && memoryUseBytes + bufferLength < mMaximumMemoryUsageBytes
-                && RawBufferManager::get().numBuffers() < MINIMUM_BUFFERS)
+                &&  ( memoryUseBytes + bufferLength < mMaximumMemoryUsageBytes
+                    || RawBufferManager::get().numBuffers() < MINIMUM_BUFFERS) )
         {
             std::shared_ptr<RawImageBuffer> buffer;
 
