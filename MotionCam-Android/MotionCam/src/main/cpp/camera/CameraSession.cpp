@@ -292,6 +292,10 @@ namespace motioncam {
         if(!mSessionContext)
             return;
 
+        // TODO:
+        // There is a bug here where the camera sends an active event after the close event leaving us in a
+        // deadlock. This happens if the camera is started/stopped very quickly.
+
         pushEvent(EventAction::ACTION_CLOSE_CAMERA);
         pushEvent(EventAction::STOP);
 

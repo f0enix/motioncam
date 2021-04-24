@@ -5,7 +5,6 @@ import android.animation.ObjectAnimator;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
@@ -37,6 +36,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.jakewharton.processphoenix.ProcessPhoenix;
 import com.motioncam.camera.AsyncNativeCameraOps;
 import com.motioncam.camera.CameraManualControl;
 import com.motioncam.camera.NativeCameraBuffer;
@@ -50,6 +50,7 @@ import com.motioncam.model.SettingsViewModel;
 import com.motioncam.processor.ProcessorReceiver;
 import com.motioncam.processor.ProcessorService;
 import com.motioncam.ui.BitmapDrawView;
+import com.motioncam.ui.SettingsFragment;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -67,7 +68,9 @@ public class CameraActivity extends AppCompatActivity implements
 
     public static final String TAG = "MotionCam";
 
-    private static final int PERMISSION_REQUEST_CODE = 1;
+    private static final int PERMISSION_REQUEST_CODE        = 1;
+    private static final int SETTINGS_ACTIVITY_REQUEST_CODE = 0x10;
+
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
     private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 8;
     private static final float SHADOW_ESTIMATE_BIAS = 12.0f;
@@ -282,7 +285,7 @@ public class CameraActivity extends AppCompatActivity implements
 
     private void onSettingsClicked() {
         Intent intent = new Intent(this, SettingsActivity.class);
-        startActivity(intent);
+        startActivityForResult(intent, SETTINGS_ACTIVITY_REQUEST_CODE);
     }
 
     private void onFixedFocusCancelled() {
@@ -427,6 +430,16 @@ public class CameraActivity extends AppCompatActivity implements
         if(mNativeCamera != null) {
             mNativeCamera.destroy();
             mNativeCamera = null;
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if(requestCode == SETTINGS_ACTIVITY_REQUEST_CODE) {
+            // Restart process when coming back from settings since we may need to reload the camera library
+            ProcessPhoenix.triggerRebirth(this);
         }
     }
 

@@ -73,4 +73,5 @@ dependencies {
     implementation 'commons-io:commons-io:20030203.000550'
     implementation 'org.apache.commons:commons-math3:3.6.1'
     implementation 'com.mikhaellopez:circularprogressbar:3.0.3'
+    implementation 'com.jakewharton:process-phoenix:2.0.0'
 }

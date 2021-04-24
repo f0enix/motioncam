@@ -189,8 +189,6 @@ namespace motioncam {
                 if(mReadyBuffers[i]->metadata.timestampNs == referenceTimestamp) {
                     referenceIdx = i;
                     buffers.push_back(mReadyBuffers[i]);
-
-                    mReadyBuffers[i] = nullptr;
                     break;
                 }
             }
@@ -228,6 +226,9 @@ namespace motioncam {
 
                 --numSaveBuffers;
             }
+
+            // Clear the reference frame
+            mReadyBuffers[referenceIdx] = nullptr;
 
             // Clear out buffers we intend to copy
             auto it = mReadyBuffers.begin();

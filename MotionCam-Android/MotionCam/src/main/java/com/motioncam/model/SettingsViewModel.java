@@ -25,7 +25,6 @@ public class SettingsViewModel extends ViewModel {
     public static final String PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET      = "ui_preview_temperature_offset";
     public static final String PREFS_KEY_UI_PREVIEW_TINT_OFFSET             = "ui_preview_tint_offset";
     public static final String PREFS_KEY_UI_CAPTURE_MODE                    = "ui_capture_mode";
-    public static final String PREFS_KEY_UI_HINT_VERSION                    = "ui_hint_version";
     public static final String PREFS_KEY_UI_SAVE_RAW                        = "ui_save_raw";
 
     final public MutableLiveData<Integer> memoryUseMb = new MutableLiveData<>();
@@ -36,7 +35,7 @@ public class SettingsViewModel extends ViewModel {
     public void load(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
 
-        memoryUseMb.setValue(prefs.getInt(PREFS_KEY_MEMORY_USE_MBYTES, 256) - MINIMUM_MEMORY_USE_MB);
+        memoryUseMb.setValue(prefs.getInt(PREFS_KEY_MEMORY_USE_MBYTES, 384) - MINIMUM_MEMORY_USE_MB);
         cameraPreviewQuality.setValue(prefs.getInt(PREFS_KEY_CAMERA_PREVIEW_QUALITY, 0));
         jpegQuality.setValue(prefs.getInt(PREFS_KEY_JPEG_QUALITY, CameraProfile.DEFAULT_JPEG_QUALITY));
         dualExposureControls.setValue(prefs.getBoolean(PREFS_KEY_DUAL_EXPOSURE_CONTROLS, false));
