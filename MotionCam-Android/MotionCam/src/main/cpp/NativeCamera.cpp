@@ -711,7 +711,8 @@ JNIEXPORT jstring JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_Es
         JNIEnv *env,
         jobject thiz,
         jlong handle,
-        jboolean basicSettings)
+        jboolean basicSettings,
+        jfloat shadowsBias)
 {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
     if(!sessionManager) {
@@ -728,10 +729,18 @@ JNIEXPORT jstring JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_Es
     auto cameraId = sessionManager->getSelectedCameraId();
     auto metadata = sessionManager->getCameraDescription(cameraId)->metadata;
 
+    double a = 1.8;
+    if(!metadata.apertures.empty())
+        a = metadata.apertures[0];
+
+    double s = a*a;
+    double ev = std::log2(s / (imageBuffer->metadata.exposureTime / (1.0e9))) - std::log2(imageBuffer->metadata.iso / 100.0);
+    double keyValue = 1.03 - shadowsBias / (shadowsBias + std::log10(std::pow(10.0, ev) + 1));
+
     if (basicSettings)
-        gImageProcessor->estimateBasicSettings(*imageBuffer, metadata, settings);
+        ImageProcessor::estimateBasicSettings(*imageBuffer, metadata, keyValue, settings);
     else
-        gImageProcessor->estimateSettings(*imageBuffer, metadata, settings);
+        ImageProcessor::estimateSettings(*imageBuffer, metadata, keyValue, settings);
 
     auto settingsJson = settings.toJson();
     return env->NewStringUTF(settingsJson.dump().c_str());

@@ -245,6 +245,8 @@ namespace motioncam {
         mSessionListener(std::move(listener)),
         mScreenOrientation(ScreenOrientation::PORTRAIT),
         mRequestedHdrCaptures(0),
+        mPartialHdrCapture(false),
+        mSaveHdrCaptures(0),
         mHdrCaptureInProgress(false),
         mExposureCompensation(0),
         mUserIso(100),
@@ -828,8 +830,6 @@ namespace motioncam {
         LOGI("Setting auto focus");
 
         doRepeatCapture();
-
-//        doSetFocusPoint(0.5f, 0.5f, 0.5f, 0.5f);
     }
 
     void CameraSession::doCaptureHdr(int numImages, int baseIso, int64_t baseExposure, int hdrIso, int64_t hdrExposure) {
@@ -840,30 +840,50 @@ namespace motioncam {
 
         uint8_t aeMode  = ACAMERA_CONTROL_AE_MODE_OFF;
 
-        ACaptureRequest_setEntry_u8(mSessionContext->hdrCaptureRequests[0]->captureRequest, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
-        ACaptureRequest_setEntry_i32(mSessionContext->hdrCaptureRequests[0]->captureRequest, ACAMERA_SENSOR_SENSITIVITY, 1, &baseIso);
-        ACaptureRequest_setEntry_i64(mSessionContext->hdrCaptureRequests[0]->captureRequest, ACAMERA_SENSOR_EXPOSURE_TIME, 1, &baseExposure);
+        if(baseIso > 0 || baseExposure > 0) {
+            ACaptureRequest_setEntry_u8(mSessionContext->hdrCaptureRequests[0]->captureRequest, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
+            ACaptureRequest_setEntry_i32(mSessionContext->hdrCaptureRequests[0]->captureRequest, ACAMERA_SENSOR_SENSITIVITY, 1, &baseIso);
+            ACaptureRequest_setEntry_i64(mSessionContext->hdrCaptureRequests[0]->captureRequest, ACAMERA_SENSOR_EXPOSURE_TIME, 1, &baseExposure);
 
-        ACaptureRequest_setEntry_u8(mSessionContext->hdrCaptureRequests[1]->captureRequest, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
-        ACaptureRequest_setEntry_i32(mSessionContext->hdrCaptureRequests[1]->captureRequest, ACAMERA_SENSOR_SENSITIVITY, 1, &hdrIso);
-        ACaptureRequest_setEntry_i64(mSessionContext->hdrCaptureRequests[1]->captureRequest, ACAMERA_SENSOR_EXPOSURE_TIME, 1, &hdrExposure);
+            ACaptureRequest_setEntry_u8(mSessionContext->hdrCaptureRequests[1]->captureRequest, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
+            ACaptureRequest_setEntry_i32(mSessionContext->hdrCaptureRequests[1]->captureRequest, ACAMERA_SENSOR_SENSITIVITY, 1, &hdrIso);
+            ACaptureRequest_setEntry_i64(mSessionContext->hdrCaptureRequests[1]->captureRequest, ACAMERA_SENSOR_EXPOSURE_TIME, 1, &hdrExposure);
+        }
+        else {
+            // We are only capturing an underexposed image
+            mPartialHdrCapture = true;
 
-        // Allocate enough for numImages + 1 underexposed images
-        numImages = numImages + 1;
-        std::vector<ACaptureRequest*> captureRequests(numImages);
+            ACaptureRequest_setEntry_u8(mSessionContext->hdrCaptureRequests[0]->captureRequest, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
+            ACaptureRequest_setEntry_i32(mSessionContext->hdrCaptureRequests[0]->captureRequest, ACAMERA_SENSOR_SENSITIVITY, 1, &hdrIso);
+            ACaptureRequest_setEntry_i64(mSessionContext->hdrCaptureRequests[0]->captureRequest, ACAMERA_SENSOR_EXPOSURE_TIME, 1, &hdrExposure);
+        }
+
+        std::vector<ACaptureRequest*> captureRequests;
 
         // Set up list of capture requests
-        for(int i = 0; i < numImages; i++)
-            captureRequests[i] = mSessionContext->hdrCaptureRequests[0]->captureRequest;
+        if(mPartialHdrCapture) {
+            captureRequests.resize(1);
+            captureRequests[0] = mSessionContext->hdrCaptureRequests[0]->captureRequest;
 
-        // Interleave underexposed requests
-        captureRequests[numImages/2] = mSessionContext->hdrCaptureRequests[1]->captureRequest;
+            mSaveHdrCaptures = numImages + 1;
+            mRequestedHdrCaptures = 1;
+        }
+        else {
+            // Allocate enough for numImages + 1 underexposed images
+            mSaveHdrCaptures = numImages + 1;
+            mRequestedHdrCaptures = numImages;
+
+            captureRequests.resize(numImages);
+
+            for (int i = 0; i < numImages; i++)
+                captureRequests[i] = mSessionContext->hdrCaptureRequests[0]->captureRequest;
+
+            // Interleave underexposed requests
+            captureRequests[numImages / 2] = mSessionContext->hdrCaptureRequests[1]->captureRequest;
+        }
 
         LOGI("Initiating HDR capture (numImages=%d, baseIso=%d, baseExposure=%ld, hdrIso=%d, hdrExposure=%ld)",
                 numImages, baseIso, baseExposure, hdrIso, hdrExposure);
-
-        // Set the number of requested captured we need
-        mRequestedHdrCaptures = numImages;
 
         ACameraCaptureSession_capture(
             mSessionContext->captureSession.get(),
@@ -903,7 +923,13 @@ namespace motioncam {
         mHdrCaptureInProgress = false;
 
         LOGI("HDR capture completed. Saving data.");
-        RawBufferManager::get().save(RawType::HDR, -1, false, mCameraDescription->metadata, mHdrCaptureSettings, mHdrCaptureOutputPath);
+        RawBufferManager::get().save(
+                RawType::HDR,
+                mSaveHdrCaptures,
+                false,
+                mCameraDescription->metadata,
+                mHdrCaptureSettings,
+                mHdrCaptureOutputPath);
 
         mSessionListener->onCameraHdrImageCaptureCompleted();
     }

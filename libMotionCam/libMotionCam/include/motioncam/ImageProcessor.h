@@ -53,8 +53,16 @@ namespace motioncam {
                                      const bool cumulative,
                                      const int downscale);
 
-        static void estimateBasicSettings(const RawImageBuffer& rawBuffer, const RawCameraMetadata& cameraMetadata, PostProcessSettings& outSettings);
-        static void estimateSettings(const RawImageBuffer& rawBuffer, const RawCameraMetadata& cameraMetadata, PostProcessSettings& outSettings);
+        static void estimateBasicSettings(const RawImageBuffer& rawBuffer,
+                                          const RawCameraMetadata& cameraMetadata,
+                                          const float shadowsKeyValue,
+                                          PostProcessSettings& outSettings);
+        
+        static void estimateSettings(const RawImageBuffer& rawBuffer,
+                                     const RawCameraMetadata& cameraMetadata,
+                                     const float shadowsKeyValue,
+                                     PostProcessSettings& outSettings);
+        
         static float estimateShadows(const cv::Mat& histogram, float keyValue=0.22f);
         static float estimateExposureCompensation(const cv::Mat& histogram);
         static void estimateWhiteBalance(const RawImageBuffer& rawBuffer,

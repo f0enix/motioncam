@@ -485,6 +485,7 @@ namespace motioncam {
 
     void ImageProcessor::estimateBasicSettings(const RawImageBuffer& rawBuffer,
                                                const RawCameraMetadata& cameraMetadata,
+                                               const float shadowsKeyValue,
                                                PostProcessSettings& outSettings)
     {
 //        Measure measure("estimateBasicSettings()");
@@ -501,20 +502,8 @@ namespace motioncam {
         
         settings.temperature    = static_cast<float>(temperature.temperature());
         settings.tint           = static_cast<float>(temperature.tint());
-        settings.shadows        = estimateShadows(histogram);
+        settings.shadows        = estimateShadows(histogram, shadowsKeyValue);
         settings.exposure       = estimateExposureCompensation(histogram);
-
-        estimateBlacks(rawBuffer,
-                       cameraMetadata,
-                       settings.shadows,
-                       settings.blacks);
-
-        estimateWhitePoint(rawBuffer,
-                           cameraMetadata,
-                           settings.shadows,
-                           settings.blacks,
-                           0.995f,
-                           settings.whitePoint);
 
         // Update estimated settings
         outSettings = settings;
@@ -537,6 +526,7 @@ namespace motioncam {
 
     void ImageProcessor::estimateSettings(const RawImageBuffer& rawBuffer,
                                           const RawCameraMetadata& cameraMetadata,
+                                          const float shadowsKeyValue,
                                           PostProcessSettings& outSettings)
     {
         Measure measure("estimateSettings");
@@ -554,7 +544,7 @@ namespace motioncam {
         
         settings.temperature    = static_cast<float>(temperature.temperature());
         settings.tint           = static_cast<float>(temperature.tint());
-        settings.shadows        = estimateShadows(histogram);
+        settings.shadows        = estimateShadows(histogram, shadowsKeyValue);
         settings.exposure       = estimateExposureCompensation(histogram);
 
         estimateBlacks(rawBuffer, cameraMetadata, settings.shadows, settings.blacks);

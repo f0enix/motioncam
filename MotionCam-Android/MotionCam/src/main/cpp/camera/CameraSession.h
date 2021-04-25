@@ -171,11 +171,13 @@ namespace motioncam {
         CameraExposureState mLastExposureState;
         std::atomic<ScreenOrientation> mScreenOrientation;
         std::atomic<bool> mHdrCaptureInProgress;
-        std::atomic<bool> mHdrCaptureSequenceCompleted{};
+        std::atomic<bool> mHdrCaptureSequenceCompleted;
         std::chrono::steady_clock::time_point mHdrSequenceCompletedTimePoint;
         PostProcessSettings mHdrCaptureSettings;
         std::string mHdrCaptureOutputPath;
         int mRequestedHdrCaptures;
+        int mSaveHdrCaptures;
+        bool mPartialHdrCapture;
         int32_t mExposureCompensation;
         int32_t mUserIso;
         int64_t mUserExposureTime;

@@ -167,7 +167,7 @@ namespace motioncam {
         initialise();
     }
 
-    RawContainer::RawContainer(RawCameraMetadata& cameraMetadata,
+    RawContainer::RawContainer(const RawCameraMetadata& cameraMetadata,
                                const PostProcessSettings& postProcessSettings,
                                const int64_t referenceTimestamp,
                                const bool isHdr,

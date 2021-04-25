@@ -17,7 +17,7 @@ namespace motioncam {
     public:
         RawContainer(const std::string& inputPath);
 
-        RawContainer(RawCameraMetadata& cameraMetadata,
+        RawContainer(const RawCameraMetadata& cameraMetadata,
                      const PostProcessSettings& postProcessSettings,
                      const int64_t referenceTimestamp,
                      const bool isHdr,

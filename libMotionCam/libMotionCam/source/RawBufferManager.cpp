@@ -108,15 +108,13 @@ namespace motioncam {
         std::lock_guard<std::recursive_mutex> lock(mMutex);
 
         std::move(buffers.begin(), buffers.end(), std::back_inserter(mReadyBuffers));
-
-        logger::log(std::to_string(mReadyBuffers.size() + mUnusedBuffers.size_approx()));
     }
 
     void RawBufferManager::save(
-            const RawType type,
-            const int64_t referenceTimestamp,
-            const bool writeDNG,
-            RawCameraMetadata& metadata,
+            RawType type,
+            int numSaveBuffers,
+            bool writeDNG,
+            const RawCameraMetadata& metadata,
             const PostProcessSettings& settings,
             const std::string& outputPath)
     {
@@ -130,38 +128,56 @@ namespace motioncam {
 
             auto it = mReadyBuffers.begin();
 
-            while (it != mReadyBuffers.end()) {
+            while (it != mReadyBuffers.end() && numSaveBuffers > 0) {
                 if((*it)->metadata.rawType == type) {
                     buffers.push_back(*it);
                     it = mReadyBuffers.erase(it);
+
+                    --numSaveBuffers;
                 }
                 else {
                     ++it;
                 }
             }
 
+            // If we didn't have enough of the requested type, use ZSL buffers
+            auto rit = mReadyBuffers.rbegin();
+
+            while(rit != mReadyBuffers.rend() && numSaveBuffers > 0) {
+                if((*rit)->metadata.rawType == RawType::ZSL) {
+                    buffers.push_back(*rit);
+                    rit = decltype(rit)(mReadyBuffers.erase( std::next(rit).base() ));
+
+                    --numSaveBuffers;
+                }
+                else {
+                    ++rit;
+                }
+            }
         }
 
         // Copy the buffers
         auto rawContainer = std::make_shared<RawContainer>(
                 metadata,
                 settings,
-                referenceTimestamp,
+                -1,
                 type == RawType::HDR,
                 writeDNG,
                 buffers);
 
-        if(mPendingContainer) {
+        // Return buffers
+        auto it = buffers.begin();
+        while(it != buffers.end()) {
+            mUnusedBuffers.enqueue(*it);
+            ++it;
+        }
+
+        // Save the container
+        if(mPendingContainers.size_approx() > 0) {
             rawContainer->save(outputPath);
         }
         else {
-            mPendingContainer = rawContainer;
-        }
-
-        // Return buffers
-        {
-            std::lock_guard<std::recursive_mutex> lock(mMutex);
-            mReadyBuffers.insert(mReadyBuffers.end(), buffers.begin(), buffers.end());
+            mPendingContainers.enqueue(rawContainer);
         }
     }
 
@@ -251,30 +267,26 @@ namespace motioncam {
                 writeDNG,
                 buffers);
 
-        if(mPendingContainer) {
-            rawContainer->save(outputPath);
-        }
-        else {
-            mPendingContainer = rawContainer;
-        }
-
         // Return buffers
         {
             std::lock_guard<std::recursive_mutex> lock(mMutex);
             mReadyBuffers.insert(mReadyBuffers.end(), buffers.begin(), buffers.end());
         }
+
+        // Save container
+        if(mPendingContainers.size_approx() > 0) {
+            rawContainer->save(outputPath);
+        }
+        else {
+            mPendingContainers.enqueue(rawContainer);
+        }
     }
 
-    std::shared_ptr<RawContainer> RawBufferManager::peekPendingContainer() {
-        std::lock_guard<std::recursive_mutex> lock(mMutex);
+    std::shared_ptr<RawContainer> RawBufferManager::popPendingContainer() {
+        std::shared_ptr<RawContainer> container;
+        mPendingContainers.try_dequeue(container);
         
-        return mPendingContainer;
-    }
-
-    void RawBufferManager::clearPendingContainer() {
-        std::lock_guard<std::recursive_mutex> lock(mMutex);
-    
-        mPendingContainer = nullptr;
+        return container;
     }
 
     std::unique_ptr<RawBufferManager::LockedBuffers> RawBufferManager::consumeLatestBuffer() {

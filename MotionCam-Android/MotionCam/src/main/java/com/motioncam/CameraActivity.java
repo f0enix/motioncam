@@ -37,7 +37,6 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.jakewharton.processphoenix.ProcessPhoenix;
-import com.motioncam.camera.AsyncNativeCameraOps;
 import com.motioncam.camera.CameraManualControl;
 import com.motioncam.camera.NativeCameraBuffer;
 import com.motioncam.camera.NativeCameraInfo;
@@ -50,8 +49,8 @@ import com.motioncam.model.SettingsViewModel;
 import com.motioncam.processor.ProcessorReceiver;
 import com.motioncam.processor.ProcessorService;
 import com.motioncam.ui.BitmapDrawView;
-import com.motioncam.ui.SettingsFragment;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -73,8 +72,7 @@ public class CameraActivity extends AppCompatActivity implements
 
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
     private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 8;
-    private static final float SHADOW_ESTIMATE_BIAS = 12.0f;
-    public static final int SHADOW_UPDATE_FREQUENCY_MS = 500;
+    private static final int SHADOW_UPDATE_FREQUENCY_MS = 300;
 
     private enum FocusState {
         AUTO,
@@ -83,7 +81,7 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private enum CaptureMode {
-        HDR,
+        NIGHT,
         ZSL,
         BURST
     }
@@ -111,14 +109,15 @@ public class CameraActivity extends AppCompatActivity implements
     private Timer mShadowsUpdateTimer;
 
     private PostProcessSettings mPostProcessSettings;
+    private PostProcessSettings mEstimatedPostProcessSettings;
+
     private float mTemperatureOffset;
     private float mTintOffset;
-    private AsyncNativeCameraOps mAsyncNativeCameraOps;
 
     private boolean mManualControlsEnabled;
     private boolean mManualControlsSet;
     private boolean mSaveRaw;
-    private CaptureMode mCaptureMode = CaptureMode.HDR;
+    private CaptureMode mCaptureMode = CaptureMode.NIGHT;
     private PreviewControlMode mPreviewControlMode = PreviewControlMode.CONTRAST;
 
     private FocusState mFocusState = FocusState.AUTO;
@@ -134,11 +133,23 @@ public class CameraActivity extends AppCompatActivity implements
     private class ShadowTimerTask extends TimerTask {
         @Override
         public void run() {
-            runOnUiThread(() -> {
-                if(mNativeCamera == null || mPostProcessSettings == null)
-                    return;
+            PostProcessSettings estimatedSettings;
 
-                float shadows = mNativeCamera.estimateShadows(SHADOW_ESTIMATE_BIAS);
+            try {
+                estimatedSettings = mNativeCamera.estimatePostProcessSettings(true, 12.0f);
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+                return;
+            }
+
+            if(estimatedSettings == null)
+                return;
+
+            runOnUiThread(() -> {
+                mEstimatedPostProcessSettings = estimatedSettings.clone();
+
+                float shadows = mEstimatedPostProcessSettings.shadows;
                 if(shadows <= 0)
                     return;
 
@@ -148,7 +159,7 @@ public class CameraActivity extends AppCompatActivity implements
                 mShadowsAnimator =
                         ObjectAnimator.ofFloat(CameraActivity.this, "shadowValue", mShadowEstimated, shadows);
 
-                mShadowsAnimator.setDuration(400);
+                mShadowsAnimator.setDuration(200);
                 mShadowsAnimator.setInterpolator(new LinearInterpolator());
                 mShadowsAnimator.setAutoCancel(true);
 
@@ -257,7 +268,7 @@ public class CameraActivity extends AppCompatActivity implements
         mBinding.captureBtn.setOnClickListener(v -> onCaptureClicked());
         mBinding.switchCameraBtn.setOnClickListener(v -> onSwitchCameraClicked());
 
-        mBinding.hdrModeBtn.setOnClickListener(this::onCaptureModeClicked);
+        mBinding.nightModeBtn.setOnClickListener(this::onCaptureModeClicked);
         mBinding.burstModeBtn.setOnClickListener(this::onCaptureModeClicked);
         mBinding.zslModeBtn.setOnClickListener(this::onCaptureModeClicked);
 
@@ -528,13 +539,13 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void updateCaptureModeUi() {
-        mBinding.hdrModeBtn.setTextColor(getColor(R.color.textColor));
+        mBinding.nightModeBtn.setTextColor(getColor(R.color.textColor));
         mBinding.zslModeBtn.setTextColor(getColor(R.color.textColor));
         mBinding.burstModeBtn.setTextColor(getColor(R.color.textColor));
 
         switch(mCaptureMode) {
-            case HDR:
-                mBinding.hdrModeBtn.setTextColor(getColor(R.color.colorAccent));
+            case NIGHT:
+                mBinding.nightModeBtn.setTextColor(getColor(R.color.colorAccent));
                 break;
 
             case ZSL:
@@ -559,8 +570,8 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void onCaptureModeClicked(View v) {
-        if(v == mBinding.hdrModeBtn) {
-            mCaptureMode = CaptureMode.HDR;
+        if(v == mBinding.nightModeBtn) {
+            mCaptureMode = CaptureMode.NIGHT;
         }
         else if(v == mBinding.zslModeBtn) {
             mCaptureMode = CaptureMode.ZSL;
@@ -615,6 +626,9 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void onCaptureClicked() {
+        if(mNativeCamera == null || mEstimatedPostProcessSettings == null)
+            return;
+
         mPostProcessSettings.shadows = calculateShadows();
 
         if(mCaptureMode == CaptureMode.BURST) {
@@ -627,53 +641,7 @@ public class CameraActivity extends AppCompatActivity implements
 
             startActivity(intent);
         }
-        else if(mCaptureMode == CaptureMode.ZSL) {
-            mBinding.captureBtn.setEnabled(false);
-
-            mBinding.cameraFrame.setAlpha(0.25f);
-            mBinding.cameraFrame
-                    .animate()
-                    .alpha(1.0f)
-                    .setDuration(250)
-                    .start();
-
-            mBinding.captureProgressBar.setVisibility(View.VISIBLE);
-            mBinding.captureProgressBar.setIndeterminateMode(true);
-
-            mAsyncNativeCameraOps.estimateSettings(true, estimatedSettings -> {
-                if(estimatedSettings == null || mNativeCamera == null)
-                    return;
-
-                PostProcessSettings settings = mPostProcessSettings.clone();
-                DenoiseSettings denoiseSettings = new DenoiseSettings(mIso, mExposureTime, settings.shadows);
-
-                settings.chromaEps = denoiseSettings.chromaEps;
-                settings.spatialDenoiseAggressiveness = denoiseSettings.spatialWeight;
-                settings.exposure = 0.0f;
-                settings.temperature = estimatedSettings.temperature + mTemperatureOffset;
-                settings.tint = estimatedSettings.tint + mTintOffset;
-
-                Log.i(TAG, "Requested ZSL capture (denoiseSettings=" + denoiseSettings.toString() + ")");
-
-                mAsyncNativeCameraOps.captureImage(
-                        Long.MIN_VALUE,
-                        denoiseSettings.numMergeImages,
-                        mSaveRaw,
-                        settings,
-                        CameraProfile.generateCaptureFile(this).getPath(),
-                        handle -> {
-                            Log.i(TAG, "Image captured");
-
-                            mBinding.captureBtn.setEnabled(true);
-                            mBinding.captureProgressBar.setVisibility(View.GONE);
-                            mBinding.captureProgressBar.setIndeterminateMode(false);
-
-                            startImageProcessor();
-                        }
-                );
-            });
-        }
-        else if(mCaptureMode == CaptureMode.HDR) {
+        else if(mCaptureMode == CaptureMode.NIGHT || mCaptureMode == CaptureMode.ZSL) {
             mBinding.captureBtn.setEnabled(false);
 
             mBinding.cameraFrame
@@ -682,60 +650,64 @@ public class CameraActivity extends AppCompatActivity implements
                     .setDuration(250)
                     .start();
 
-            mAsyncNativeCameraOps.estimateSettings(true, estimatedSettings -> {
-                    if(estimatedSettings == null || mNativeCamera == null)
-                        return;
+            mBinding.captureProgressBar.setVisibility(View.VISIBLE);
+            mBinding.captureProgressBar.setIndeterminateMode(false);
 
-                    PostProcessSettings settings = mPostProcessSettings.clone();
+            PostProcessSettings settings = mPostProcessSettings.clone();
 
-                    // Map camera exposure to our own
-                    long cameraExposure = mExposureTime;
+            // Map camera exposure to our own
+            long cameraExposure = mExposureTime;
 
-                    // If the ISO is very high, use our estimated exposure compensation to boost the shutter speed
-                    if(!mManualControlsSet && mIso >= 1600) {
-                        cameraExposure = Math.round(mExposureTime * Math.pow(2.0f, estimatedSettings.exposure));
-                    }
+            // If the ISO is very high, use our estimated exposure compensation to boost the shutter speed
+            if(!mManualControlsSet && mIso >= 1600) {
+                cameraExposure = Math.round(mExposureTime * Math.pow(2.0f, mEstimatedPostProcessSettings.exposure));
 
-                    CameraManualControl.Exposure baseExposure = CameraManualControl.Exposure.Create(
-                            CameraManualControl.GetClosestShutterSpeed(cameraExposure),
-                            CameraManualControl.GetClosestIso(mIsoValues, mIso)
-                    );
+                // Reduce shadows to account for the increase in exposure
+                // TODO: estimated exposure may not match our selected exposure
+                settings.shadows = Math.max(2.0f, settings.shadows / (float) Math.pow(2.0f, mEstimatedPostProcessSettings.exposure));
+            }
 
-                    CameraManualControl.Exposure hdrExposure = CameraManualControl.Exposure.Create(
-                            CameraManualControl.GetClosestShutterSpeed(cameraExposure / HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV),
-                            CameraManualControl.GetClosestIso(mIsoValues, mIso)
-                    );
+            CameraManualControl.Exposure baseExposure = CameraManualControl.Exposure.Create(
+                    CameraManualControl.GetClosestShutterSpeed(cameraExposure),
+                    CameraManualControl.GetClosestIso(mIsoValues, mIso));
 
-                    // If the user has not override the shutter speed/iso, pick our own
-                    if(!mManualControlsSet) {
-                        baseExposure = CameraManualControl.MapToExposureLine(1.0, baseExposure);
-                        hdrExposure = CameraManualControl.MapToExposureLine(1.0, hdrExposure);
-                    }
+            CameraManualControl.Exposure hdrExposure = CameraManualControl.Exposure.Create(
+                    CameraManualControl.GetClosestShutterSpeed(cameraExposure / HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV),
+                    CameraManualControl.GetClosestIso(mIsoValues, mIso));
 
-                    // Reduce shadows to account for the increase in exposure
-                    // TODO: estimated exposure may not match our selected exposure
-                    settings.shadows = Math.max(2.0f, settings.shadows / (float) Math.pow(2.0f, estimatedSettings.exposure));
+            // If the user has not override the shutter speed/iso, pick our own
+            if(!mManualControlsSet) {
+                baseExposure = CameraManualControl.MapToExposureLine(1.0, baseExposure);
+                hdrExposure = CameraManualControl.MapToExposureLine(1.0, hdrExposure);
+            }
 
-                    DenoiseSettings denoiseSettings = new DenoiseSettings(baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), settings.shadows);
+            DenoiseSettings denoiseSettings = new DenoiseSettings(baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), settings.shadows);
 
-                    Log.i(TAG, "Requested HDR capture (denoiseSettings=" + denoiseSettings.toString() + ")");
+            Log.i(TAG, "Requested HDR capture (denoiseSettings=" + denoiseSettings.toString() + ")");
 
-                    settings.chromaEps = denoiseSettings.chromaEps;
-                    settings.spatialDenoiseAggressiveness = denoiseSettings.spatialWeight;
-                    settings.exposure = 0.0f;
-                    settings.temperature = estimatedSettings.temperature + mTemperatureOffset;
-                    settings.tint = estimatedSettings.tint + mTintOffset;
+            settings.chromaEps = denoiseSettings.chromaEps;
+            settings.spatialDenoiseAggressiveness = denoiseSettings.spatialWeight;
+            settings.exposure = 0.0f;
+            settings.temperature = mEstimatedPostProcessSettings.temperature + mTemperatureOffset;
+            settings.tint = mEstimatedPostProcessSettings.tint + mTintOffset;
 
-                    mNativeCamera.captureHdrImage(
-                            denoiseSettings.numMergeImages,
-                            baseExposure.iso.getIso(),
-                            baseExposure.shutterSpeed.getExposureTime(),
-                            hdrExposure.iso.getIso(),
-                            hdrExposure.shutterSpeed.getExposureTime(),
-                            settings,
-                            CameraProfile.generateCaptureFile(this).getPath());
-                }
-            );
+            long exposure = baseExposure.shutterSpeed.getExposureTime();
+            int iso = baseExposure.iso.getIso();
+
+            // Use a single underexposed image
+            if(mCaptureMode == CaptureMode.ZSL) {
+                exposure = -1;
+                iso = -1;
+            }
+
+            mNativeCamera.captureHdrImage(
+                    denoiseSettings.numMergeImages,
+                    iso,
+                    exposure,
+                    hdrExposure.iso.getIso(),
+                    hdrExposure.shutterSpeed.getExposureTime(),
+                    settings,
+                    CameraProfile.generateCaptureFile(this).getPath());
         }
     }
 
@@ -834,7 +806,6 @@ public class CameraActivity extends AppCompatActivity implements
             }
 
             mNativeCamera = new NativeCameraSessionBridge(this, nativeCameraMemoryUseBytes, null);
-            mAsyncNativeCameraOps = new AsyncNativeCameraOps(mNativeCamera);
 
             // Get supported cameras and filter out ignored ones
             NativeCameraInfo[] cameraInfos = mNativeCamera.getSupportedCameras();
@@ -983,11 +954,11 @@ public class CameraActivity extends AppCompatActivity implements
 
     private CaptureMode getCaptureMode(SharedPreferences sharedPrefs) {
         return CaptureMode.valueOf(
-                sharedPrefs.getString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, CaptureMode.HDR.name()));
+                sharedPrefs.getString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, CaptureMode.NIGHT.name()));
     }
 
     @Override
-    public void onSurfaceTextureAvailable(SurfaceTexture surfaceTexture, int width, int height) {
+    public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surfaceTexture, int width, int height) {
         Log.d(TAG, "onSurfaceTextureAvailable() w: " + width + " h: " + height);
 
         if(mNativeCamera == null || mSelectedCamera == null) {
@@ -1083,7 +1054,7 @@ public class CameraActivity extends AppCompatActivity implements
         mShadowsUpdateTimer = new Timer("ShadowsUpdateTimer");
 
         mShadowUpdateTimerTask = new ShadowTimerTask();
-        mShadowsUpdateTimer.scheduleAtFixedRate(mShadowUpdateTimerTask, 0, SHADOW_UPDATE_FREQUENCY_MS);
+        mShadowsUpdateTimer.scheduleAtFixedRate(mShadowUpdateTimerTask, SHADOW_UPDATE_FREQUENCY_MS, SHADOW_UPDATE_FREQUENCY_MS);
     }
 
     @Override
@@ -1110,7 +1081,7 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     @Override
-    public void onSurfaceTextureUpdated(SurfaceTexture surface) {
+    public void onSurfaceTextureUpdated(@NonNull SurfaceTexture surface) {
     }
 
     @Override
@@ -1211,8 +1182,12 @@ public class CameraActivity extends AppCompatActivity implements
     @Override
     public void onCameraHdrImageCaptureProgress(int progress) {
         runOnUiThread( () -> {
-            mBinding.captureProgressBar.setVisibility(View.VISIBLE);
-            mBinding.captureProgressBar.setProgress(progress);
+            if(progress < 100) {
+                mBinding.captureProgressBar.setProgress(progress);
+            }
+            else {
+                mBinding.captureProgressBar.setIndeterminateMode(true);
+            }
         });
     }
 

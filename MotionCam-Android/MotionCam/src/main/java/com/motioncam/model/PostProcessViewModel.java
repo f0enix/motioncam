@@ -205,7 +205,7 @@ public class PostProcessViewModel extends ViewModel {
         final int iso = images.get(0).iso;
         final long shutterSpeed = images.get(0).exposureTime;
 
-        asyncNativeCameraOps.estimateSettings(false, (settings) -> {
+        asyncNativeCameraOps.estimateSettings(false, 12.0f, (settings) -> {
             // Load user settings
             load(context);
 

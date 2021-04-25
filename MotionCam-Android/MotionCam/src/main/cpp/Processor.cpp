@@ -100,13 +100,21 @@ jboolean JNICALL Java_com_motioncam_processor_NativeProcessor_ProcessInMemory(
 
     env->ReleaseStringUTFChars(outputPath_, javaOutputPath);
 
-    auto container = RawBufferManager::get().peekPendingContainer();
+    auto container = RawBufferManager::get().popPendingContainer();
     if(!container)
         return JNI_FALSE;
 
-    motioncam::ImageProcessor::process(*container, outputPath, *gListener);
+    try {
+        motioncam::ImageProcessor::process(*container, outputPath, *gListener);
+    }
+    catch(std::runtime_error& e) {
+        jclass exClass = env->FindClass("java/lang/RuntimeException");
+        if (exClass == NULL) {
+            return JNI_FALSE;
+        }
 
-    RawBufferManager::get().clearPendingContainer();
+        env->ThrowNew(exClass, e.what());
+    }
 
     return JNI_TRUE;
 }

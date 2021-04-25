@@ -84,8 +84,10 @@ public class ProcessorService extends IntentService {
         @Override
         public Boolean call() throws IOException {
             if(mProcessInMemory) {
-                if (!mNativeProcessor.processInMemory(mTempFileJpeg.getPath(), this))
+                if (!mNativeProcessor.processInMemory(mTempFileJpeg.getPath(), this)) {
+                    Log.d(TAG, "No in-memory container found");
                     return false;
+                }
             }
             else {
                 mNativeProcessor.processFile(mRawContainerPath.getPath(), mTempFileJpeg.getPath(), this);
@@ -315,10 +317,11 @@ public class ProcessorService extends IntentService {
             ProcessFile inMemoryProcess = new ProcessFile(getApplicationContext(), inMemoryTmp, tmpDirectory, true, receiver);
 
             try {
+                Log.d(TAG, "Processing in-memory container");
                 moreToProcess = inMemoryProcess.call();
             }
             catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "Failed to process in-memory container", e);
                 moreToProcess = false;
             }
         }
@@ -328,17 +331,16 @@ public class ProcessorService extends IntentService {
         if(pendingFiles == null)
             return;
 
-        Log.i(TAG, "Found " + pendingFiles.length + " images to process");
-
         // Process all files
         for(File file : pendingFiles) {
             ProcessFile processFile = new ProcessFile(getApplicationContext(), file, tmpDirectory, false, receiver);
 
             try {
+                Log.d(TAG, "Processing " + file.getPath());
                 processFile.call();
             }
             catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "Failed to process " + file.getPath(), e);
                 file.delete();
             }
         }
