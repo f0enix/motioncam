@@ -113,7 +113,6 @@ namespace motioncam {
     void RawBufferManager::save(
             RawType type,
             int numSaveBuffers,
-            bool writeDNG,
             const RawCameraMetadata& metadata,
             const PostProcessSettings& settings,
             const std::string& outputPath)
@@ -162,7 +161,6 @@ namespace motioncam {
                 settings,
                 -1,
                 type == RawType::HDR,
-                writeDNG,
                 buffers);
 
         // Return buffers
@@ -184,7 +182,6 @@ namespace motioncam {
     void RawBufferManager::save(RawCameraMetadata& metadata,
                                 int64_t referenceTimestamp,
                                 int numSaveBuffers,
-                                const bool writeDNG,
                                 const PostProcessSettings& settings,
                                 const std::string& outputPath)
     {
@@ -264,7 +261,6 @@ namespace motioncam {
                 settings,
                 referenceTimestamp,
                 false,
-                writeDNG,
                 buffers);
 
         // Return buffers

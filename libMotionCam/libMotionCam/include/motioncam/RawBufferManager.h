@@ -58,7 +58,6 @@ namespace motioncam {
         
         void save(RawType type,
                   int numSaveBuffers,
-                  bool writeDNG,
                   const RawCameraMetadata& metadata,
                   const PostProcessSettings& settings,
                   const std::string& outputPath);
@@ -66,7 +65,6 @@ namespace motioncam {
         void save(RawCameraMetadata& metadata,
                   int64_t referenceTimestamp,
                   int numSaveBuffers,
-                  const bool writeDNG,
                   const PostProcessSettings& settings,
                   const std::string& outputPath);
         

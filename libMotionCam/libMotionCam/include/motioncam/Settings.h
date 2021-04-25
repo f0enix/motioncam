@@ -37,7 +37,7 @@ namespace motioncam {
         
         int jpegQuality;
         bool flipped;
-        bool overrideWhiteBalance;
+        bool dng;
 
         PostProcessSettings() :
             spatialDenoiseAggressiveness(1.0f),
@@ -60,7 +60,7 @@ namespace motioncam {
             greenSaturation(1.0f),
             jpegQuality(95),
             flipped(false),
-            overrideWhiteBalance(false)
+            dng(false)
         {
         }
         
@@ -91,7 +91,7 @@ namespace motioncam {
             
             jpegQuality                     = getSetting(json, "jpegQuality",       jpegQuality);
             flipped                         = getSetting(json, "flipped",       	flipped);
-            overrideWhiteBalance            = getSetting(json, "overrideWhiteBalance", overrideWhiteBalance);
+            dng                             = getSetting(json, "dng",       	    dng);
         }
         
         json11::Json toJson() const {
@@ -120,7 +120,7 @@ namespace motioncam {
 
             json["jpegQuality"]                     = jpegQuality;
             json["flipped"]                         = flipped;
-            json["overrideWhiteBalance"]            = overrideWhiteBalance;
+            json["dng"]                             = dng;
             
             return json;
         }

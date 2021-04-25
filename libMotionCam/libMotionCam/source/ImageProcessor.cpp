@@ -1134,7 +1134,7 @@ namespace motioncam {
 
         // Check if we should write a DNG file
 #ifdef DNG_SUPPORT
-        if(rawContainer.getWriteDNG()) {
+        if(rawContainer.getPostProcessSettings().dng) {
             std::vector<cv::Mat> rawChannels;
             rawChannels.reserve(4);
 
@@ -1257,7 +1257,7 @@ namespace motioncam {
                                    rawContainer.getCameraMetadata(),
                                    settings.shadows,
                                    settings.blacks,
-                                   0.995f,
+                                   0.999f,
                                    settings.whitePoint);
             }
             else {
@@ -1265,7 +1265,7 @@ namespace motioncam {
                                    rawContainer.getCameraMetadata(),
                                    settings.shadows * (1.0f/hdrMetadata->exposureScale),
                                    settings.blacks,
-                                   0.995f,
+                                   0.999f,
                                    settings.whitePoint);
             }
         }

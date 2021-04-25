@@ -116,7 +116,6 @@ public class CameraActivity extends AppCompatActivity implements
 
     private boolean mManualControlsEnabled;
     private boolean mManualControlsSet;
-    private boolean mSaveRaw;
     private CaptureMode mCaptureMode = CaptureMode.NIGHT;
     private PreviewControlMode mPreviewControlMode = PreviewControlMode.CONTRAST;
 
@@ -356,6 +355,7 @@ public class CameraActivity extends AppCompatActivity implements
 
         mTemperatureOffset = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, 0);
         mTintOffset = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, 0);
+        mPostProcessSettings.dng = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, false);
 
         mShadowEstimated = 1.0f;
         mShadowOffset = 0.0f;
@@ -365,7 +365,6 @@ public class CameraActivity extends AppCompatActivity implements
         mCaptureMode = getCaptureMode(prefs);
         updateCaptureModeUi();
 
-        mSaveRaw = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, false);
         updateSaveRawUi();
     }
 
@@ -429,7 +428,7 @@ public class CameraActivity extends AppCompatActivity implements
                 .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, mTemperatureOffset)
                 .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, mTintOffset)
                 .putString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, mCaptureMode.name())
-                .putBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, mSaveRaw)
+                .putBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, mPostProcessSettings.dng)
                 .apply();
         }
     }
@@ -559,7 +558,7 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void updateSaveRawUi() {
-        int color = mSaveRaw ? R.color.colorAccent : R.color.white;
+        int color = mPostProcessSettings.dng ? R.color.colorAccent : R.color.white;
         mBinding.previewFrame.rawEnableBtn.setTextColor(getColor(color));
 
         for (Drawable drawable : mBinding.previewFrame.rawEnableBtn.getCompoundDrawables()) {
@@ -1055,7 +1054,7 @@ public class CameraActivity extends AppCompatActivity implements
         });
 
         mBinding.previewFrame.rawEnableBtn.setOnClickListener(v -> {
-            mSaveRaw = !mSaveRaw;
+            mPostProcessSettings.dng = !mPostProcessSettings.dng;
             updateSaveRawUi();
         });
 

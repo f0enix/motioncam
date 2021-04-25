@@ -226,14 +226,14 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         return previewOutput;
     }
 
-    public void captureImage(long bufferHandle, int numSaveImages, boolean writeDNG, PostProcessSettings settings, String outputPath) {
+    public void captureImage(long bufferHandle, int numSaveImages, PostProcessSettings settings, String outputPath) {
         ensureValidHandle();
 
         // Serialize settings to json and pass to native code
         JsonAdapter<PostProcessSettings> jsonAdapter = mJson.adapter(PostProcessSettings.class);
         String json = jsonAdapter.toJson(settings);
 
-        CaptureImage(mNativeCameraHandle, bufferHandle, numSaveImages, writeDNG, json, outputPath);
+        CaptureImage(mNativeCameraHandle, bufferHandle, numSaveImages, json, outputPath);
     }
 
     public void captureHdrImage(int numSaveImages, int baseIso, long baseExposure, int hdrIso, long hdrExposure, PostProcessSettings settings, String outputPath) {
@@ -440,7 +440,7 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
     private native NativeCameraMetadata GetMetadata(long handle, String cameraId);
     private native Size GetRawOutputSize(long handle, String cameraId);
     private native Size GetPreviewOutputSize(long handle, String cameraId, Size captureSize, Size displaySize);
-    private native boolean CaptureImage(long handle, long bufferHandle, int numSaveImages, boolean writeDNG, String settings, String outputPath);
+    private native boolean CaptureImage(long handle, long bufferHandle, int numSaveImages, String settings, String outputPath);
     private native boolean CaptureHdrImage(long handle, int numImages, int baseIso, long baseExposure, int hdrIso, long hdrExposure, String settings, String outputPath);
 
     private native NativeCameraBuffer[] GetAvailableImages(long handle);

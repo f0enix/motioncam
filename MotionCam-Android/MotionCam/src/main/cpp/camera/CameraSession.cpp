@@ -928,7 +928,6 @@ namespace motioncam {
         RawBufferManager::get().save(
                 RawType::HDR,
                 mSaveHdrCaptures,
-                false,
                 mCameraDescription->metadata,
                 mHdrCaptureSettings,
                 mHdrCaptureOutputPath);

@@ -21,7 +21,6 @@ namespace motioncam {
                      const PostProcessSettings& postProcessSettings,
                      const int64_t referenceTimestamp,
                      const bool isHdr,
-                     const bool writeDNG,
                      const std::vector<std::shared_ptr<RawImageBuffer>>& buffers);
 
         const RawCameraMetadata& getCameraMetadata() const;
@@ -30,7 +29,6 @@ namespace motioncam {
         std::string getReferenceImage() const;
         void updateReferenceImage(const std::string& referenceName);
         
-        bool getWriteDNG() const;
         bool isHdr() const;
         std::vector<std::string> getFrames() const;
         
@@ -64,7 +62,6 @@ namespace motioncam {
         PostProcessSettings mPostProcessSettings;
         int64_t mReferenceTimestamp;
         std::string mReferenceImage;
-        bool mWriteDNG;
         bool mIsHdr;
         bool mIsInMemory;
         std::vector<std::string> mFrames;

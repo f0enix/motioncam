@@ -27,7 +27,7 @@ public class PostProcessSettings implements Cloneable {
 
     public int jpegQuality                      = 95;
     public boolean flipped                      = false;
-    public boolean overrideWhiteBalance         = false;
+    public boolean dng                          = false;
 
     @Override
     public PostProcessSettings clone() {

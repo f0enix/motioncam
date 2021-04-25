@@ -400,7 +400,6 @@ public class PostProcessFragment extends Fragment implements
                 mAsyncNativeCameraOps.captureImage(
                         buffer.timestamp,
                         numMergeImages,
-                        mViewModel.getWriteDng(),
                         mViewModel.getPostProcessSettings(),
                         CameraProfile.generateCaptureFile(getContext()).getPath(),
                         this);

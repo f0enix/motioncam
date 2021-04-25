@@ -274,7 +274,6 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_CaptureImag
         jlong sessionHandle,
         jlong bufferHandle,
         jint saveNumImages,
-        jboolean writeDNG,
         jstring postProcessSettings_,
         jstring outputPath_)
 {
@@ -318,7 +317,7 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_CaptureImag
 
     motioncam::PostProcessSettings settings(json);
 
-    RawBufferManager::get().save(metadata, bufferHandle, saveNumImages, writeDNG, settings, std::string(outputPath));
+    RawBufferManager::get().save(metadata, bufferHandle, saveNumImages, settings, std::string(outputPath));
 
     return JNI_TRUE;
 }

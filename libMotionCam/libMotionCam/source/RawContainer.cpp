@@ -160,7 +160,6 @@ namespace motioncam {
     RawContainer::RawContainer(const string& inputPath) :
         mZipReader(new util::ZipReader(inputPath)),
         mReferenceTimestamp(-1),
-        mWriteDNG(false),
         mIsHdr(false),
         mIsInMemory(false)
     {
@@ -171,13 +170,11 @@ namespace motioncam {
                                const PostProcessSettings& postProcessSettings,
                                const int64_t referenceTimestamp,
                                const bool isHdr,
-                               const bool writeDNG,
                                const std::vector<std::shared_ptr<RawImageBuffer>>& buffers) :
         mCameraMetadata(cameraMetadata),
         mPostProcessSettings(postProcessSettings),
         mReferenceTimestamp(referenceTimestamp),
         mIsHdr(isHdr),
-        mWriteDNG(writeDNG),
         mIsInMemory(true)
     {
         if(buffers.empty()) {
@@ -215,7 +212,6 @@ namespace motioncam {
 
         // Save misc stuff
         metadataJson["referenceTimestamp"]  = std::to_string(mReferenceTimestamp);
-        metadataJson["writeDNG"]            = mWriteDNG;
         metadataJson["isHdr"]               = mIsHdr;
         
         // Global camera metadata
@@ -372,7 +368,6 @@ namespace motioncam {
         }
         
         mReferenceTimestamp = std::stol(getOptionalStringSetting(json, "referenceTimestamp", "0"));
-        mWriteDNG = getOptionalSetting(json, "writeDNG", false);
         mIsHdr = getOptionalSetting(json, "isHdr", false);
 
         // Black/white levels
@@ -578,10 +573,6 @@ namespace motioncam {
 
     const PostProcessSettings& RawContainer::getPostProcessSettings() const {
         return mPostProcessSettings;
-    }
-
-    bool RawContainer::getWriteDNG() const {
-        return mWriteDNG;
     }
 
     bool RawContainer::isHdr() const {

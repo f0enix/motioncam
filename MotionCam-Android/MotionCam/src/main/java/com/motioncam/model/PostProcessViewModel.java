@@ -7,7 +7,6 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 
-import com.motioncam.CameraActivity;
 import com.motioncam.DenoiseSettings;
 import com.motioncam.camera.AsyncNativeCameraOps;
 import com.motioncam.camera.NativeCameraBuffer;
@@ -264,6 +263,7 @@ public class PostProcessViewModel extends ViewModel {
         numMergeImages.setValue(denoiseSettings.numMergeImages);
         chromaEps.setValue(denoiseSettings.chromaEps);
         spatialDenoiseAggressiveness.setValue(spatialNoise.getOptionValue());
+        saveDng.setValue(settings.dng);
     }
 
     public PostProcessSettings getPostProcessSettings() {
@@ -301,6 +301,7 @@ public class PostProcessViewModel extends ViewModel {
         // Apply JPEG quality
         settings.jpegQuality = getSetting(jpegQuality, CameraProfile.DEFAULT_JPEG_QUALITY);
         settings.flipped = getSetting(isFlipped, false);
+        settings.dng = getWriteDng();
 
         return settings;
     }
