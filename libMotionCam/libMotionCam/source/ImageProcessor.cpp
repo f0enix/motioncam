@@ -364,7 +364,7 @@ namespace motioncam {
     float ImageProcessor::estimateExposureCompensation(const cv::Mat& histogram) {
         int bin = 0;
 
-        const float threshold = 1e-2f;
+        const float threshold = 1e-4f;
         float total = 0.0f;
         
         // Exposure compensation
@@ -1068,9 +1068,9 @@ namespace motioncam {
                 if(ev < minEv)
                     minEv = ev;
             }
-            
+                        
             // Make sure there's enough of a difference between the base and underexposed images
-            if(std::abs(maxEv - minEv) > 0.99) {
+            if(std::abs(maxEv - minEv) > 0.49) {
                 for(auto frameName : rawContainer.getFrames()) {
                     auto frame = rawContainer.getFrame(frameName);
                     auto ev = std::log2(1.0 / (frame->metadata.exposureTime / (1.0e9))) - std::log2(frame->metadata.iso / 100.0);

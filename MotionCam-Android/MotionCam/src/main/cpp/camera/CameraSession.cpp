@@ -873,15 +873,15 @@ namespace motioncam {
         else {
             // Allocate enough for numImages + 1 underexposed images
             mSaveHdrCaptures = numImages + 1;
-            mRequestedHdrCaptures = numImages;
+            mRequestedHdrCaptures = numImages + 1;
 
-            captureRequests.resize(numImages);
+            captureRequests.resize(mRequestedHdrCaptures);
 
-            for (int i = 0; i < numImages; i++)
+            for (int i = 0; i < mRequestedHdrCaptures; i++)
                 captureRequests[i] = mSessionContext->hdrCaptureRequests[0]->captureRequest;
 
             // Interleave underexposed requests
-            captureRequests[numImages / 2] = mSessionContext->hdrCaptureRequests[1]->captureRequest;
+            captureRequests[mRequestedHdrCaptures / 2] = mSessionContext->hdrCaptureRequests[1]->captureRequest;
         }
 
         LOGI("Initiating HDR capture (numImages=%d, baseIso=%d, baseExposure=%ld, hdrIso=%d, hdrExposure=%ld)",

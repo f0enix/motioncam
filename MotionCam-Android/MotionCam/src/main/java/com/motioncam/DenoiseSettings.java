@@ -71,9 +71,9 @@ public class DenoiseSettings {
             chromaEps   += 4;
         }
 
-        // Limit capture to 3 seconds
-        if(mergeImages * (exposure / 1.0e9) > 3.0f) {
-            mergeImages = (int) Math.round(3.0f / (exposure / 1.0e9));
+        // Limit capture to 5 seconds
+        if(mergeImages * (exposure / 1.0e9) > 5.0f) {
+            mergeImages = (int) Math.round(5.0f / (exposure / 1.0e9));
         }
 
         this.numMergeImages = mergeImages;
