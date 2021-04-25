@@ -71,7 +71,6 @@ public class CameraActivity extends AppCompatActivity implements
     private static final int SETTINGS_ACTIVITY_REQUEST_CODE = 0x10;
 
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
-    private static final int HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV = 8;
     private static final int SHADOW_UPDATE_FREQUENCY_MS = 300;
 
     private enum FocusState {
@@ -107,6 +106,7 @@ public class CameraActivity extends AppCompatActivity implements
     private SensorEventManager mSensorEventManager;
     private ProcessorReceiver mProgressReceiver;
     private Timer mShadowsUpdateTimer;
+    private double mHdrEv;
 
     private PostProcessSettings mPostProcessSettings;
     private PostProcessSettings mEstimatedPostProcessSettings;
@@ -672,7 +672,7 @@ public class CameraActivity extends AppCompatActivity implements
                     CameraManualControl.GetClosestIso(mIsoValues, mIso));
 
             CameraManualControl.Exposure hdrExposure = CameraManualControl.Exposure.Create(
-                    CameraManualControl.GetClosestShutterSpeed(cameraExposure / HDR_UNDEREXPOSED_SHUTTER_SPEED_DIV),
+                    CameraManualControl.GetClosestShutterSpeed(Math.round(cameraExposure / mHdrEv)),
                     CameraManualControl.GetClosestIso(mIsoValues, mIso));
 
             // If the user has not override the shutter speed/iso, pick our own
@@ -790,6 +790,11 @@ public class CameraActivity extends AppCompatActivity implements
 
         // Create camera bridge
         long nativeCameraMemoryUseBytes = nativeCameraMemoryUseMb * 1024 * 1024;
+
+        // Load HDR underexpose EV value
+        mHdrEv = Math.pow(2.0, sharedPrefs.getInt(SettingsViewModel.PREFS_KEY_HDR_EV, 6) / 2.0);
+
+        Log.d(TAG, "Using HDR EV " + mHdrEv);
 
         if (mNativeCamera == null) {
             // Load our native camera library
@@ -954,7 +959,7 @@ public class CameraActivity extends AppCompatActivity implements
 
     private CaptureMode getCaptureMode(SharedPreferences sharedPrefs) {
         return CaptureMode.valueOf(
-                sharedPrefs.getString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, CaptureMode.NIGHT.name()));
+                sharedPrefs.getString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, CaptureMode.ZSL.name()));
     }
 
     @Override
@@ -979,6 +984,9 @@ public class CameraActivity extends AppCompatActivity implements
         SharedPreferences sharedPrefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
 
         boolean enableRawPreview = sharedPrefs.getBoolean(SettingsViewModel.PREFS_KEY_DUAL_EXPOSURE_CONTROLS, false);
+        String captureModeStr = sharedPrefs.getString(SettingsViewModel.PREFS_KEY_CAPTURE_MODE, SettingsViewModel.RawMode.RAW10.name());
+        SettingsViewModel.RawMode rawMode = SettingsViewModel.RawMode.valueOf(captureModeStr);
+
         int displayWidth;
         int displayHeight;
 
@@ -1011,7 +1019,7 @@ public class CameraActivity extends AppCompatActivity implements
         configureTransform(width, height, previewOutputSize);
 
         mSurface = new Surface(surfaceTexture);
-        mNativeCamera.startCapture(mSelectedCamera, mSurface, enableRawPreview);
+        mNativeCamera.startCapture(mSelectedCamera, mSurface, enableRawPreview, rawMode == SettingsViewModel.RawMode.RAW16);
 
         // Update orientation in case we've switched front/back cameras
         NativeCameraBuffer.ScreenOrientation orientation = mSensorEventManager.getOrientation();

@@ -57,4 +57,8 @@
     <string name="dual_exposure_help">Enable an accurate preview of the camera output. This enables dual exposure control.</string>
     <string name="enable_dual_exposure">Enable dual exposure controls</string>
     <string name="hint_text">NEW! Enable dual exposure controls in the settings.</string>
+    <string name="hdr_settings_description">The amount to underexpose. Higher values lead to better highlight recovery but may lead to unrealistic looking images.</string>
+    <string name="capture_mode_description">Select RAW10 unless the camera does not behave correctly (e.g. issues with focus)</string>
+    <string name="raw10">RAW10</string>
+    <string name="raw16">RAW16</string>
 </resources>

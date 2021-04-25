@@ -125,7 +125,7 @@ namespace motioncam {
 
         // Check for RAW outputs
         OutputConfiguration outputConfig;
-        bool hasRawOutput = getRawConfiguration(cameraDescription, outputConfig);
+        bool hasRawOutput = getRawConfiguration(cameraDescription, false, outputConfig);
 
         return ( cameraDescription.hardwareLevel == ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED ||
                  cameraDescription.hardwareLevel == ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL_FULL ||
@@ -375,12 +375,20 @@ namespace motioncam {
         }
     }
 
-    bool CaptureSessionManager::getRawConfiguration(const CameraDescription& cameraDesc, OutputConfiguration& rawConfiguration) {
+    bool CaptureSessionManager::getRawConfiguration(const CameraDescription& cameraDesc, bool preferRaw16, OutputConfiguration& rawConfiguration) {
         auto outputConfigs = cameraDesc.outputConfigs;
-        auto rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW10); //raw16/10 as config??
 
-        if (rawIt == outputConfigs.end()) {
+        std::map<int32_t, std::vector<OutputConfiguration>>::iterator rawIt;
+
+        if(preferRaw16) {
             rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW16);
+            if (rawIt == outputConfigs.end())
+                rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW10);
+        }
+        else {
+            rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW10);
+            if (rawIt == outputConfigs.end())
+                rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW16);
         }
 
         if (rawIt != outputConfigs.end()) {
@@ -462,7 +470,8 @@ namespace motioncam {
             const std::string& cameraId,
             std::shared_ptr<CameraSessionListener> listener,
             std::shared_ptr<ANativeWindow> previewOutputWindow,
-            bool setupForRawPreview)
+            bool setupForRawPreview,
+            bool preferRaw16)
     {
         OutputConfiguration outputConfig;
 
@@ -474,7 +483,7 @@ namespace motioncam {
         if(!cameraDesc)
             throw CameraSessionException("Invalid camera");
 
-        if(!getRawConfiguration(*cameraDesc, outputConfig)) {
+        if(!getRawConfiguration(*cameraDesc, preferRaw16, outputConfig)) {
             throw CameraSessionException("Failed to get output configuration");
         }
 

@@ -1070,7 +1070,7 @@ namespace motioncam {
             }
             
             // Make sure there's enough of a difference between the base and underexposed images
-            if(std::abs(maxEv - minEv) > 0.99) {
+            if(std::abs(maxEv - minEv) > 0.24) {
                 for(auto frameName : rawContainer.getFrames()) {
                     auto frame = rawContainer.getFrame(frameName);
                     auto ev = std::log2(1.0 / (frame->metadata.exposureTime / (1000.0*1000.0*1000.0))) - std::log2(frame->metadata.iso / 100.0);

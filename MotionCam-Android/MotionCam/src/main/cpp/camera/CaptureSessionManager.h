@@ -29,6 +29,7 @@ namespace motioncam {
 
         static bool getRawConfiguration(
                 const CameraDescription& cameraDesc,
+                const bool preferRaw16,
                 OutputConfiguration& rawConfiguration);
 
         std::shared_ptr<CameraDescription> getCameraDescription(const std::string& cameraId) const;
@@ -39,7 +40,9 @@ namespace motioncam {
                 const std::string& cameraId,
                 std::shared_ptr<CameraSessionListener> listener,
                 std::shared_ptr<ANativeWindow> previewOutputWindow,
-                bool setupForRawPreview);
+                bool setupForRawPreview,
+                bool preferRaw16);
+
         void pauseCamera(bool pause);
         void stopCamera();
 

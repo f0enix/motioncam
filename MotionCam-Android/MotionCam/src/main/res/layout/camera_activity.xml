@@ -224,13 +224,13 @@
             app:layout_constraintTop_toTopOf="parent">
 
             <TextView
-                android:id="@+id/hdrModeBtn"
+                android:id="@+id/nightModeBtn"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:gravity="center_horizontal"
                 android:padding="5dp"
-                android:text="HDR/NIGHT"
+                android:text="NIGHT"
                 android:textAppearance="@style/MotionCam.TextAppearance.Small"
                 android:textColor="@color/colorAccent" />
 
