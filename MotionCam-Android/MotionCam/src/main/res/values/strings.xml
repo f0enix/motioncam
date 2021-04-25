@@ -61,4 +61,7 @@
     <string name="capture_mode_description">Select RAW10 unless the camera does not behave correctly (e.g. issues with focus)</string>
     <string name="raw10">RAW10</string>
     <string name="raw16">RAW16</string>
+    <string name="photo_mode">PHOTO</string>
+    <string name="night_mode">NIGHT</string>
+    <string name="burst_mode">BURST</string>
 </resources>

@@ -101,7 +101,8 @@
             android:layout_height="wrap_content"
             android:layout_marginLeft="5dp"
             android:layout_marginRight="5dp"
-            android:alpha="0.75">
+            android:alpha="0.75"
+            android:baselineAligned="false">
 
             <LinearLayout
                 android:id="@+id/shadowsLayout"
@@ -112,9 +113,9 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="match_parent"
-                    android:layout_marginLeft="5dp"
-                    android:drawableStart="@drawable/baseline_tonality_white_24"
-                    android:gravity="center_vertical"/>
+                    android:layout_marginStart="5dp"
+                    android:gravity="center_vertical"
+                    app:drawableStartCompat="@drawable/baseline_tonality_white_24" />
 
                 <SeekBar
                     android:id="@+id/shadowsSeekBar"
@@ -135,7 +136,7 @@
 
                 <SeekBar
                     android:id="@+id/exposureSeekBar"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:progress="5"
                     android:max="10"
@@ -230,7 +231,7 @@
                 android:layout_weight="1"
                 android:gravity="center_horizontal"
                 android:padding="5dp"
-                android:text="NIGHT"
+                android:text="@string/night_mode"
                 android:textAppearance="@style/MotionCam.TextAppearance.Small"
                 android:textColor="@color/colorAccent" />
 
@@ -241,7 +242,7 @@
                 android:layout_weight="1"
                 android:gravity="center_horizontal"
                 android:padding="5dp"
-                android:text="NORMAL"
+                android:text="@string/photo_mode"
                 android:textAppearance="@style/MotionCam.TextAppearance.Small" />
 
             <TextView
@@ -251,7 +252,7 @@
                 android:layout_weight="1"
                 android:gravity="center_horizontal"
                 android:padding="5dp"
-                android:text="BURST"
+                android:text="@string/burst_mode"
                 android:textAppearance="@style/MotionCam.TextAppearance.Small" />
 
         </LinearLayout>
