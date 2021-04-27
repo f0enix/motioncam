@@ -18,6 +18,7 @@ import android.os.Handler;
 import android.util.Log;
 import android.util.Size;
 import android.view.Display;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
@@ -57,6 +58,7 @@ import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class CameraActivity extends AppCompatActivity implements
         SensorEventManager.SensorEventHandler,
@@ -71,7 +73,8 @@ public class CameraActivity extends AppCompatActivity implements
     private static final int SETTINGS_ACTIVITY_REQUEST_CODE = 0x10;
 
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
-    private static final int SHADOW_UPDATE_FREQUENCY_MS = 300;
+    private static final int SHADOW_UPDATE_FREQUENCY_MS = 500;
+    private static final float SHADOW_ESTIMATE_BIAS = 16.0f;
 
     private enum FocusState {
         AUTO,
@@ -128,14 +131,19 @@ public class CameraActivity extends AppCompatActivity implements
     private ShadowTimerTask mShadowUpdateTimerTask;
     private float mShadowEstimated;
     private float mShadowOffset;
+    private AtomicBoolean mImageCaptureInProgress = new AtomicBoolean(false);
 
     private class ShadowTimerTask extends TimerTask {
         @Override
         public void run() {
+            // Don't estimate shadows when capturing
+            if(mImageCaptureInProgress.get())
+                return;
+
             PostProcessSettings estimatedSettings;
 
             try {
-                estimatedSettings = mNativeCamera.estimatePostProcessSettings(true, 12.0f);
+                estimatedSettings = mNativeCamera.estimatePostProcessSettings(true, SHADOW_ESTIMATE_BIAS);
             }
             catch (IOException e) {
                 e.printStackTrace();
@@ -158,7 +166,7 @@ public class CameraActivity extends AppCompatActivity implements
                 mShadowsAnimator =
                         ObjectAnimator.ofFloat(CameraActivity.this, "shadowValue", mShadowEstimated, shadows);
 
-                mShadowsAnimator.setDuration(200);
+                mShadowsAnimator.setDuration(250);
                 mShadowsAnimator.setInterpolator(new LinearInterpolator());
                 mShadowsAnimator.setAutoCancel(true);
 
@@ -624,13 +632,13 @@ public class CameraActivity extends AppCompatActivity implements
         updatePreviewTabUi(false);
     }
 
-    private void onCaptureClicked() {
+    private void capture(CaptureMode mode) {
         if(mNativeCamera == null || mEstimatedPostProcessSettings == null)
             return;
 
         mPostProcessSettings.shadows = calculateShadows();
 
-        if(mCaptureMode == CaptureMode.BURST) {
+        if(mode == CaptureMode.BURST) {
             // Pass native camera handle
             Intent intent = new Intent(this, PostProcessActivity.class);
 
@@ -640,7 +648,7 @@ public class CameraActivity extends AppCompatActivity implements
 
             startActivity(intent);
         }
-        else if(mCaptureMode == CaptureMode.NIGHT || mCaptureMode == CaptureMode.ZSL) {
+        else if(mode == CaptureMode.NIGHT || mode == CaptureMode.ZSL) {
             mBinding.captureBtn.setEnabled(false);
 
             mBinding.cameraFrame
@@ -699,15 +707,21 @@ public class CameraActivity extends AppCompatActivity implements
                 iso = -1;
             }
 
-            mNativeCamera.captureHdrImage(
-                    denoiseSettings.numMergeImages,
-                    iso,
-                    exposure,
-                    hdrExposure.iso.getIso(),
-                    hdrExposure.shutterSpeed.getExposureTime(),
-                    settings,
-                    CameraProfile.generateCaptureFile(this).getPath());
+            if(mImageCaptureInProgress.compareAndSet(false, true)) {
+                mNativeCamera.captureHdrImage(
+                        denoiseSettings.numMergeImages,
+                        iso,
+                        exposure,
+                        hdrExposure.iso.getIso(),
+                        hdrExposure.shutterSpeed.getExposureTime(),
+                        settings,
+                        CameraProfile.generateCaptureFile(this).getPath());
+            }
         }
+    }
+
+    private void onCaptureClicked() {
+        capture(mCaptureMode);
     }
 
     @Override
@@ -1228,6 +1242,8 @@ public class CameraActivity extends AppCompatActivity implements
     public void onCameraHdrImageCaptureCompleted() {
         Log.i(TAG, "HDR capture completed");
 
+        mImageCaptureInProgress.set(false);
+
         runOnUiThread( () ->
         {
             mBinding.captureBtn.setEnabled(true);
@@ -1329,6 +1345,8 @@ public class CameraActivity extends AppCompatActivity implements
 
     private void onShadowsSeekBarChanged(int progress) {
         mShadowOffset = 6.0f * ((progress - 50.0f) / 100.0f);
+
+        updatePreviewSettings();
     }
 
     private void setShadowValue(float value) {
@@ -1447,5 +1465,17 @@ public class CameraActivity extends AppCompatActivity implements
 
     @Override
     public void onProcessingCompleted() {
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if(keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            onCaptureClicked();
+        }
+        else if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            capture(CaptureMode.BURST);
+        }
+
+        return true;
     }
 }
