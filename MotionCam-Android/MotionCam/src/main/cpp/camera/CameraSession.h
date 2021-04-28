@@ -2,6 +2,7 @@
 #define MOTIONCAM_ANDROID_CAMERASESSION_H
 
 #include "CameraDescription.h"
+#include "CameraSessionState.h"
 
 #include <motioncam/RawImageMetadata.h>
 #include <motioncam/Settings.h>
@@ -15,6 +16,7 @@
 #include <camera/NdkCameraCaptureSession.h>
 #include <camera/NdkCameraManager.h>
 #include <media/NdkImageReader.h>
+#include <queue/blockingconcurrentqueue.h>
 
 namespace motioncam {
     class RawImageConsumer;
@@ -24,52 +26,16 @@ namespace motioncam {
     struct CameraCaptureSessionContext;
     struct CaptureCallbackContext;
     struct EventLoopData;
+    class CameraStateManager;
     enum class EventAction : int;
 
     typedef std::shared_ptr<EventLoopData> EventLoopDataPtr;
-
-    enum class CameraCaptureSessionState : int {
-        READY = 0,
-        ACTIVE,
-        CLOSED
-    };
-
-    enum class CameraMode : int {
-        AUTO,
-        MANUAL
-    };
-
-    enum class CaptureEvent : int {
-        REPEAT = 0,
-        CANCEL_AF,
-        TRIGGER_AF,
-        HDR_CAPTURE
-    };
-
-    enum class CameraFocusState : int {
-        INACTIVE = 0,
-        PASSIVE_SCAN,
-        PASSIVE_FOCUSED,
-        ACTIVE_SCAN,
-        FOCUS_LOCKED,
-        NOT_FOCUS_LOCKED,
-        PASSIVE_UNFOCUSED
-    };
-
-    enum class CameraExposureState : int {
-        INACTIVE = 0,
-        SEARCHING,
-        CONVERGED,
-        LOCKED,
-        FLASH_REQUIRED,
-        PRECAPTURE
-    };
 
     class CameraSession {
     public:
         CameraSession(
                 std::shared_ptr<CameraSessionListener> listener,
-                std::shared_ptr<CameraDescription>  cameraDescription,
+                std::shared_ptr<CameraDescription> cameraDescription,
                 std::shared_ptr<RawImageConsumer> rawImageConsumer);
 
         ~CameraSession();
@@ -128,7 +94,6 @@ namespace motioncam {
         void doEventLoop();
         void doProcessEvent(const EventLoopDataPtr& eventLoopData);
 
-        bool doRepeatCapture();
         void doOpenCamera(bool setupForRawPreview);
         void doCloseCamera();
         void doPauseCapture();
@@ -141,7 +106,6 @@ namespace motioncam {
         void doOnCameraExposureStatusChanged(int32_t iso, int64_t exposureTime);
         void doCameraAutoExposureStateChanged(CameraExposureState state);
         void doCameraAutoFocusStateChanged(CameraFocusState state);
-        void doOnTriggerAfCompleted();
 
         void doOnInternalError(const std::string& e);
 
@@ -178,14 +142,15 @@ namespace motioncam {
         int mRequestedHdrCaptures;
         int mSaveHdrCaptures;
         bool mPartialHdrCapture;
-        int32_t mExposureCompensation;
-        int32_t mUserIso;
-        int64_t mUserExposureTime;
+
+        moodycamel::BlockingConcurrentQueue<EventLoopDataPtr> mEventLoopQueue;
+        std::unique_ptr<std::thread> mEventLoopThread;
 
         std::shared_ptr<CameraDescription> mCameraDescription;
         std::shared_ptr<RawImageConsumer> mImageConsumer;
         std::shared_ptr<CameraCaptureSessionContext> mSessionContext;
         std::shared_ptr<CameraSessionListener> mSessionListener;
+        std::unique_ptr<CameraStateManager> mCameraStateManager;
     };
 }
 

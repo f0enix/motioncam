@@ -18,6 +18,11 @@ namespace motioncam {
         DisplayDimension outputSize;
     };
 
+    struct Size {
+        int left, top;
+        int width, height;
+    };
+
     struct CameraDescription {
         CameraDescription() :
             hardwareLevel(ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY),
@@ -26,7 +31,7 @@ namespace motioncam {
             isoRange{0},
             exposureRange{0},
             exposureCompensationStepFraction{1},
-            sensorSize{0},
+            sensorSize{0, 0, 0, 0},
             maxAfRegions(0),
             maxAeRegions(0),
             maxAwbRegions(0),
@@ -49,7 +54,7 @@ namespace motioncam {
         int32_t isoRange[2];
         int64_t exposureRange[2];
 
-        int sensorSize[4];
+        Size sensorSize;
         int maxAfRegions;
         int maxAeRegions;
         int maxAwbRegions;

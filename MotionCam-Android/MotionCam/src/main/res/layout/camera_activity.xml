@@ -56,34 +56,6 @@
 
         </FrameLayout>
 
-        <FrameLayout
-            android:id="@+id/exposureLockPointFrame"
-            android:layout_width="80dp"
-            android:layout_height="80dp"
-            android:padding="5dp"
-            android:visibility="invisible">
-
-            <View
-                android:id="@+id/cancelExposureLockBtn"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:background="@drawable/baseline_cancel_24" />
-
-            <View
-                android:layout_width="50dp"
-                android:layout_height="50dp"
-                android:layout_gravity="center"
-                android:background="@drawable/exposure_square" />
-
-            <View
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:layout_gravity="center"
-                android:alpha="0.75"
-                android:background="@drawable/baseline_add_24" />
-
-        </FrameLayout>
-
     </FrameLayout>
 
     <LinearLayout

@@ -1787,7 +1787,10 @@ void PostProcessGenerator::generate()
     sharpen0.set_estimate(2.0f);
     sharpen1.set_estimate(2.0f);
     chromaFilterWeight.set_estimate(8.0f);
+    sharpenThreshold.set_estimate(32.0f);
     
+    cameraToPcs.set_estimates({{0, 3}, {0, 3}});
+    pcsToSrgb.set_estimates({{0, 3}, {0, 3}});
 
     in0.set_estimates({{0, 2048}, {0, 1536}});
     in1.set_estimates({{0, 2048}, {0, 1536}});
@@ -1806,8 +1809,6 @@ void PostProcessGenerator::generate()
     asShotVector.set_estimate(0, 1.0f);
     asShotVector.set_estimate(1, 1.0f);
     asShotVector.set_estimate(2, 1.0f);
-
-    // cameraToSrgb.set_estimates({{0, 4}, {0, 4}});
 
     output.set_estimates({{0, 4000}, {0, 3000}, {0, 3}});
 

@@ -74,7 +74,7 @@ public class CameraActivity extends AppCompatActivity implements
 
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
     private static final int SHADOW_UPDATE_FREQUENCY_MS = 500;
-    private static final float SHADOW_ESTIMATE_BIAS = 16.0f;
+    private static final float SHADOW_ESTIMATE_BIAS = 32.0f;
 
     private enum FocusState {
         AUTO,
@@ -132,6 +132,7 @@ public class CameraActivity extends AppCompatActivity implements
     private float mShadowEstimated;
     private float mShadowOffset;
     private AtomicBoolean mImageCaptureInProgress = new AtomicBoolean(false);
+    private long mFocusLockedTimestampMs;
 
     private class ShadowTimerTask extends TimerTask {
         @Override
@@ -219,7 +220,6 @@ public class CameraActivity extends AppCompatActivity implements
         mProgressReceiver = new ProcessorReceiver(new Handler());
 
         mBinding.focusLockPointFrame.setOnClickListener(v -> onFixedFocusCancelled());
-        mBinding.exposureLockPointFrame.setOnClickListener(v -> onFixedExposureCancelled());
         mBinding.settingsBtn.setOnClickListener(v -> onSettingsClicked());
 
         mBinding.shadowsSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -310,10 +310,6 @@ public class CameraActivity extends AppCompatActivity implements
         setFocusState(FocusState.AUTO, null);
     }
 
-    private void onFixedExposureCancelled() {
-        setFocusState(FocusState.FIXED, mAutoFocusPoint);
-    }
-
     private void onCameraManualControlEnabled(boolean enabled) {
         if(mManualControlsEnabled == enabled)
             return;
@@ -390,7 +386,6 @@ public class CameraActivity extends AppCompatActivity implements
         updateManualControlView(mSensorEventManager.getOrientation());
 
         mBinding.focusLockPointFrame.setVisibility(View.INVISIBLE);
-        mBinding.exposureLockPointFrame.setVisibility(View.INVISIBLE);
         mBinding.exposureSeekBar.setProgress(0);
         mBinding.shadowsSeekBar.setProgress(50);
 
@@ -1182,6 +1177,10 @@ public class CameraActivity extends AppCompatActivity implements
     @Override
     public void onCameraAutoFocusStateChanged(NativeCameraSessionBridge.CameraFocusState state) {
         Log.i(TAG, "Focus state: " + state.name());
+
+        if(state == NativeCameraSessionBridge.CameraFocusState.FOCUS_LOCKED) {
+            mFocusLockedTimestampMs = System.currentTimeMillis();
+        }
     }
 
     private void startImageProcessor() {
@@ -1375,9 +1374,17 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void setAutoExposureState(NativeCameraSessionBridge.CameraExposureState state) {
+        boolean timePassed = System.currentTimeMillis() - mFocusLockedTimestampMs > 1000;
+
+        if(state == NativeCameraSessionBridge.CameraExposureState.SEARCHING && timePassed) {
+            setFocusState(FocusState.AUTO, null);
+        }
     }
 
     private void setFocusState(FocusState state, PointF focusPt) {
+        if(mFocusState == state)
+            return;
+
         mFocusState = state;
 
         if(state == FocusState.FIXED) {
@@ -1385,14 +1392,10 @@ public class CameraActivity extends AppCompatActivity implements
             mAutoFocusPoint = focusPt;
 
             mBinding.focusLockPointFrame.setVisibility(View.VISIBLE);
-            mBinding.exposureLockPointFrame.setVisibility(View.INVISIBLE);
-
             mNativeCamera.setFocusPoint(mAutoFocusPoint, mAutoExposurePoint);
         }
         else if(state == FocusState.AUTO) {
             mBinding.focusLockPointFrame.setVisibility(View.INVISIBLE);
-            mBinding.exposureLockPointFrame.setVisibility(View.INVISIBLE);
-
             mNativeCamera.setAutoFocus();
         }
     }
@@ -1423,23 +1426,18 @@ public class CameraActivity extends AppCompatActivity implements
 
         PointF pt = new PointF(pts[0], pts[1]);
 
-        if(mFocusState == FocusState.AUTO) {
-            FrameLayout.LayoutParams layoutParams =
-                    (FrameLayout.LayoutParams) mBinding.focusLockPointFrame.getLayoutParams();
+        FrameLayout.LayoutParams layoutParams =
+                (FrameLayout.LayoutParams) mBinding.focusLockPointFrame.getLayoutParams();
 
-            layoutParams.setMargins(
-                    Math.round(touchX) - mBinding.focusLockPointFrame.getWidth() / 2,
-                    Math.round(touchY) - mBinding.focusLockPointFrame.getHeight() / 2,
-                    0,
-                    0);
+        layoutParams.setMargins(
+                Math.round(touchX) - mBinding.focusLockPointFrame.getWidth() / 2,
+                Math.round(touchY) - mBinding.focusLockPointFrame.getHeight() / 2,
+                0,
+                0);
 
-            mBinding.focusLockPointFrame.setLayoutParams(layoutParams);
+        mBinding.focusLockPointFrame.setLayoutParams(layoutParams);
 
-            setFocusState(FocusState.FIXED, pt);
-        }
-        else {
-            setFocusState(FocusState.AUTO, null);
-        }
+        setFocusState(FocusState.FIXED, pt);
     }
 
     @Override
@@ -1471,11 +1469,13 @@ public class CameraActivity extends AppCompatActivity implements
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if(keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             onCaptureClicked();
+            return true;
         }
         else if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             capture(CaptureMode.BURST);
+            return true;
         }
 
-        return true;
+        return super.onKeyDown(keyCode, event);
     }
 }

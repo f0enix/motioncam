@@ -55,15 +55,7 @@ public class SensorEventManager implements SensorEventListener {
             mSensorManager.unregisterListener(this);
     }
 
-    private void detectOrientation(SensorEvent event) {
-        // Copy sensor data
-        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-            System.arraycopy(event.values, 0, mAccelerometerReading, 0, mAccelerometerReading.length);
-        }
-        else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
-            System.arraycopy(event.values, 0, mMagnetometerReading, 0, mMagnetometerReading.length);
-        }
-
+    private void detectOrientation() {
         // Update rotation matrix, which is needed to update orientation angles.
         SensorManager.getRotationMatrix(mRotationMatrix, null, mAccelerometerReading, mMagnetometerReading);
 
@@ -83,9 +75,9 @@ public class SensorEventManager implements SensorEventListener {
         roll = (int) Math.round(mOrientationRoll.getMean());
         pitch = (int) Math.round(mOrientationPitch.getMean());
 
-        if((mOrientation == NativeCameraBuffer.ScreenOrientation.PORTRAIT || mOrientation == NativeCameraBuffer.ScreenOrientation.REVERSE_PORTRAIT)
-                && roll > -30
-                && roll < 30 )
+        if( (  mOrientation == NativeCameraBuffer.ScreenOrientation.PORTRAIT
+            || mOrientation == NativeCameraBuffer.ScreenOrientation.REVERSE_PORTRAIT )
+                && roll > -30 && roll < 30 )
         {
             if(pitch > 0)
                 setOrientation(NativeCameraBuffer.ScreenOrientation.REVERSE_PORTRAIT);
@@ -110,7 +102,15 @@ public class SensorEventManager implements SensorEventListener {
 
     @Override
     public void onSensorChanged(SensorEvent event) {
-        detectOrientation(event);
+        // Copy sensor data
+        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            System.arraycopy(event.values, 0, mAccelerometerReading, 0, mAccelerometerReading.length);
+        }
+        else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
+            System.arraycopy(event.values, 0, mMagnetometerReading, 0, mMagnetometerReading.length);
+        }
+
+        detectOrientation();
     }
 
     private void setOrientation(NativeCameraBuffer.ScreenOrientation screenOrientation) {

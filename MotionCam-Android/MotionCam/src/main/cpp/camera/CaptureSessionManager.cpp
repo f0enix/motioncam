@@ -319,9 +319,7 @@ namespace motioncam {
 
         // ACAMERA_SENSOR_INFO_ACTIVE_ARRAY_SIZE
         if(ACameraMetadata_getConstEntry(cameraChars.get(), ACAMERA_SENSOR_INFO_ACTIVE_ARRAY_SIZE, &entry) == ACAMERA_OK) {
-            for (int n = 0; n < 4; n++) {
-                cameraDescription.sensorSize[n] = entry.data.i32[n];
-            }
+            cameraDescription.sensorSize = { entry.data.i32[0], entry.data.i32[1], entry.data.i32[2], entry.data.i32[3] };
         }
 
         // ACAMERA_CONTROL_MAX_REGIONS
