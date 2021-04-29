@@ -361,10 +361,8 @@ namespace motioncam {
         return std::max(1.0f, std::min(keyValue / avgLuminance, 32.0f));
     }
 
-    float ImageProcessor::estimateExposureCompensation(const cv::Mat& histogram) {
+    float ImageProcessor::estimateExposureCompensation(const cv::Mat& histogram, float threshold) {
         int bin = 0;
-
-        const float threshold = 1e-4f;
         float total = 0.0f;
         
         // Exposure compensation
@@ -1016,12 +1014,15 @@ namespace motioncam {
         return histogram;
     }
 
-    float ImageProcessor::matchExposures(const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const RawImageBuffer& toMatch)
+    void ImageProcessor::matchExposures(
+        const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const RawImageBuffer& toMatch, float& outScale, float& outWhitePoint)
     {
         auto refHistogram = calcHistogram(cameraMetadata, reference, true, 4);
         auto toMatchHistogram = calcHistogram(cameraMetadata, toMatch, true, 4);
-        
+
         float exposureScale = 1.0f;
+        int whitePointBin = toMatchHistogram.cols - 1;
+        
         std::vector<float> matches;
         
         for(int i = 0; i < toMatchHistogram.cols; i++) {
@@ -1037,13 +1038,21 @@ namespace motioncam {
                 }
             }
         }
+
+        for(int i = toMatchHistogram.cols - 1; i >= 0; i--) {
+            if(toMatchHistogram.at<float>(i) < 1.0f) {
+                whitePointBin = std::min(i + 1, toMatchHistogram.cols - 1);
+                break;
+            }
+        }
         
         if(matches.empty())
             exposureScale = 1.0f;
         else
-            exposureScale += *max_element(std::begin(matches), std::end(matches));
+            exposureScale = *max_element(std::begin(matches), std::end(matches));
 
-        return exposureScale;
+        outScale = exposureScale;
+        outWhitePoint = (toMatchHistogram.cols - 1) / (float) whitePointBin;
     }
 
     void ImageProcessor::process(RawContainer& rawContainer, const std::string& outputPath, const ImageProcessorProgress& progressListener) {
@@ -1827,7 +1836,9 @@ namespace motioncam {
         Measure measure("prepareHdr()");
         
         // Match exposures
-        float exposureScale = matchExposures(cameraMetadata, reference, underexposed);
+        float exposureScale, whitePoint;
+        
+        matchExposures(cameraMetadata, reference, underexposed, exposureScale, whitePoint);
         
         //
         // Register images
@@ -1906,7 +1917,7 @@ namespace motioncam {
         }
 
         Halide::Runtime::Buffer<float> cameraToPcsBuffer = ToHalideBuffer<float>(cameraToPcs);
-
+        
         linear_image(inputBuffers[0],
                     inputBuffers[1],
                     inputBuffers[2],
@@ -1919,7 +1930,6 @@ namespace motioncam {
                     cameraWhite[1],
                     cameraWhite[2],
                     cameraToPcsBuffer,
-                    1,
                     inputBuffers[0].width(),
                     inputBuffers[0].height(),
                     static_cast<int>(cameraMetadata.sensorArrangment),
@@ -1928,6 +1938,7 @@ namespace motioncam {
                     cameraMetadata.blackLevel[2],
                     cameraMetadata.blackLevel[3],
                     cameraMetadata.whiteLevel,
+                    whitePoint,
                     outputBuffer);
         
         //
@@ -1936,7 +1947,7 @@ namespace motioncam {
         
         auto hdrMetadata = std::make_shared<HdrMetadata>();
         
-        hdrMetadata->exposureScale  = 1.0 / exposureScale;
+        hdrMetadata->exposureScale  = 1.0f / (exposureScale / whitePoint);
         hdrMetadata->hdrInput       = outputBuffer;
         hdrMetadata->mask           = ToHalideBuffer<uint8_t>(mask).copy();
         hdrMetadata->error          = error;

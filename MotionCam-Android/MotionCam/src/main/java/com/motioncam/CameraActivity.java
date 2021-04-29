@@ -74,7 +74,7 @@ public class CameraActivity extends AppCompatActivity implements
 
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
     private static final int SHADOW_UPDATE_FREQUENCY_MS = 500;
-    private static final float SHADOW_ESTIMATE_BIAS = 32.0f;
+    private static final float SHADOW_ESTIMATE_BIAS = 20.0f;
 
     private enum FocusState {
         AUTO,
@@ -1382,7 +1382,7 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void setFocusState(FocusState state, PointF focusPt) {
-        if(mFocusState == state)
+        if(mFocusState == FocusState.AUTO && state == FocusState.AUTO)
             return;
 
         mFocusState = state;

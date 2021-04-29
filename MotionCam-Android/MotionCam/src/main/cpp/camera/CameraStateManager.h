@@ -11,6 +11,12 @@ namespace motioncam {
     struct CameraCaptureSessionContext;
     struct CameraDescription;
 
+    enum class Action : int {
+        NONE,
+        REQUEST_USER_FOCUS,
+        REQUEST_AUTO_FOCUS
+    };
+
     enum class State : int {
         AUTO_FOCUS_WAIT = 0,
         TRIGGER_AUTO_FOCUS,
@@ -30,25 +36,37 @@ namespace motioncam {
         void requestAutoFocus();
         void requestExposureCompensation(int exposureCompensation);
 
+        void requestUserExposure(int32_t iso, int64_t exposureTime);
+        void requestMode(CameraMode mode);
+
         void onCameraCaptureSequenceCompleted(const int sequenceId);
         void onCameraSessionStateChanged(const CameraCaptureSessionState state);
 
     private:
-        bool setRepeatingCapture();
         bool triggerUserAutoFocus();
         bool triggerAutoFocus();
         bool setUserFocus();
         bool setAutoFocus();
+
+        void setState(State state);
+        void nextAction();
+
+        void updateCaptureRequestExposure();
 
     private:
         const CameraCaptureSessionContext& mSessionContext;
         const CameraDescription& mCameraDescription;
 
         State mState;
+        Action mRequestedAction;
+        CameraMode mCameraMode;
         int mExposureCompensation;
 
         float mRequestedFocusX;
         float mRequestedFocusY;
+
+        int32_t mUserIso;
+        int64_t mUserExposureTime;
     };
 }
 

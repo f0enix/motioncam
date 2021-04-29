@@ -64,7 +64,7 @@ namespace motioncam {
                                      PostProcessSettings& outSettings);
         
         static float estimateShadows(const cv::Mat& histogram, float keyValue=0.22f);
-        static float estimateExposureCompensation(const cv::Mat& histogram);
+        static float estimateExposureCompensation(const cv::Mat& histogram, float threshold=1e-4f);
         static void estimateWhiteBalance(const RawImageBuffer& rawBuffer,
                                          const RawCameraMetadata& cameraMetadata,
                                          float& outR,
@@ -91,7 +91,8 @@ namespace motioncam {
                                      const Halide::Runtime::Buffer<uint8_t>& toAlignBuffer,
                                      int scale=1);
         
-        static float matchExposures(const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const RawImageBuffer& toMatch);
+        static void matchExposures(
+            const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const RawImageBuffer& toMatch, float& outScale, float& outWhitePoint);
 
         static std::shared_ptr<RawData> loadRawImage(const RawImageBuffer& rawImage,
                                                      const RawCameraMetadata& cameraMetadata,

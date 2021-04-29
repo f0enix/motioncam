@@ -177,7 +177,6 @@ namespace motioncam {
             std::shared_ptr<CameraDescription>  cameraDescription,
             std::shared_ptr<RawImageConsumer> rawImageConsumer) :
         mState(CameraCaptureSessionState::CLOSED),
-        mMode(CameraMode::AUTO),
         mLastIso(0),
         mLastExposureTime(0),
         mLastFocusState(CameraFocusState::INACTIVE),
@@ -190,9 +189,6 @@ namespace motioncam {
         mPartialHdrCapture(false),
         mSaveHdrCaptures(0),
         mHdrCaptureInProgress(false)
-//        mExposureCompensation(0),
-//        mUserIso(100),
-//        mUserExposureTime(10000000)
     {
     }
 
@@ -210,8 +206,6 @@ namespace motioncam {
             LOGE("Trying to open camera while already running!");
             return;
         }
-
-        mMode = CameraMode::AUTO;
 
         // Create new session context and set up callbacks
         mSessionContext = std::make_shared<CameraCaptureSessionContext>();
@@ -633,27 +627,23 @@ namespace motioncam {
     }
 
     void CameraSession::doSetAutoExposure() {
-//        if (mState == CameraCaptureSessionState::ACTIVE) {
-//            mMode = CameraMode::AUTO;
-//            mExposureCompensation = 0;
-//
-//            doRepeatCapture();
-//        }
+        if (mState == CameraCaptureSessionState::CLOSED) {
+            LOGW("Cannot set auto exposure, invalid state");
+            return;
+        }
+
+        mCameraStateManager->requestMode(CameraMode::AUTO);
     }
 
     void CameraSession::doSetManualExposure(int32_t iso, int64_t exposureTime) {
-        if (mState != CameraCaptureSessionState::ACTIVE) {
+        if (mState == CameraCaptureSessionState::CLOSED) {
             LOGW("Cannot set manual exposure, invalid state");
             return;
         }
 
         if (mState == CameraCaptureSessionState::ACTIVE) {
-            mMode = CameraMode::MANUAL;
-//            mExposureCompensation = 0;
-//            mUserIso = iso;
-//            mUserExposureTime = exposureTime;
-//
-//            doRepeatCapture();
+            mCameraStateManager->requestUserExposure(iso, exposureTime);
+            mCameraStateManager->requestMode(CameraMode::MANUAL);
         }
     }
 

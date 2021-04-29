@@ -2829,7 +2829,6 @@ public:
     Input<float[3]> asShotVector{"asShotVector"};    
     Input<Buffer<float>> cameraToPcs{"cameraToPcs", 2};
 
-    Input<int> downscaleFactor{"downscaleFactor"};
     Input<int> width{"width"};
     Input<int> height{"height"};
 
@@ -2837,6 +2836,7 @@ public:
     
     Input<int16_t[4]> blackLevel{"blackLevel"};
     Input<int16_t> whiteLevel{"whiteLevel"};
+    Input<float> whitePoint{"whitePoint"};
 
     Output<Buffer<uint16_t>> output{"output", 3};
 
@@ -2865,10 +2865,10 @@ void LinearImageGenerator::generate() {
 
     downscaled(v_x, v_y, v_c) =
         mux(v_c,
-            {   in[0](v_x*downscaleFactor, v_y*downscaleFactor),
-                in[1](v_x*downscaleFactor, v_y*downscaleFactor),
-                in[2](v_x*downscaleFactor, v_y*downscaleFactor),
-                in[3](v_x*downscaleFactor, v_y*downscaleFactor) });
+            {  in[0](v_x, v_y),
+               in[1](v_x, v_y),
+               in[2](v_x, v_y),
+               in[3](v_x, v_y) });
 
     // Shading map
     linearScale(shadingMap[0], inShadingMap0, inShadingMap0.width(), inShadingMap0.height(), width, height);
@@ -2911,10 +2911,9 @@ void LinearImageGenerator::generate() {
     demosaic = create<Demosaic>();
     demosaic->apply(bayerInput, in0.width(), in0.height(), sensorArrangement);
     
-    // Transform to sRGB space
     Func linear("linear"), colorCorrectInput("colorCorrectInput");
 
-    linear(v_x, v_y, v_c) = (demosaic->output(v_x, v_y, v_c) / 16384.0f);
+    linear(v_x, v_y, v_c) = (demosaic->output(v_x, v_y, v_c) / 16384.0f) * whitePoint;
 
     colorCorrectInput(v_x, v_y, v_c) =
         select( v_c == 0, clamp( linear(v_x, v_y, 0), 0.0f, asShotVector[0] ),

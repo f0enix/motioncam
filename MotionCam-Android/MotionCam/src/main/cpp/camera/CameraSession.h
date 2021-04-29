@@ -128,7 +128,6 @@ namespace motioncam {
 
     private:
         CameraCaptureSessionState mState;
-        CameraMode mMode;
         int32_t mLastIso;
         int64_t mLastExposureTime;
         CameraFocusState mLastFocusState;
