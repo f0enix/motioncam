@@ -64,4 +64,6 @@
     <string name="photo_mode">PHOTO</string>
     <string name="night_mode">NIGHT</string>
     <string name="burst_mode">BURST</string>
+    <string name="processing">Processing</string>
+    <string name="send_to">Send To</string>
 </resources>

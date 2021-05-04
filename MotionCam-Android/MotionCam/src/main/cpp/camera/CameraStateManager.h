@@ -20,10 +20,13 @@ namespace motioncam {
     enum class State : int {
         AUTO_FOCUS_WAIT = 0,
         TRIGGER_AUTO_FOCUS,
-        AUTO_FOCUS_READY,
+        AUTO_FOCUS_LOCKED,
+        AUTO_FOCUS_ACTIVE,
         USER_FOCUS_WAIT,
         TRIGGER_USER_FOCUS,
-        USER_FOCUS_LOCKED
+        USER_FOCUS_LOCKED,
+        USER_FOCUS_ACTIVE,
+        PAUSED
     };
 
     class CameraStateManager {
@@ -31,6 +34,9 @@ namespace motioncam {
         CameraStateManager(const CameraCaptureSessionContext& context, const CameraDescription& cameraDescription);
 
         void start();
+
+        void requestPause();
+        void requestResume();
 
         void requestUserFocus(float x, float y);
         void requestAutoFocus();
@@ -49,6 +55,8 @@ namespace motioncam {
         bool setAutoFocus();
 
         void setState(State state);
+        void setNextAction(Action action);
+
         void nextAction();
 
         void updateCaptureRequestExposure();

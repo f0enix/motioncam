@@ -2121,7 +2121,7 @@ void PreviewGenerator::generate() {
     //
 
     blur(blurOutput, blurOutputTmp, tonemap->output);
-    blur2(blurOutput2, blurOutput2Tmp, blurOutput);
+    blur(blurOutput2, blurOutput2Tmp, blurOutput);
     
     Func gaussianDiff0{"gaussianDiff0"}, gaussianDiff1{"gaussianDiff1"};
     

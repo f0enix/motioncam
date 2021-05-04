@@ -613,8 +613,7 @@ namespace motioncam {
             return;
         }
 
-        // Stop capture if we are active
-//        ACameraCaptureSession_stopRepeating(mSessionContext->captureSession.get());
+        mCameraStateManager->requestPause();
     }
 
     void CameraSession::doResumeCapture() {
@@ -623,7 +622,7 @@ namespace motioncam {
             return;
         }
 
-//        doRepeatCapture();
+        mCameraStateManager->requestResume();
     }
 
     void CameraSession::doSetAutoExposure() {

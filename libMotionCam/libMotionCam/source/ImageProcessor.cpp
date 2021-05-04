@@ -415,7 +415,7 @@ namespace motioncam {
                 
         // Estimate blacks
         const float maxDehazePercent = 0.005f;
-        const int maxEndBin = 20; // Max bin
+        const int maxEndBin = 18; // Max bin
 
         int endBin = 0;
         
@@ -942,6 +942,12 @@ namespace motioncam {
             scene.push_back( keypoints2[ m.trainIdx ].pt );
         }
         
+        if(obj.empty()) {
+            cv::Mat m(3, 3, CV_32F);
+            cv::setIdentity(m);
+            return m;
+        }
+        
         return findHomography( scene, obj, cv::RANSAC );
     }
 
@@ -1055,7 +1061,8 @@ namespace motioncam {
         outWhitePoint = (toMatchHistogram.cols - 1) / (float) whitePointBin;
     }
 
-    void ImageProcessor::process(RawContainer& rawContainer, const std::string& outputPath, const ImageProcessorProgress& progressListener) {
+    void ImageProcessor::process(RawContainer& rawContainer, const std::string& outputPath, const ImageProcessorProgress& progressListener)
+    {
         // If this is a HDR capture then find the underexposed images.
         std::vector<std::shared_ptr<RawImageBuffer>> underexposedImages;
         
@@ -1117,6 +1124,106 @@ namespace motioncam {
         }
 
         auto referenceRawBuffer = rawContainer.loadFrame(rawContainer.getReferenceImage());
+        
+        //
+        // HDR
+        //
+        
+        shared_ptr<HdrMetadata> hdrMetadata;
+        shared_ptr<RawImageBuffer> underExposedImage;
+        
+        PostProcessSettings settings = rawContainer.getPostProcessSettings();
+
+        if(!underexposedImages.empty()) {
+            auto referenceRawBuffer = rawContainer.loadFrame(rawContainer.getReferenceImage());
+            auto underexposedFrameIt = underexposedImages.begin();
+
+            auto hist = calcHistogram(rawContainer.getCameraMetadata(), *referenceRawBuffer, false, 4);
+            const int bound = (int) (hist.cols * 0.95f);
+            float sum = 0;
+
+            for(int x = hist.cols - 1; x >= bound; x--) {
+                sum += hist.at<float>(x);
+            }
+
+            // Check if there's any point even using the underexposed image (less than 0.5% in the >95% bins)
+            float p = sum * 100.0f;
+            if(p < 0.1f) {
+                logger::log("Skipping HDR processing (" + std::to_string(p) + ")");
+            }
+            // Try each underexposed image
+            else {
+                logger::log("Using HDR processing (" + std::to_string(p) + ")");
+                
+                while(underexposedFrameIt != underexposedImages.end()) {
+                    hdrMetadata =
+                        prepareHdr(rawContainer.getCameraMetadata(),
+                                   settings,
+                                   *referenceRawBuffer,
+                                   *(*underexposedFrameIt));
+
+                    if(hdrMetadata->error < MAX_HDR_ERROR) {
+                        // Reduce the shadows if applying HDR to avoid the image looking too flat due to
+                        // extreme dynamic range compression
+                        //settings.shadows = std::max(0.90f * settings.shadows, 2.0f);
+                        underExposedImage = *underexposedFrameIt;
+
+                        break;
+                    }
+                    else {
+                        logger::log("HDR error too high (" + std::to_string(hdrMetadata->error) + ")");
+                    }
+
+                    hdrMetadata = nullptr;
+                    ++underexposedFrameIt;
+                }
+            }
+        }
+                
+        // Estimate settings if not supplied
+        if(settings.blacks < 0) {
+            estimateBlacks(*referenceRawBuffer,
+                           rawContainer.getCameraMetadata(),
+                           settings.shadows,
+                           settings.blacks);
+        }
+
+        if(settings.whitePoint < 0) {
+            if(!underExposedImage) {
+                estimateWhitePoint(*referenceRawBuffer,
+                                   rawContainer.getCameraMetadata(),
+                                   settings.shadows,
+                                   settings.blacks,
+                                   0.9995f,
+                                   settings.whitePoint);
+            }
+            else {
+                estimateWhitePoint(*underExposedImage,
+                                   rawContainer.getCameraMetadata(),
+                                   settings.shadows * (1.0f/hdrMetadata->exposureScale),
+                                   settings.blacks,
+                                   0.9995f,
+                                   settings.whitePoint);
+            }
+        }
+        
+        //
+        // Save preview
+        //
+        
+        auto preview = createPreview(*referenceRawBuffer, 2, rawContainer.getCameraMetadata(), settings);
+        std::string basePath, filename;
+
+        cv::Mat previewOutput(preview.height(), preview.width(), CV_8UC4, preview.data());
+                
+        util::GetBasePath(outputPath, basePath, filename);
+        
+        std::string previewPath = basePath + "/PREVIEW_" + filename;
+        
+        cv::cvtColor(previewOutput, previewOutput, cv::COLOR_RGBA2BGR);
+        cv::imwrite(previewPath, previewOutput);
+        
+        progressListener.onPreviewSaved(previewPath);
         
         //
         // Denoise
@@ -1201,83 +1308,6 @@ namespace motioncam {
 #endif
 
         cv::Mat outputImage;
-        shared_ptr<HdrMetadata> hdrMetadata;
-        shared_ptr<RawImageBuffer> underExposedImage;
-        
-        PostProcessSettings settings = rawContainer.getPostProcessSettings();
-
-        if(!underexposedImages.empty()) {
-            auto referenceRawBuffer = rawContainer.loadFrame(rawContainer.getReferenceImage());
-            auto underexposedFrameIt = underexposedImages.begin();
-
-            auto hist = calcHistogram(rawContainer.getCameraMetadata(), *referenceRawBuffer, false, 4);
-            const int bound = (int) (hist.cols * 0.95f);
-            float sum = 0;
-
-            for(int x = hist.cols - 1; x >= bound; x--) {
-                sum += hist.at<float>(x);
-            }
-
-            // Check if there's any point even using the underexposed image (less than 0.5% in the >95% bins)
-            float p = sum * 100.0f;
-            if(p < 0.1f) {
-                logger::log("Skipping HDR processing (" + std::to_string(p) + ")");
-            }
-            // Try each underexposed image
-            else {
-                logger::log("Using HDR processing (" + std::to_string(p) + ")");
-                
-                while(underexposedFrameIt != underexposedImages.end()) {
-                    hdrMetadata =
-                        prepareHdr(rawContainer.getCameraMetadata(),
-                                   settings,
-                                   *referenceRawBuffer,
-                                   *(*underexposedFrameIt));
-
-                    if(hdrMetadata->error < MAX_HDR_ERROR) {
-                        // Reduce the shadows if applying HDR to avoid the image looking too flat due to
-                        // extreme dynamic range compression
-                        settings.shadows = std::max(0.90f * settings.shadows, 2.0f);
-                        underExposedImage = *underexposedFrameIt;
-
-                        break;
-                    }
-                    else {
-                        logger::log("HDR error too high (" + std::to_string(hdrMetadata->error) + ")");
-                    }
-
-                    hdrMetadata = nullptr;
-                    ++underexposedFrameIt;
-                }
-            }
-        }
-                
-        // Estimate settings if not supplied
-        if(settings.blacks < 0) {
-            estimateBlacks(*referenceRawBuffer,
-                           rawContainer.getCameraMetadata(),
-                           settings.shadows,
-                           settings.blacks);
-        }
-
-        if(settings.whitePoint < 0) {
-            if(!underExposedImage) {
-                estimateWhitePoint(*referenceRawBuffer,
-                                   rawContainer.getCameraMetadata(),
-                                   settings.shadows,
-                                   settings.blacks,
-                                   0.999f,
-                                   settings.whitePoint);
-            }
-            else {
-                estimateWhitePoint(*underExposedImage,
-                                   rawContainer.getCameraMetadata(),
-                                   settings.shadows * (1.0f/hdrMetadata->exposureScale),
-                                   settings.blacks,
-                                   0.999f,
-                                   settings.whitePoint);
-            }
-        }
 
         outputImage = postProcess(
             denoiseOutput,

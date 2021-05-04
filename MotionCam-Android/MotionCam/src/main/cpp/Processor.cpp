@@ -22,6 +22,15 @@ public:
         mEnv->DeleteGlobalRef(mProgressListenerRef);
     }
 
+    void onPreviewSaved(const std::string& outputPath) const override {
+        jmethodID onCompletedMethod = mEnv->GetMethodID(
+                mEnv->GetObjectClass(mProgressListenerRef),
+                "onPreviewSaved",
+                "(Ljava/lang/String;)V");
+
+        mEnv->CallVoidMethod(mProgressListenerRef, onCompletedMethod, mEnv->NewStringUTF(outputPath.c_str()));
+    }
+
     bool onProgressUpdate(int progress) const override {
         jmethodID onProgressMethod = mEnv->GetMethodID(
                 mEnv->GetObjectClass(mProgressListenerRef),
@@ -109,7 +118,7 @@ jboolean JNICALL Java_com_motioncam_processor_NativeProcessor_ProcessInMemory(
     }
     catch(std::runtime_error& e) {
         jclass exClass = env->FindClass("java/lang/RuntimeException");
-        if (exClass == NULL) {
+        if (exClass == nullptr) {
             return JNI_FALSE;
         }
 
@@ -155,7 +164,7 @@ jboolean JNICALL Java_com_motioncam_processor_NativeProcessor_ProcessFile(
     }
     catch(std::runtime_error& e) {
         jclass exClass = env->FindClass("java/lang/RuntimeException");
-        if (exClass == NULL) {
+        if (exClass == nullptr) {
             return JNI_FALSE;
         }
 

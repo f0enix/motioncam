@@ -209,7 +209,7 @@ namespace motioncam {
         }
 #endif // ZSTD_AVAILABLE
 
-        __unused void ReadFile(const string& inputPath, vector<uint8_t>& output) {
+        void ReadFile(const string& inputPath, vector<uint8_t>& output) {
             std::ifstream file(inputPath, std::ios::binary);
             
             if (file.eof() || file.fail())
@@ -228,7 +228,7 @@ namespace motioncam {
             file.close();
         }
 
-        __unused void WriteFile(const uint8_t* data, size_t size, const std::string& outputPath) {
+        void WriteFile(const uint8_t* data, size_t size, const std::string& outputPath) {
             std::ofstream file(outputPath, std::ios::binary);
             
             // If we have a problem
@@ -248,7 +248,7 @@ namespace motioncam {
             file.close();
         }
 
-        __unused json11::Json ReadJsonFromFile(const string& path) {
+        json11::Json ReadJsonFromFile(const string& path) {
             // Read file to string
             std::ifstream file(path);
             string str, err;
@@ -275,13 +275,16 @@ namespace motioncam {
             return metadata;
         }
 
-        __unused std::string GetBasePath(const std::string& path) {
+        void GetBasePath(const std::string& path, std::string& basePath, std::string& filename) {
             size_t index = path.find_last_of('/');
             if(index == std::string::npos) {
-                return path;
+                basePath = "";
+                filename = path;
+                return;
             }
             
-            return path.substr(0, index);
+            basePath = path.substr(0, index);
+            filename = path.substr(index + 1, path.size());
         }
     }
 }

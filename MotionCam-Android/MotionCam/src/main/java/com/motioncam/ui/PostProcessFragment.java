@@ -3,6 +3,7 @@ package com.motioncam.ui;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
@@ -37,6 +38,7 @@ import com.motioncam.model.SettingsViewModel;
 import com.motioncam.processor.ProcessorReceiver;
 import com.motioncam.processor.ProcessorService;
 
+import java.io.File;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -196,28 +198,28 @@ public class PostProcessFragment extends Fragment implements
         postProcessSettings.exposure = 0.0f;
 
         // Set adapter for preview pager
-        PreviewAdapter pagerAdapter =
-                new PreviewAdapter(getContext(),
+        PostProcessPreviewAdapter pagerAdapter =
+                new PostProcessPreviewAdapter(getContext(),
                         mAsyncNativeCameraOps,
                         allBuffers);
 
         mPreviewPager.setAdapter(pagerAdapter);
 
         // Set up adapter for small preview list
-        SmallPreviewListAdapter smallPreviewListAdapter =
-                new SmallPreviewListAdapter(
+        PostProcessSmallPreviewAdapter postProcessSmallPreviewAdapter =
+                new PostProcessSmallPreviewAdapter(
                         getContext(),
                         mAsyncNativeCameraOps,
                         postProcessSettings,
                         allBuffers);
 
         // Monitor changes to small preview list
-        smallPreviewListAdapter.setSelectionListener(((index, buffer, previewBitmap) -> {
+        postProcessSmallPreviewAdapter.setSelectionListener(((index, buffer, previewBitmap) -> {
             pagerAdapter.updatePreview(index, previewBitmap);
             mPreviewPager.setCurrentItem(index, false);
         }));
 
-        mSmallPreviewList.setAdapter(smallPreviewListAdapter);
+        mSmallPreviewList.setAdapter(postProcessSmallPreviewAdapter);
 
         // Measure sharpness among the first few images so we can set the sharpest one as the initial selection
         if(!allBuffers.isEmpty()) {
@@ -337,7 +339,7 @@ public class PostProcessFragment extends Fragment implements
     }
 
     private void updatePreview(AsyncNativeCameraOps.PreviewSize previewSize) {
-        PreviewAdapter adapter = (PreviewAdapter) mPreviewPager.getAdapter();
+        PostProcessPreviewAdapter adapter = (PostProcessPreviewAdapter) mPreviewPager.getAdapter();
         if(adapter != null) {
             adapter.updatePreview(mPreviewPager.getCurrentItem(), mViewModel.getPostProcessSettings(), previewSize);
         }
@@ -375,7 +377,7 @@ public class PostProcessFragment extends Fragment implements
             return;
         }
 
-        PreviewAdapter adapter = (PreviewAdapter) mPreviewPager.getAdapter();
+        PostProcessPreviewAdapter adapter = (PostProcessPreviewAdapter) mPreviewPager.getAdapter();
 
         Integer numMergeImages = mViewModel.numMergeImages.getValue();
         if(numMergeImages == null)
@@ -409,7 +411,7 @@ public class PostProcessFragment extends Fragment implements
 
     private void onNewImageSelected(int index) {
         if(mSmallPreviewList.getAdapter() != null) {
-            ((SmallPreviewListAdapter) mSmallPreviewList.getAdapter()).setSelectedItem(index);
+            ((PostProcessSmallPreviewAdapter) mSmallPreviewList.getAdapter()).setSelectedItem(index);
             mSmallPreviewList.scrollToPosition(index);
         }
 
@@ -493,11 +495,15 @@ public class PostProcessFragment extends Fragment implements
     }
 
     @Override
-    public void onProcessingCompleted() {
+    public void onProcessingCompleted(File internalPath, Uri contentUri) {
         View v = getView();
         if(v != null) {
             v.findViewById(R.id.saveProgressBar).setVisibility(View.INVISIBLE);
         }
+    }
+
+    @Override
+    public void onPreviewSaved(String outputPath) {
     }
 
     @Override
