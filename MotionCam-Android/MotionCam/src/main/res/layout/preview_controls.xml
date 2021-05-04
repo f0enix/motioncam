@@ -11,15 +11,15 @@
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/previewControlBtns"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="50dp"
         android:layout_gravity="center_vertical">
 
         <TextView
             android:id="@+id/previewAdjustmentsBtn"
             android:layout_width="100dp"
-            android:layout_height="wrap_content"
-            android:textAlignment="center"
-            android:drawableTop="@drawable/baseline_settings_brightness_white_36"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:drawableTop="@drawable/baseline_settings_brightness_white_24"
             android:textAppearance="@style/MotionCam.TextAppearance.Small"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
@@ -29,9 +29,9 @@
         <TextView
             android:id="@+id/rawEnableBtn"
             android:layout_width="100dp"
-            android:layout_height="wrap_content"
-            android:textAlignment="center"
-            android:drawableTop="@drawable/baseline_photo_white_36"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:drawableTop="@drawable/baseline_photo_white_24"
             android:textAppearance="@style/MotionCam.TextAppearance.Small"
             app:layout_constraintLeft_toRightOf="@id/previewAdjustmentsBtn"
             app:layout_constraintTop_toTopOf="parent"
@@ -40,8 +40,8 @@
 
         <ImageView
             android:id="@+id/settingsBtn"
-            android:layout_width="50dp"
-            android:layout_height="50dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:layout_gravity="center_vertical"
             android:layout_marginEnd="10dp"
             app:layout_constraintRight_toRightOf="parent"

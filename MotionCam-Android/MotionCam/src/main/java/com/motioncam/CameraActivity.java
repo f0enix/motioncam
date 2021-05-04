@@ -1602,6 +1602,8 @@ public class CameraActivity extends AppCompatActivity implements
         if(currentId == mBinding.main.getEndState()) {
             mNativeCamera.pauseCapture();
 
+            mBinding.previewPager.setCurrentItem(0);
+
             if(mCameraCapturePreviewAdapter.isProcessing(mBinding.previewPager.getCurrentItem())) {
                 mBinding.previewProcessingFrame.setVisibility(View.VISIBLE);
             }
