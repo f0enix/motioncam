@@ -80,8 +80,6 @@ public class CameraActivity extends AppCompatActivity implements
     private static final int SETTINGS_ACTIVITY_REQUEST_CODE = 0x10;
 
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
-    private static final int SHADOW_UPDATE_FREQUENCY_MS = 500;
-    private static final float SHADOW_ESTIMATE_BIAS = 16.0f;
 
     private enum FocusState {
         AUTO,
@@ -389,10 +387,11 @@ public class CameraActivity extends AppCompatActivity implements
         mShadowOffset = 0.0f;
 
         updatePreviewTabUi(true);
+        updatePreviewSettings();
 
         mCaptureMode = getCaptureMode(prefs);
-        updateCaptureModeUi();
 
+        updateCaptureModeUi();
         updateSaveRawUi();
     }
 
