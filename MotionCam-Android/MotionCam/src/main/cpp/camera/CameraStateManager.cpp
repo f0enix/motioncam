@@ -202,8 +202,8 @@ namespace motioncam {
         ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 1, &afTrigger);
 
         // Set the focus region
-        int w = static_cast<int>(mCameraDescription.sensorSize.width * 0.25f);
-        int h = static_cast<int>(mCameraDescription.sensorSize.height * 0.25f);
+        int w = static_cast<int>(mCameraDescription.sensorSize.width * 0.125f);
+        int h = static_cast<int>(mCameraDescription.sensorSize.height * 0.125f);
 
         int px = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.left + mCameraDescription.sensorSize.width) * mRequestedFocusX);
         int py = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.top + mCameraDescription.sensorSize.height) * mRequestedFocusY);

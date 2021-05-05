@@ -919,3 +919,22 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_CaptureHdrI
 
     return JNI_TRUE;
 }
+
+extern "C" JNIEXPORT
+jstring JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_GetRawPreviewEstimatedSettings(
+        JNIEnv* env,
+        jobject thiz,
+        jlong handle)
+{
+    std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
+    if(!sessionManager) {
+        return JNI_FALSE;
+    }
+
+    PostProcessSettings settings;
+
+    sessionManager->getEstimatedPostProcessSettings(settings);
+
+    auto settingsJson = settings.toJson();
+    return env->NewStringUTF(settingsJson.dump().c_str());
+}

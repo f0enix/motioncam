@@ -555,6 +555,11 @@ namespace motioncam {
             mImageConsumer->updateRawPreviewSettings(shadows, contrast, saturation, blacks, whitePoint, tempOffset, tintOffset);
     }
 
+    void CaptureSessionManager::getEstimatedPostProcessSettings(PostProcessSettings& outSettings) {
+        if(mImageConsumer)
+            mImageConsumer->getEstimatedSettings(outSettings);
+    }
+
     void CaptureSessionManager::disableRawPreview() {
         if(mImageConsumer)
             mImageConsumer->disableRawPreview();

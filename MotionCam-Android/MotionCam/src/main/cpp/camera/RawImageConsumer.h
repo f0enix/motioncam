@@ -40,10 +40,11 @@ namespace motioncam {
 
         void enableRawPreview(std::shared_ptr<RawPreviewListener> listener, const int previewQuality);
         void updateRawPreviewSettings(
-                float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset);
+                float shadowBoost, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset);
         void disableRawPreview();
 
         void setWhiteBalanceOverride(bool override);
+        void getEstimatedSettings(PostProcessSettings& outSettings);
 
     private:
         bool copyMetadata(RawImageMetadata& dst, const ACameraMetadata* src);
@@ -71,17 +72,17 @@ namespace motioncam {
         std::atomic<bool> mEnableRawPreview;
         std::atomic<bool> mOverrideWhiteBalance;
 
-        std::atomic<float> mShadows;
-        std::atomic<float> mContrast;
-        std::atomic<float> mSaturation;
-        std::atomic<float> mBlacks;
-        std::atomic<float> mWhitePoint;
+        std::atomic<float> mShadowBoost;
         std::atomic<float> mTempOffset;
         std::atomic<float> mTintOffset;
+        PostProcessSettings mEstimatedSettings;
+        float mPreviewShadows;
+        float mPreviewShadowStep;
 
         std::shared_ptr<CameraDescription> mCameraDesc;
         int mRawPreviewQuality;
         bool mCopyCaptureColorTransform;
+        int mFramesSinceEstimatedSettings;
 
         moodycamel::BlockingConcurrentQueue<std::shared_ptr<AImage>> mImageQueue;
         moodycamel::ConcurrentQueue<RawImageMetadata> mPendingMetadata;

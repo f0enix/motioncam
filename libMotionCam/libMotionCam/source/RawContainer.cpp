@@ -67,6 +67,17 @@ namespace motioncam {
 
         return mat;
     }
+
+    string RawContainer::toString(RawType rawType) {
+        switch (rawType) {
+            case RawType::HDR:
+                return "HDR";
+
+            default:
+            case RawType::ZSL:
+                return "ZSL";
+        }
+    }
     
     string RawContainer::toString(PixelFormat format) {
         switch(format) {
@@ -255,6 +266,7 @@ namespace motioncam {
             imageMetadata["height"]      = frame->height;
             imageMetadata["rowStride"]   = frame->rowStride;
             imageMetadata["pixelFormat"] = toString(frame->pixelFormat);
+            imageMetadata["type"]        = toString(frame->metadata.rawType);
 
             vector<float> asShot = {
                 frame->metadata.asShot[0],

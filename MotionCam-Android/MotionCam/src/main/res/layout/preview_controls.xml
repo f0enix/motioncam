@@ -18,6 +18,7 @@
             android:id="@+id/previewAdjustmentsBtn"
             android:layout_width="100dp"
             android:layout_height="match_parent"
+            android:layout_marginLeft="10dp"
             android:gravity="center"
             android:drawableTop="@drawable/baseline_settings_brightness_white_24"
             android:textAppearance="@style/MotionCam.TextAppearance.Small"

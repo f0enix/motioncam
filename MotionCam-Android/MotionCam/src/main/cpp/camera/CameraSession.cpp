@@ -186,6 +186,7 @@ namespace motioncam {
         mSessionListener(std::move(listener)),
         mScreenOrientation(ScreenOrientation::PORTRAIT),
         mRequestedHdrCaptures(0),
+        mRequestHdrCaptureTimestamp(-1),
         mPartialHdrCapture(false),
         mSaveHdrCaptures(0),
         mHdrCaptureInProgress(false)
@@ -725,6 +726,9 @@ namespace motioncam {
         LOGI("Initiating HDR capture (numImages=%d, baseIso=%d, baseExposure=%ld, hdrIso=%d, hdrExposure=%ld)",
                 numImages, baseIso, baseExposure, hdrIso, hdrExposure);
 
+        // Keep timestamp of latest buffer as our reference
+        mRequestHdrCaptureTimestamp = RawBufferManager::get().latestTimeStamp();
+
         ACameraCaptureSession_capture(
             mSessionContext->captureSession.get(),
             &mSessionContext->captureCallbacks[CaptureEvent::HDR_CAPTURE]->callbacks,
@@ -766,6 +770,7 @@ namespace motioncam {
         RawBufferManager::get().save(
                 RawType::HDR,
                 mSaveHdrCaptures,
+                mRequestHdrCaptureTimestamp,
                 mCameraDescription->metadata,
                 mHdrCaptureSettings,
                 mHdrCaptureOutputPath);

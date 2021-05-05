@@ -2116,29 +2116,9 @@ void PreviewGenerator::generate() {
 
     tonemap->apply(Y, width, height, tonemapVariance, gamma, shadowsParam);
 
-    //
-    // Sharpen
-    //
-
-    blur(blurOutput, blurOutputTmp, tonemap->output);
-    blur(blurOutput2, blurOutput2Tmp, blurOutput);
-    
-    Func gaussianDiff0{"gaussianDiff0"}, gaussianDiff1{"gaussianDiff1"};
-    
-    gaussianDiff0(v_x, v_y) = cast<int32_t>(tonemap->output(v_x, v_y)) - blurOutput(v_x, v_y);
-    gaussianDiff1(v_x, v_y) = cast<int32_t>(blurOutput(v_x, v_y))  - blurOutput2(v_x, v_y);
-    
-    sharpened(v_x, v_y) =
-        saturating_cast<int32_t>(
-            blurOutput2(v_x, v_y) +
-            sharpen0Param*gaussianDiff0(v_x, v_y) +
-            sharpen1Param*gaussianDiff1(v_x, v_y) +
-            0.5f
-        );
-
     finalTonemap(v_x, v_y, v_c) = select(v_c == 0, x(v_x, v_y) / 65535.0f,
                                          v_c == 1, y(v_x, v_y) / 65535.0f,
-                                                   sharpened(v_x, v_y) / 65535.0f);
+                                                   tonemap->output(v_x, v_y) / 65535.0f);
 
     Func tonemappedXYZ{"XYZ"};
 
@@ -2266,30 +2246,6 @@ void PreviewGenerator::schedule_for_cpu() {
         .split(v_y, v_yo, v_yi, 32)
         .parallel(v_yo)
         .vectorize(v_x, vector_size_u16);
-
-    blurOutputTmp
-        .compute_at(blurOutput, v_yi)
-        .store_at(blurOutput, v_yo)
-        .vectorize(v_x, 8);
-
-    blurOutput
-        .compute_root()
-        .reorder(v_x, v_y)
-        .split(v_y, v_yo, v_yi, 32)
-        .parallel(v_yo)
-        .vectorize(v_x, 8);
-
-    blurOutput2Tmp
-        .compute_at(blurOutput2, v_yi)
-        .store_at(blurOutput2, v_yo)
-        .vectorize(v_x, 8);
-
-    blurOutput2
-        .compute_root()
-        .reorder(v_x, v_y)
-        .split(v_y, v_yo, v_yi, 32)
-        .parallel(v_yo)
-        .vectorize(v_x, 8);
 
     colorCorrectedYuv
         .compute_root()

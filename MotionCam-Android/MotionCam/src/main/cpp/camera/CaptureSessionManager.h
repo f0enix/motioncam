@@ -57,6 +57,7 @@ namespace motioncam {
         void updateRawPreviewSettings(
                 float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset);
         void disableRawPreview();
+        void getEstimatedPostProcessSettings(PostProcessSettings& outSettings);
 
         void updateOrientation(ScreenOrientation orientation);
 

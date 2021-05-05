@@ -66,7 +66,7 @@ using std::vector;
 using std::to_string;
 using std::pair;
 
-std::vector<Halide::Runtime::Buffer<float>> createWaveletBuffers(int width, int height) {
+static std::vector<Halide::Runtime::Buffer<float>> createWaveletBuffers(int width, int height) {
     std::vector<Halide::Runtime::Buffer<float>> buffers;
     
     for(int level = 0; level < 6; level++) {
@@ -154,6 +154,15 @@ namespace motioncam {
     const int DENOISE_LEVELS    = 6;
     const int EXPANDED_RANGE    = 16384;
     const float MAX_HDR_ERROR   = 0.03f;
+
+    static double calcEv(const RawCameraMetadata& cameraMetadata, const RawImageMetadata& metadata) {
+        double a = 1.8;
+        if(!cameraMetadata.apertures.empty())
+            a = cameraMetadata.apertures[0];
+
+        double s = a*a;
+        return std::log2(s / (metadata.exposureTime / (1.0e9))) - std::log2(metadata.iso / 100.0);
+    }
 
     struct RawData {
         Halide::Runtime::Buffer<uint16_t> rawBuffer;
@@ -295,14 +304,9 @@ namespace motioncam {
             hdrInput = Halide::Runtime::Buffer<uint16_t>((uint16_t*) blankInput.data, blankInput.cols, blankInput.rows, 3);
         }
         
-        // Adjust sharpen threshold based
-        double a = 1.8;
-        if(!cameraMetadata.apertures.empty())
-            a = cameraMetadata.apertures[0];
-
-        double s = a*a;
-        double ev = std::log2(s / (metadata.exposureTime / (1.0e9))) - std::log2(metadata.iso / 100.0);
-        double sharpenThreshold = std::max(4.0, 1.5*ev + 8);
+        // Linearly adjust sharpen threshold based on exposure
+        double ev = calcEv(cameraMetadata, metadata);
+        double sharpenThreshold = std::max(8.0, 1.5*ev + 8);
         
         postprocess(inputBuffers[0],
                     inputBuffers[1],
@@ -486,25 +490,19 @@ namespace motioncam {
                                                const float shadowsKeyValue,
                                                PostProcessSettings& outSettings)
     {
-//        Measure measure("estimateBasicSettings()");
+        //Measure measure("estimateBasicSettings()");
         
         // Start with basic initial values
-        PostProcessSettings settings;
-        
         CameraProfile cameraProfile(cameraMetadata, rawBuffer.metadata);
         Temperature temperature;
         
         cameraProfile.temperatureFromVector(rawBuffer.metadata.asShot, temperature);
         
         cv::Mat histogram = calcHistogram(cameraMetadata, rawBuffer, false, 4);
-        
-        settings.temperature    = static_cast<float>(temperature.temperature());
-        settings.tint           = static_cast<float>(temperature.tint());
-        settings.shadows        = estimateShadows(histogram, shadowsKeyValue);
-        settings.exposure       = estimateExposureCompensation(histogram);
 
-        // Update estimated settings
-        outSettings = settings;
+        outSettings.temperature    = static_cast<float>(temperature.temperature());
+        outSettings.tint           = static_cast<float>(temperature.tint());
+        outSettings.shadows        = estimateShadows(histogram, shadowsKeyValue);
     }
 
     void ImageProcessor::estimateWhiteBalance(const RawImageBuffer& rawBuffer,
@@ -513,10 +511,8 @@ namespace motioncam {
                                               float& outG,
                                               float& outB)
     {
-//        Measure measure("estimateWhiteBalance()");
-        
-        // TODO
-        
+        Measure measure("estimateWhiteBalance()");
+
         outR = 1.0f;
         outG = 1.0f;
         outB = 1.0f;
@@ -904,7 +900,7 @@ namespace motioncam {
 
         cv::Mat referenceImage(referenceBuffer.height(), referenceBuffer.width(), CV_8U, (void*) referenceBuffer.data());
         cv::Mat toAlignImage(toAlignBuffer.height(), toAlignBuffer.width(), CV_8U, (void*) toAlignBuffer.data());
-        auto detector = cv::ORB::create();
+        auto detector = cv::BRISK::create();
         
         std::vector<cv::KeyPoint> keypoints1, keypoints2;
         cv::Mat descriptors1, descriptors2;
@@ -928,9 +924,7 @@ namespace motioncam {
         for (auto& m : knn_matches)
         {
             if (m[0].distance < ratio_thresh * m[1].distance)
-            {
                 good_matches.push_back(m[0]);
-            }
         }
         
         std::vector<cv::Point2f> obj;
@@ -1068,7 +1062,7 @@ namespace motioncam {
         
         // Started
         progressListener.onProgressUpdate(0);
-        
+                
         if(rawContainer.isHdr()) {
             double maxEv = -1e10;
             double minEv = 1e10;
@@ -1076,7 +1070,7 @@ namespace motioncam {
             // Figure out where the base & underexposed images are
             for(auto frameName : rawContainer.getFrames()) {
                 auto frame = rawContainer.getFrame(frameName);
-                auto ev = std::log2(1.0 / (frame->metadata.exposureTime / 1.0e9)) - std::log2(frame->metadata.iso / 100.0);
+                auto ev = calcEv(rawContainer.getCameraMetadata(), frame->metadata);
                 
                 if(ev > maxEv)
                     maxEv = ev;
@@ -1089,7 +1083,7 @@ namespace motioncam {
             if(std::abs(maxEv - minEv) > 0.49) {
                 for(auto frameName : rawContainer.getFrames()) {
                     auto frame = rawContainer.getFrame(frameName);
-                    auto ev = std::log2(1.0 / (frame->metadata.exposureTime / (1.0e9))) - std::log2(frame->metadata.iso / 100.0);
+                    auto ev = calcEv(rawContainer.getCameraMetadata(), frame->metadata);
                 
                     if(std::abs(ev - maxEv) < std::abs(ev - minEv)) {
                         // Load the frame since we intend to remove it from the container
@@ -1099,27 +1093,6 @@ namespace motioncam {
                         rawContainer.removeFrame(frameName);
                     }
                 }
-            }
-            
-            // Find the sharpest reference image
-            if(!rawContainer.getFrames().empty()) {
-                double bestSharpness = 1e-10;
-                std::string sharpestBuffer = *(rawContainer.getFrames().begin());
-
-                for(auto frameName : rawContainer.getFrames()) {
-                    auto frame = rawContainer.loadFrame(frameName);
-                    double sharpness = measureSharpness(*frame);
-                    
-                    if(sharpness > bestSharpness) {
-                        bestSharpness = sharpness;
-                        sharpestBuffer = frameName;
-                    }
-
-                    if(!rawContainer.isInMemory())
-                        frame->data->release();
-                }
-                
-                rawContainer.updateReferenceImage(sharpestBuffer);
             }
         }
 
@@ -1469,8 +1442,12 @@ namespace motioncam {
         auto processFrames = rawContainer.getFrames();
         auto it = processFrames.begin();
         
+        // Pixels that have moved a lot will contribute less since we are less certain about them
         float motionVectorsWeight = 20*20;
-        float differenceWeight = std::min(31.0f, 0.9042386185f*reference->metadata.exposureTime/(1000.0f*1000.0f) + 0.8587127159f);
+        
+        // Linearly increase difference threshold based on the exposure value
+        float ev = calcEv(rawContainer.getCameraMetadata(), reference->metadata);
+        float differenceWeight = std::min(32.0f, -2.0f*ev + 32.0f);
         
         while(it != processFrames.end()) {
             if(rawContainer.getReferenceImage() == *it) {

@@ -139,6 +139,7 @@ namespace motioncam {
         PostProcessSettings mHdrCaptureSettings;
         std::string mHdrCaptureOutputPath;
         int mRequestedHdrCaptures;
+        int64_t mRequestHdrCaptureTimestamp;
         int mSaveHdrCaptures;
         bool mPartialHdrCapture;
 
