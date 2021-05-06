@@ -77,7 +77,6 @@ namespace motioncam {
 
     void CameraStateManager::setState(State state) {
         LOGD("setState(%s -> %s)", ToString(mState).c_str(), ToString(state).c_str());
-
         mState = state;
     }
 
@@ -102,7 +101,6 @@ namespace motioncam {
         mCameraMode = mode;
     }
 
-
     void CameraStateManager::requestPause() {
         LOGD("requestPause()");
 
@@ -126,7 +124,9 @@ namespace motioncam {
 
         LOGD("requestUserFocus(%.2f, %.2f)", x, y);
 
-        if(mState == State::AUTO_FOCUS_ACTIVE || mState == State::USER_FOCUS_LOCKED) {
+        if( mState == State::AUTO_FOCUS_ACTIVE ||
+            mState == State::USER_FOCUS_ACTIVE)
+        {
             mState = State::USER_FOCUS_WAIT;
             ACameraCaptureSession_stopRepeating(mSessionContext.captureSession.get());
         }
@@ -145,9 +145,9 @@ namespace motioncam {
            return;
         }
 
-        if( mState == State::USER_FOCUS_ACTIVE ||
-            mState == State::AUTO_FOCUS_WAIT )
+        if( mState == State::USER_FOCUS_ACTIVE )
         {
+            mState = State::AUTO_FOCUS_WAIT;
             ACameraCaptureSession_stopRepeating(mSessionContext.captureSession.get());
         }
         else {
@@ -257,7 +257,6 @@ namespace motioncam {
         updateCaptureRequestExposure();
 
         LOGD("setUserFocus()");
-        setState(State::USER_FOCUS_ACTIVE);
 
         return ACameraCaptureSession_setRepeatingRequest(
             mSessionContext.captureSession.get(),
@@ -342,27 +341,21 @@ namespace motioncam {
         LOGD("nextAction(%s)", ToString(mRequestedAction).c_str());
 
         if(mRequestedAction == Action::REQUEST_AUTO_FOCUS) {
-            triggerAutoFocus();
+            requestAutoFocus();
         }
         else if(mRequestedAction == Action::REQUEST_USER_FOCUS) {
-            triggerUserAutoFocus();
+            requestUserFocus(mRequestedFocusX, mRequestedFocusY);
         }
 
         setNextAction(Action::NONE);
     }
 
     void CameraStateManager::onCameraSessionStateChanged(const CameraCaptureSessionState state) {
-        // If there's a pending action, then start that instead of continuing.
-        if(mRequestedAction != Action::NONE) {
-            nextAction();
-            return;
-        }
+        //
+        // Move state when camera session state changes
+        //
 
-        // When camera is ready we'll run the next step of our "state machine"
         if(state == CameraCaptureSessionState::READY) {
-
-            LOGD("onCameraSessionStateChanged(%s)", ToString(mState).c_str());
-
             if(mState == State::TRIGGER_USER_FOCUS) {
                 triggerUserAutoFocus();
             }
@@ -374,6 +367,20 @@ namespace motioncam {
             }
             else if(mState == State::USER_FOCUS_LOCKED) {
                 setUserFocus();
+            }
+        }
+        else if(state == CameraCaptureSessionState::ACTIVE) {
+            if(mState == State::AUTO_FOCUS_LOCKED) {
+                setState(State::AUTO_FOCUS_ACTIVE);
+            }
+            else if(mState == State::USER_FOCUS_LOCKED) {
+                setState(State::USER_FOCUS_ACTIVE);
+            }
+
+            // If there's a pending action execute it now.
+            if(mRequestedAction != Action::NONE) {
+                nextAction();
+                return;
             }
         }
     }

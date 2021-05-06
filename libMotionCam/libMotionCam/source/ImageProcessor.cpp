@@ -491,18 +491,19 @@ namespace motioncam {
                                                PostProcessSettings& outSettings)
     {
         //Measure measure("estimateBasicSettings()");
-        
+
         // Start with basic initial values
         CameraProfile cameraProfile(cameraMetadata, rawBuffer.metadata);
         Temperature temperature;
-        
+
         cameraProfile.temperatureFromVector(rawBuffer.metadata.asShot, temperature);
-        
+
         cv::Mat histogram = calcHistogram(cameraMetadata, rawBuffer, false, 4);
 
         outSettings.temperature    = static_cast<float>(temperature.temperature());
         outSettings.tint           = static_cast<float>(temperature.tint());
         outSettings.shadows        = estimateShadows(histogram, shadowsKeyValue);
+        outSettings.exposure       = estimateExposureCompensation(histogram);
     }
 
     void ImageProcessor::estimateWhiteBalance(const RawImageBuffer& rawBuffer,

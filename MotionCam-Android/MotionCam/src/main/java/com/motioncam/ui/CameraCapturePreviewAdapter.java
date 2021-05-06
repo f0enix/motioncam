@@ -39,10 +39,6 @@ public class CameraCapturePreviewAdapter extends RecyclerView.Adapter<CameraCapt
             mBitmapView.setLayoutParams(params);
             mBitmapView.setScaleLevels(1, 2, 4);
 
-            mBitmapView.setOnScaleChangeListener(
-                    (scaleFactor, focusX, focusY) ->
-                            mBitmapView.setAllowParentInterceptOnEdge(!(mBitmapView.getScale() > 1.01f) && !(mBitmapView.getScale() < 0.99f)));
-
             container.addView(mBitmapView);
         }
     }
