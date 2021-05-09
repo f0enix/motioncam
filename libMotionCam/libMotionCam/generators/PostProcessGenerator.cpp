@@ -1787,7 +1787,10 @@ void PostProcessGenerator::generate()
     sharpen0.set_estimate(2.0f);
     sharpen1.set_estimate(2.0f);
     chromaFilterWeight.set_estimate(8.0f);
+    sharpenThreshold.set_estimate(32.0f);
     
+    cameraToPcs.set_estimates({{0, 3}, {0, 3}});
+    pcsToSrgb.set_estimates({{0, 3}, {0, 3}});
 
     in0.set_estimates({{0, 2048}, {0, 1536}});
     in1.set_estimates({{0, 2048}, {0, 1536}});
@@ -1806,8 +1809,6 @@ void PostProcessGenerator::generate()
     asShotVector.set_estimate(0, 1.0f);
     asShotVector.set_estimate(1, 1.0f);
     asShotVector.set_estimate(2, 1.0f);
-
-    // cameraToSrgb.set_estimates({{0, 4}, {0, 4}});
 
     output.set_estimates({{0, 4000}, {0, 3000}, {0, 3}});
 
@@ -2115,29 +2116,9 @@ void PreviewGenerator::generate() {
 
     tonemap->apply(Y, width, height, tonemapVariance, gamma, shadowsParam);
 
-    //
-    // Sharpen
-    //
-
-    blur(blurOutput, blurOutputTmp, tonemap->output);
-    blur2(blurOutput2, blurOutput2Tmp, blurOutput);
-    
-    Func gaussianDiff0{"gaussianDiff0"}, gaussianDiff1{"gaussianDiff1"};
-    
-    gaussianDiff0(v_x, v_y) = cast<int32_t>(tonemap->output(v_x, v_y)) - blurOutput(v_x, v_y);
-    gaussianDiff1(v_x, v_y) = cast<int32_t>(blurOutput(v_x, v_y))  - blurOutput2(v_x, v_y);
-    
-    sharpened(v_x, v_y) =
-        saturating_cast<int32_t>(
-            blurOutput2(v_x, v_y) +
-            sharpen0Param*gaussianDiff0(v_x, v_y) +
-            sharpen1Param*gaussianDiff1(v_x, v_y) +
-            0.5f
-        );
-
     finalTonemap(v_x, v_y, v_c) = select(v_c == 0, x(v_x, v_y) / 65535.0f,
                                          v_c == 1, y(v_x, v_y) / 65535.0f,
-                                                   sharpened(v_x, v_y) / 65535.0f);
+                                                   tonemap->output(v_x, v_y) / 65535.0f);
 
     Func tonemappedXYZ{"XYZ"};
 
@@ -2265,30 +2246,6 @@ void PreviewGenerator::schedule_for_cpu() {
         .split(v_y, v_yo, v_yi, 32)
         .parallel(v_yo)
         .vectorize(v_x, vector_size_u16);
-
-    blurOutputTmp
-        .compute_at(blurOutput, v_yi)
-        .store_at(blurOutput, v_yo)
-        .vectorize(v_x, 8);
-
-    blurOutput
-        .compute_root()
-        .reorder(v_x, v_y)
-        .split(v_y, v_yo, v_yi, 32)
-        .parallel(v_yo)
-        .vectorize(v_x, 8);
-
-    blurOutput2Tmp
-        .compute_at(blurOutput2, v_yi)
-        .store_at(blurOutput2, v_yo)
-        .vectorize(v_x, 8);
-
-    blurOutput2
-        .compute_root()
-        .reorder(v_x, v_y)
-        .split(v_y, v_yo, v_yi, 32)
-        .parallel(v_yo)
-        .vectorize(v_x, 8);
 
     colorCorrectedYuv
         .compute_root()
@@ -2828,7 +2785,6 @@ public:
     Input<float[3]> asShotVector{"asShotVector"};    
     Input<Buffer<float>> cameraToPcs{"cameraToPcs", 2};
 
-    Input<int> downscaleFactor{"downscaleFactor"};
     Input<int> width{"width"};
     Input<int> height{"height"};
 
@@ -2836,6 +2792,7 @@ public:
     
     Input<int16_t[4]> blackLevel{"blackLevel"};
     Input<int16_t> whiteLevel{"whiteLevel"};
+    Input<float> whitePoint{"whitePoint"};
 
     Output<Buffer<uint16_t>> output{"output", 3};
 
@@ -2864,10 +2821,10 @@ void LinearImageGenerator::generate() {
 
     downscaled(v_x, v_y, v_c) =
         mux(v_c,
-            {   in[0](v_x*downscaleFactor, v_y*downscaleFactor),
-                in[1](v_x*downscaleFactor, v_y*downscaleFactor),
-                in[2](v_x*downscaleFactor, v_y*downscaleFactor),
-                in[3](v_x*downscaleFactor, v_y*downscaleFactor) });
+            {  in[0](v_x, v_y),
+               in[1](v_x, v_y),
+               in[2](v_x, v_y),
+               in[3](v_x, v_y) });
 
     // Shading map
     linearScale(shadingMap[0], inShadingMap0, inShadingMap0.width(), inShadingMap0.height(), width, height);
@@ -2910,10 +2867,9 @@ void LinearImageGenerator::generate() {
     demosaic = create<Demosaic>();
     demosaic->apply(bayerInput, in0.width(), in0.height(), sensorArrangement);
     
-    // Transform to sRGB space
     Func linear("linear"), colorCorrectInput("colorCorrectInput");
 
-    linear(v_x, v_y, v_c) = (demosaic->output(v_x, v_y, v_c) / 16384.0f);
+    linear(v_x, v_y, v_c) = (demosaic->output(v_x, v_y, v_c) / 16384.0f) * whitePoint;
 
     colorCorrectInput(v_x, v_y, v_c) =
         select( v_c == 0, clamp( linear(v_x, v_y, 0), 0.0f, asShotVector[0] ),

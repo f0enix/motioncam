@@ -395,6 +395,7 @@ set(native-camera-cpp
         src/main/cpp/NativeRawPreviewListener.cpp
         src/main/cpp/camera/CaptureSessionManager.cpp
         src/main/cpp/camera/CameraSession.cpp
+        src/main/cpp/camera/CameraStateManager.cpp
         src/main/cpp/camera/ClHelper.cpp
         src/main/cpp/camera/NativeClBuffer.cpp
         src/main/cpp/camera/RawImageConsumer.cpp

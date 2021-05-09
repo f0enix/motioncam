@@ -51,7 +51,8 @@ namespace motioncam {
     
         static std::string toString(ColorFilterArrangment sensorArrangment);
         static std::string toString(PixelFormat format);
-
+        static std::string toString(RawType rawType);
+        
         static cv::Mat toMat3x3(const std::vector<json11::Json>& array);
         static cv::Vec3f toVec3f(const std::vector<json11::Json>& array);
         static json11::Json::array toJsonArray(cv::Mat m);

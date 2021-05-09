@@ -49,6 +49,7 @@ namespace motioncam {
         void returnBuffers(const std::vector<std::shared_ptr<RawImageBuffer>>& buffers);
 
         int numHdrBuffers();
+        int64_t latestTimeStamp();
         
         std::shared_ptr<RawContainer> popPendingContainer();
         
@@ -58,12 +59,13 @@ namespace motioncam {
         
         void save(RawType type,
                   int numSaveBuffers,
+                  int64_t referenceTimestampNs,
                   const RawCameraMetadata& metadata,
                   const PostProcessSettings& settings,
                   const std::string& outputPath);
 
         void save(RawCameraMetadata& metadata,
-                  int64_t referenceTimestamp,
+                  int64_t referenceTimestampNs,
                   int numSaveBuffers,
                   const PostProcessSettings& settings,
                   const std::string& outputPath);

@@ -8,6 +8,29 @@
 
 namespace motioncam {
 
+    static std::vector<std::shared_ptr<RawImageBuffer>> FindNearestBuffers(
+        const std::vector<std::shared_ptr<RawImageBuffer>>& buffers, RawType type, int64_t timestampNs, int numBuffers) {
+     
+        if(numBuffers <= 0)
+            return std::vector<std::shared_ptr<RawImageBuffer>>();
+        
+        std::vector<std::shared_ptr<RawImageBuffer>> sortedBuffers = buffers;
+        
+        // Sort by distance to reference timestamp
+        std::sort(sortedBuffers.begin(), sortedBuffers.end(), [timestampNs](auto a, auto b) {
+            return std::abs(a->metadata.timestampNs - timestampNs) < std::abs(b->metadata.timestampNs - timestampNs);
+        });
+        
+        // Filter out by type
+        sortedBuffers.erase(
+            std::remove_if(sortedBuffers.begin(), sortedBuffers.end(), [type](auto x) { return x->metadata.rawType != type; }),
+            sortedBuffers.end());
+        
+        numBuffers = std::min((int) sortedBuffers.size(), numBuffers);
+        
+        return std::vector<std::shared_ptr<RawImageBuffer>>(sortedBuffers.begin(), sortedBuffers.begin() + numBuffers);
+    }
+
     RawBufferManager::RawBufferManager() :
         mMemoryUseBytes(0),
         mNumBuffers(0)
@@ -113,6 +136,7 @@ namespace motioncam {
     void RawBufferManager::save(
             RawType type,
             int numSaveBuffers,
+            int64_t referenceTimestampNs,
             const RawCameraMetadata& metadata,
             const PostProcessSettings& settings,
             const std::string& outputPath)
@@ -125,41 +149,38 @@ namespace motioncam {
             if (mReadyBuffers.empty())
                 return;
 
-            auto it = mReadyBuffers.begin();
+            auto typedBuffers = FindNearestBuffers(mReadyBuffers, type, referenceTimestampNs, numSaveBuffers);
+            numSaveBuffers = numSaveBuffers - (int) typedBuffers.size();
+            
+            auto zslBuffers = FindNearestBuffers(mReadyBuffers, RawType::ZSL, referenceTimestampNs, numSaveBuffers);
 
-            while (it != mReadyBuffers.end() && numSaveBuffers > 0) {
-                if((*it)->metadata.rawType == type) {
-                    buffers.push_back(*it);
-                    it = mReadyBuffers.erase(it);
-
-                    --numSaveBuffers;
-                }
-                else {
-                    ++it;
-                }
+            // Set reference timestamp
+            if(!zslBuffers.empty())
+                referenceTimestampNs = zslBuffers.front()->metadata.timestampNs;
+            else if(!typedBuffers.empty())
+                referenceTimestampNs = typedBuffers.front()->metadata.timestampNs;
+            else {
+                logger::log("No buffers. Something is not right");
+                return;
             }
 
-            // If we didn't have enough of the requested type, use ZSL buffers
-            auto rit = mReadyBuffers.rbegin();
-
-            while(rit != mReadyBuffers.rend() && numSaveBuffers > 0) {
-                if((*rit)->metadata.rawType == RawType::ZSL) {
-                    buffers.push_back(*rit);
-                    rit = decltype(rit)(mReadyBuffers.erase( std::next(rit).base() ));
-
-                    --numSaveBuffers;
-                }
-                else {
-                    ++rit;
-                }
-            }
+            buffers.insert(buffers.end(), typedBuffers.begin(), typedBuffers.end());
+            buffers.insert(buffers.end(), zslBuffers.begin(), zslBuffers.end());
+            
+            // Remove from the ready buffers until we copy them
+            mReadyBuffers.erase(
+                std::remove_if(
+                    mReadyBuffers.begin(),
+                    mReadyBuffers.end(),
+                    [buffers](auto& e) { return std::find(buffers.begin(), buffers.end(), e) != buffers.end(); }),
+                mReadyBuffers.end());
         }
 
         // Copy the buffers
         auto rawContainer = std::make_shared<RawContainer>(
                 metadata,
                 settings,
-                -1,
+                referenceTimestampNs,
                 type == RawType::HDR,
                 buffers);
 
@@ -180,7 +201,7 @@ namespace motioncam {
     }
 
     void RawBufferManager::save(RawCameraMetadata& metadata,
-                                int64_t referenceTimestamp,
+                                int64_t referenceTimestampNs,
                                 int numSaveBuffers,
                                 const PostProcessSettings& settings,
                                 const std::string& outputPath)
@@ -199,7 +220,7 @@ namespace motioncam {
             int referenceIdx = static_cast<int>(mReadyBuffers.size()) - 1;
 
             for(int i = 0; i < mReadyBuffers.size(); i++) {
-                if(mReadyBuffers[i]->metadata.timestampNs == referenceTimestamp) {
+                if(mReadyBuffers[i]->metadata.timestampNs == referenceTimestampNs) {
                     referenceIdx = i;
                     buffers.push_back(mReadyBuffers[i]);
                     break;
@@ -207,7 +228,7 @@ namespace motioncam {
             }
 
             // Update timestamp
-            referenceTimestamp = mReadyBuffers[referenceIdx]->metadata.timestampNs;
+            referenceTimestampNs = mReadyBuffers[referenceIdx]->metadata.timestampNs;
 
             // Add closest images
             int leftIdx  = referenceIdx - 1;
@@ -259,7 +280,7 @@ namespace motioncam {
         auto rawContainer = std::make_shared<RawContainer>(
                 metadata,
                 settings,
-                referenceTimestamp,
+                referenceTimestampNs,
                 false,
                 buffers);
 
@@ -325,5 +346,15 @@ namespace motioncam {
         mReadyBuffers.clear();
 
         return lockedBuffers;
+    }
+
+    int64_t RawBufferManager::latestTimeStamp() {
+        std::lock_guard<std::recursive_mutex> lock(mMutex);
+        
+        if(mReadyBuffers.empty())
+            return -1;
+        
+        auto latest = mReadyBuffers.back();
+        return latest->metadata.timestampNs;
     }
 }

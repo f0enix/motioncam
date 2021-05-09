@@ -19,8 +19,8 @@ import com.motioncam.camera.PostProcessSettings;
 import java.util.ArrayList;
 import java.util.List;
 
-public class PreviewAdapter extends
-        RecyclerView.Adapter<PreviewAdapter.ViewHolder> implements
+public class PostProcessPreviewAdapter extends
+        RecyclerView.Adapter<PostProcessPreviewAdapter.ViewHolder> implements
         AsyncNativeCameraOps.PreviewListener {
 
     // View holder
@@ -91,7 +91,7 @@ public class PreviewAdapter extends
     private List<Item> mItems;
 //    private Matrix mTransformMatrix;
 
-    PreviewAdapter(Context context, AsyncNativeCameraOps asyncNativeCameraOps, List<NativeCameraBuffer> buffers) {
+    PostProcessPreviewAdapter(Context context, AsyncNativeCameraOps asyncNativeCameraOps, List<NativeCameraBuffer> buffers) {
         mInflater = LayoutInflater.from(context);
         mAsyncNativeCameraOps = asyncNativeCameraOps;
 //        mTransformMatrix = new Matrix();
@@ -111,7 +111,7 @@ public class PreviewAdapter extends
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup viewGroup, int viewType) {
         View view = mInflater.inflate(R.layout.preview, viewGroup, false);
-        return new PreviewAdapter.ViewHolder(view);
+        return new PostProcessPreviewAdapter.ViewHolder(view);
     }
 
     @Override
@@ -147,6 +147,7 @@ public class PreviewAdapter extends
         return mItems.size();
     }
 
+    @Override
     public long getItemId(int position) {
         return mItems.get(position).buffer.timestamp;
     }

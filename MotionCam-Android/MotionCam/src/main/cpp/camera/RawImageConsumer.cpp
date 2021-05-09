@@ -22,12 +22,15 @@
 #include <motioncam/RawContainer.h>
 #include "motioncam/CameraProfile.h"
 #include "motioncam/Temperature.h"
+#include <motioncam/ImageProcessor.h>
 
 #include <camera/NdkCameraMetadata.h>
 
 namespace motioncam {
     static const int COPY_THREADS = 1; // More than one copy thread breaks RAW preview
     static const int MINIMUM_BUFFERS = 16;
+    static const float SHADOW_BIAS = 2.0f;
+    static const int ESTIMATE_SHADOWS_FRAME_INTERVAL = 8;
 
 #ifdef GPU_CAMERA_PREVIEW
     void VERIFY_RESULT(int32_t errCode, const std::string& errString)
@@ -46,13 +49,11 @@ namespace motioncam {
         mRawPreviewQuality(4),
         mCopyCaptureColorTransform(true),
         mOverrideWhiteBalance(false),
-        mShadows(1.0f),
-        mContrast(0.5f),
-        mSaturation(1.0f),
-        mBlacks(0.0f),
-        mWhitePoint(1.0f),
+        mShadowBoost(0.0f),
         mTempOffset(0.0f),
         mTintOffset(0.0f),
+        mPreviewShadows(0.0f),
+        mPreviewShadowStep(0.0f),
         mCameraDesc(std::move(cameraDescription))
     {
     }
@@ -245,7 +246,33 @@ namespace motioncam {
     }
 
     void RawImageConsumer::onBufferReady(const std::shared_ptr<RawImageBuffer>& buffer) {
+        // Estimate settings every few frames
+        if(mFramesSinceEstimatedSettings >= ESTIMATE_SHADOWS_FRAME_INTERVAL)
+        {
+            float ev = motioncam::ImageProcessor::calcEv(mCameraDesc->metadata, buffer->metadata);
+            float keyValue = 1.03f - SHADOW_BIAS / (SHADOW_BIAS + std::log10(std::pow(10.0f, ev) + 1));
+
+            // Keep previous value
+            mPreviewShadows = mEstimatedSettings.shadows;
+
+            motioncam::ImageProcessor::estimateBasicSettings(*buffer, mCameraDesc->metadata, keyValue, mEstimatedSettings);
+
+            // Update shadows to include user selected boost
+            float userShadows = std::pow(2.0f, std::log(mEstimatedSettings.shadows) / std::log(2.0f) + mShadowBoost);
+            mEstimatedSettings.shadows = std::max(1.0f, std::min(32.0f, userShadows));
+
+            mPreviewShadowStep = (1.0f / ESTIMATE_SHADOWS_FRAME_INTERVAL) * (mEstimatedSettings.shadows - mPreviewShadows);
+            mFramesSinceEstimatedSettings = 0;
+        }
+        else {
+            ++mFramesSinceEstimatedSettings;
+
+            // Interpolate shadows to make transition smoother
+            mPreviewShadows += mPreviewShadowStep;
+        }
+
         RawBufferManager::get().enqueueReadyBuffer(buffer);
+
     }
 
     void RawImageConsumer::doMatchMetadata() {
@@ -267,7 +294,7 @@ namespace motioncam {
 
                 // Return buffer to either preprocess queue or normal queue if raw preview is not enabled
                 if( mEnableRawPreview &&
-                    mPreprocessQueue.size_approx() < 3 &&
+                    mPreprocessQueue.size_approx() < 2 &&
                     pendingBufferIt->second->metadata.rawType == RawType::ZSL)
                 {
                     mPreprocessQueue.enqueue(pendingBufferIt->second);
@@ -417,7 +444,6 @@ namespace motioncam {
         std::shared_ptr<RawImageBuffer> buffer;
 
         std::chrono::steady_clock::time_point fpsTimestamp = std::chrono::steady_clock::now();
-        std::chrono::steady_clock::time_point wbTimestamp = std::chrono::steady_clock::now();
         std::chrono::steady_clock::time_point previewTimestamp;
 
         cl_int errCode = -1;
@@ -426,7 +452,6 @@ namespace motioncam {
         int downscaleFactor = mRawPreviewQuality;
         int processedFrames = 0;
         double totalPreviewTimeMs = 0;
-        bool previewSettled = false;
 
         while(mEnableRawPreview) {
             if(!mPreprocessQueue.wait_dequeue_timed(buffer, std::chrono::milliseconds(100))) {
@@ -447,11 +472,11 @@ namespace motioncam {
                     mCameraDesc->metadata,
                     downscaleFactor,
                     mCameraDesc->lensFacing == ACAMERA_LENS_FACING_FRONT,
-                    mShadows,
-                    mContrast,
-                    mSaturation,
-                    mBlacks,
-                    mWhitePoint,
+                    mPreviewShadows,
+                    mEstimatedSettings.contrast,
+                    mEstimatedSettings.saturation,
+                    mEstimatedSettings.blacks,
+                    mEstimatedSettings.whitePoint,
                     mTempOffset,
                     mTintOffset,
                     0.25f,
@@ -469,7 +494,6 @@ namespace motioncam {
             VERIFY_RESULT(CL_acquire(&clContext, &clQueue), "Failed to acquire CL context");
 
             auto clOutputBuffer = (cl_mem) halide_opencl_get_cl_mem(nullptr, outputBuffer.raw_buffer());
-
             auto data = CL_enqueueMapBuffer(
                     clQueue, clOutputBuffer, CL_TRUE, CL_MAP_READ, 0, outputBuffer.size_in_bytes(), 0, nullptr, nullptr, &errCode);
 
@@ -482,6 +506,7 @@ namespace motioncam {
 
             VERIFY_RESULT(CL_release(), "Failed to release CL context");
 
+            // Return buffer
             onBufferReady(buffer);
 
             processedFrames += 1;
@@ -508,7 +533,6 @@ namespace motioncam {
         while(mPreprocessQueue.try_dequeue(buffer)) {
             RawBufferManager::get().discardBuffer(buffer);
         }
-
 #endif
         LOGD("Exiting preprocess thread");
     }
@@ -526,15 +550,19 @@ namespace motioncam {
     }
 
     void RawImageConsumer::updateRawPreviewSettings(
-            float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset)
+            float shadowBoost, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOffset)
     {
-        mShadows = shadows;
-        mContrast = contrast;
-        mSaturation = saturation;
-        mBlacks = blacks;
-        mWhitePoint = whitePoint;
+        mShadowBoost = shadowBoost;
+        mEstimatedSettings.contrast = contrast;
+        mEstimatedSettings.saturation = saturation;
+        mEstimatedSettings.blacks = blacks;
+        mEstimatedSettings.whitePoint = whitePoint;
         mTempOffset = tempOffset;
         mTintOffset = tintOffset;
+    }
+
+    void RawImageConsumer::getEstimatedSettings(PostProcessSettings& outSettings) {
+        outSettings = mEstimatedSettings;
     }
 
     void RawImageConsumer::disableRawPreview() {

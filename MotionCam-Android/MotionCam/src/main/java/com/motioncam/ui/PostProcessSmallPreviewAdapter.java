@@ -24,7 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-public class SmallPreviewListAdapter extends RecyclerView.Adapter<SmallPreviewListAdapter.ViewHolder>
+public class PostProcessSmallPreviewAdapter extends RecyclerView.Adapter<PostProcessSmallPreviewAdapter.ViewHolder>
         implements AsyncNativeCameraOps.PreviewListener {
 
     private static final int PREVIEW_HEIGHT_DP = 80;
@@ -74,10 +74,10 @@ public class SmallPreviewListAdapter extends RecyclerView.Adapter<SmallPreviewLi
     private int mSelectedIndex;
     private OnSelectionChangedListner mSelectionListener;
 
-    SmallPreviewListAdapter(Context context,
-                           AsyncNativeCameraOps asyncNativeCameraOps,
-                           PostProcessSettings settings,
-                           List<NativeCameraBuffer> buffers)
+    PostProcessSmallPreviewAdapter(Context context,
+                                   AsyncNativeCameraOps asyncNativeCameraOps,
+                                   PostProcessSettings settings,
+                                   List<NativeCameraBuffer> buffers)
     {
         mInflater = LayoutInflater.from(context);
         mAsyncNativeCameraOps = asyncNativeCameraOps;
@@ -96,13 +96,13 @@ public class SmallPreviewListAdapter extends RecyclerView.Adapter<SmallPreviewLi
 
     @NonNull
     @Override
-    public SmallPreviewListAdapter.ViewHolder onCreateViewHolder(@NonNull ViewGroup viewGroup, int i) {
+    public PostProcessSmallPreviewAdapter.ViewHolder onCreateViewHolder(@NonNull ViewGroup viewGroup, int i) {
         View view = mInflater.inflate(R.layout.preview_list_item, viewGroup, false);
         return new ViewHolder(view);
     }
 
     @Override
-    public void onBindViewHolder(@NonNull SmallPreviewListAdapter.ViewHolder viewHolder, int index) {
+    public void onBindViewHolder(@NonNull PostProcessSmallPreviewAdapter.ViewHolder viewHolder, int index) {
         if(mItems.get(index).preview == null) {
             mAsyncNativeCameraOps.generatePreview(
                     mItems.get(index).buffer, mPostProcessSettings, AsyncNativeCameraOps.PreviewSize.SMALL, null, this);

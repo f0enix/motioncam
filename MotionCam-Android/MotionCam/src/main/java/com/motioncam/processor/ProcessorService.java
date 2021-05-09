@@ -39,6 +39,7 @@ public class ProcessorService extends IntentService {
 
     public static final String METADATA_PATH_KEY                = "metadataPath";
     public static final String RECEIVER_KEY                     = "receiver";
+    public static final String PREVIEW_PATH                     = "preview";
 
     public static final int NOTIFICATION_ID                     = 1;
     public static final String NOTIFICATION_CHANNEL_ID          = "MotionCamNotification";
@@ -66,7 +67,7 @@ public class ProcessorService extends IntentService {
             return filename;
         }
 
-        ProcessFile(Context context, File rawContainerPath, File tempPath, boolean processInMemory, ResultReceiver receiver) {
+        ProcessFile(Context context, File rawContainerPath, File previewDirectory, boolean processInMemory, ResultReceiver receiver) {
             mContext = context;
             mNativeProcessor = new NativeProcessor();
             mReceiver = receiver;
@@ -77,8 +78,8 @@ public class ProcessorService extends IntentService {
             mOutputFileNameJpeg = fileNoExtension(rawContainerPath.getName()) + ".jpg";
             mOutputFileNameDng = fileNoExtension(rawContainerPath.getName()) + ".dng";
 
-            mTempFileJpeg = new File(tempPath, mOutputFileNameJpeg);
-            mTempFileDng = new File(tempPath, mOutputFileNameDng);
+            mTempFileJpeg = new File(previewDirectory, mOutputFileNameJpeg);
+            mTempFileDng = new File(previewDirectory, mOutputFileNameDng);
         }
 
         @Override
@@ -102,6 +103,8 @@ public class ProcessorService extends IntentService {
                 mReceiver.send(ProcessorReceiver.PROCESS_CODE_STARTED, Bundle.EMPTY);
             }
 
+            Uri contentUri = null;
+
             // Copy to media store
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 if(BuildConfig.DEBUG && !mProcessInMemory)
@@ -113,8 +116,7 @@ public class ProcessorService extends IntentService {
                 }
 
                 if (mTempFileJpeg.exists()) {
-                    saveToMediaStore(mTempFileJpeg, "image/jpeg", Environment.DIRECTORY_DCIM + File.separator + "Camera");
-                    mTempFileJpeg.delete();
+                    contentUri = saveToMediaStore(mTempFileJpeg, "image/jpeg", Environment.DIRECTORY_DCIM + File.separator + "Camera");
                 }
             }
             // Legacy copy file
@@ -133,7 +135,7 @@ public class ProcessorService extends IntentService {
                 if(mTempFileDng.exists()) {
                     File outputFileDng = new File(outputDirectory, mOutputFileNameDng);
 
-                    Log.e(TAG, "Writing to " + outputFileDng.getPath());
+                    Log.d(TAG, "Writing to " + outputFileDng.getPath());
 
                     FileUtils.copyFile(mTempFileDng, outputFileDng);
                     mTempFileDng.delete();
@@ -142,15 +144,26 @@ public class ProcessorService extends IntentService {
                 if(mTempFileJpeg.exists()) {
                     File outputFileJpeg = new File(outputDirectory, mOutputFileNameJpeg);
 
-                    Log.e(TAG, "Writing to " + outputFileJpeg.getPath());
+                    Log.d(TAG, "Writing to " + outputFileJpeg.getPath());
 
                     FileUtils.copyFile(mTempFileJpeg, outputFileJpeg);
-                    mTempFileJpeg.delete();
 
-                    Uri uri = Uri.fromFile(outputFileJpeg);
-                    mContext.sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, uri));
+                    contentUri = Uri.fromFile(outputFileJpeg);
+                    mContext.sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, contentUri));
                 }
             }
+
+            if(mReceiver != null) {
+                Bundle bundle = new Bundle();
+
+                bundle.putString(ProcessorReceiver.PROCESS_CODE_CONTENT_URI_KEY, contentUri.toString());
+                bundle.putString(ProcessorReceiver.PROCESS_CODE_OUTPUT_FILE_PATH_KEY, mTempFileJpeg.getPath());
+                bundle.putInt(ProcessorReceiver.PROCESS_CODE_PROGRESS_VALUE_KEY, 100);
+
+                mReceiver.send(ProcessorReceiver.PROCESS_CODE_COMPLETED, bundle);
+            }
+
+            mNotifyManager.cancel(NOTIFICATION_ID);
 
             if(!mProcessInMemory)
                 mRawContainerPath.delete();
@@ -174,6 +187,8 @@ public class ProcessorService extends IntentService {
 
             Uri imageContentUri = resolver.insert(collection, details);
 
+            Log.d(TAG, "Writing to " + inputFile.getPath());
+
             try (ParcelFileDescriptor pfd = resolver.openFileDescriptor(imageContentUri, "w", null)) {
                 FileOutputStream outStream = new FileOutputStream(pfd.getFileDescriptor());
 
@@ -187,7 +202,7 @@ public class ProcessorService extends IntentService {
         }
 
         @RequiresApi(api = Build.VERSION_CODES.Q)
-        private void saveToMediaStore(File inputFile, String mimeType, String relativePath) throws IOException {
+        private Uri saveToMediaStore(File inputFile, String mimeType, String relativePath) throws IOException {
             ContentResolver resolver = mContext.getApplicationContext().getContentResolver();
 
             Uri imageCollection;
@@ -209,6 +224,8 @@ public class ProcessorService extends IntentService {
 
             Uri imageContentUri = resolver.insert(imageCollection, imageDetails);
 
+            Log.d(TAG, "Writing to " + inputFile.getPath());
+
             try (ParcelFileDescriptor pfd = resolver.openFileDescriptor(imageContentUri, "w", null)) {
                 FileOutputStream outStream = new FileOutputStream(pfd.getFileDescriptor());
 
@@ -219,6 +236,8 @@ public class ProcessorService extends IntentService {
             imageDetails.put(MediaStore.Images.Media.IS_PENDING, 0);
 
             resolver.update(imageContentUri, imageDetails, null, null);
+
+            return imageContentUri;
         }
 
         @Override
@@ -260,15 +279,15 @@ public class ProcessorService extends IntentService {
         }
 
         @Override
+        public void onPreviewSaved(String outputPath) {
+            Bundle bundle = new Bundle();
+            bundle.putString(ProcessorReceiver.PROCESS_CODE_OUTPUT_FILE_PATH_KEY, outputPath);
+
+            mReceiver.send(ProcessorReceiver.PROCESS_CODE_PREVIEW_READY, bundle);
+        }
+
+        @Override
         public void onCompleted() {
-            if(mReceiver != null) {
-                Bundle bundle = new Bundle();
-
-                bundle.putInt(ProcessorReceiver.PROCESS_CODE_PROGRESS_VALUE_KEY, 100);
-                mReceiver.send(ProcessorReceiver.PROCESS_CODE_COMPLETED, bundle);
-            }
-
-            mNotifyManager.cancel(NOTIFICATION_ID);
         }
 
         @Override
@@ -296,13 +315,12 @@ public class ProcessorService extends IntentService {
 
         // Set receiver if we get one
         ResultReceiver receiver = intent.getParcelableExtra(RECEIVER_KEY);
+        File previewDirectory = new File(getFilesDir(), PREVIEW_PATH);
 
-        File tmpDirectory = new File(getFilesDir(), "tmp");
-
-        // Create temporary directory
-        if(!tmpDirectory.exists()) {
-            if(!tmpDirectory.mkdirs()) {
-                Log.e(TAG, "Failed to create " + tmpDirectory);
+        // Create directory to store output for the capture preview
+        if(!previewDirectory.exists()) {
+            if(!previewDirectory.mkdirs()) {
+                Log.e(TAG, "Failed to create " + previewDirectory);
                 return;
             }
         }
@@ -314,7 +332,7 @@ public class ProcessorService extends IntentService {
 
         while(moreToProcess) {
             File inMemoryTmp = CameraProfile.generateCaptureFile(getApplicationContext());
-            ProcessFile inMemoryProcess = new ProcessFile(getApplicationContext(), inMemoryTmp, tmpDirectory, true, receiver);
+            ProcessFile inMemoryProcess = new ProcessFile(getApplicationContext(), inMemoryTmp, previewDirectory, true, receiver);
 
             try {
                 Log.d(TAG, "Processing in-memory container");
@@ -333,7 +351,7 @@ public class ProcessorService extends IntentService {
 
         // Process all files
         for(File file : pendingFiles) {
-            ProcessFile processFile = new ProcessFile(getApplicationContext(), file, tmpDirectory, false, receiver);
+            ProcessFile processFile = new ProcessFile(getApplicationContext(), file, previewDirectory, false, receiver);
 
             try {
                 Log.d(TAG, "Processing " + file.getPath());
@@ -344,5 +362,10 @@ public class ProcessorService extends IntentService {
                 file.delete();
             }
         }
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
     }
 }
