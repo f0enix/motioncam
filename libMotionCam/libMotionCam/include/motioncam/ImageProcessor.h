@@ -133,6 +133,9 @@ namespace motioncam {
                                                        const PostProcessSettings& settings,
                                                        const RawImageBuffer& reference,
                                                        const RawImageBuffer& underexposed);
+        
+        
+        static double calcEv(const RawCameraMetadata& cameraMetadata, const RawImageMetadata& metadata);
 
     #ifdef DNG_SUPPORT
         static cv::Mat buildRawImage(std::vector<cv::Mat> channels, int cropX, int cropY);

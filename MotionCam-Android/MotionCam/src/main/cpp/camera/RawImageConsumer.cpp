@@ -29,7 +29,7 @@
 namespace motioncam {
     static const int COPY_THREADS = 1; // More than one copy thread breaks RAW preview
     static const int MINIMUM_BUFFERS = 16;
-    static const float SHADOW_BIAS = 16.0f;
+    static const float SHADOW_BIAS = 2.0f;
     static const int ESTIMATE_SHADOWS_FRAME_INTERVAL = 8;
 
 #ifdef GPU_CAMERA_PREVIEW
@@ -247,16 +247,9 @@ namespace motioncam {
 
     void RawImageConsumer::onBufferReady(const std::shared_ptr<RawImageBuffer>& buffer) {
         // Estimate settings every few frames
-        if(mFramesSinceEstimatedSettings >= ESTIMATE_SHADOWS_FRAME_INTERVAL) {
-            float a;
-
-            if(!mCameraDesc->metadata.apertures.empty())
-                a = 1.8f;
-            else
-                a = mCameraDesc->metadata.apertures[0];
-
-            float s = a*a;
-            float ev = std::log2(s / (buffer->metadata.exposureTime / 1.0e9f)) - std::log2(buffer->metadata.iso / 100.0f);
+        if(mFramesSinceEstimatedSettings >= ESTIMATE_SHADOWS_FRAME_INTERVAL)
+        {
+            float ev = motioncam::ImageProcessor::calcEv(mCameraDesc->metadata, buffer->metadata);
             float keyValue = 1.03f - SHADOW_BIAS / (SHADOW_BIAS + std::log10(std::pow(10.0f, ev) + 1));
 
             // Keep previous value

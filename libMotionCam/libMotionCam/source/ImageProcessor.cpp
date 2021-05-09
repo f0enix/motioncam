@@ -155,15 +155,6 @@ namespace motioncam {
     const int EXPANDED_RANGE    = 16384;
     const float MAX_HDR_ERROR   = 0.03f;
 
-    static double calcEv(const RawCameraMetadata& cameraMetadata, const RawImageMetadata& metadata) {
-        double a = 1.8;
-        if(!cameraMetadata.apertures.empty())
-            a = cameraMetadata.apertures[0];
-
-        double s = a*a;
-        return std::log2(s / (metadata.exposureTime / (1.0e9))) - std::log2(metadata.iso / 100.0);
-    }
-
     struct RawData {
         Halide::Runtime::Buffer<uint16_t> rawBuffer;
         Halide::Runtime::Buffer<uint8_t> previewBuffer;
@@ -226,6 +217,16 @@ namespace motioncam {
         mProgressListener.onProgressUpdate(100);
         mProgressListener.onCompleted();
     }
+
+    double ImageProcessor::calcEv(const RawCameraMetadata& cameraMetadata, const RawImageMetadata& metadata) {
+        double a = 1.8;
+        if(!cameraMetadata.apertures.empty())
+            a = cameraMetadata.apertures[0];
+
+        double s = a*a;
+        return std::log2(s / (metadata.exposureTime / (1.0e9))) - std::log2(metadata.iso / 100.0);
+    }
+
 
     cv::Mat ImageProcessor::postProcess(std::vector<Halide::Runtime::Buffer<uint16_t>>& inputBuffers,
                                         const shared_ptr<HdrMetadata>& hdrMetadata,
@@ -306,7 +307,7 @@ namespace motioncam {
         
         // Linearly adjust sharpen threshold based on exposure
         double ev = calcEv(cameraMetadata, metadata);
-        double sharpenThreshold = std::max(8.0, 1.5*ev + 8);
+        double sharpenThreshold = std::max(4.0, 1.5*ev + 4);
         
         postprocess(inputBuffers[0],
                     inputBuffers[1],
@@ -352,15 +353,15 @@ namespace motioncam {
         float avgLuminance = 0.0f;
         float totalPixels = 0;
         
-        int lowerBound = 1;
-        int upperBound = 200;
+        int lowerBound = 5;
+        int upperBound = 240;
         
         for(int i = lowerBound; i < upperBound; i++) {
-            avgLuminance += histogram.at<float>(i) * std::log(i / 255.0f);
+            avgLuminance += histogram.at<float>(i) * (i / 255.0f);
             totalPixels += histogram.at<float>(i);
         }
         
-        avgLuminance = std::exp(avgLuminance / (totalPixels + 1e-5f));
+        avgLuminance = avgLuminance / (totalPixels + 1e-5f);
 
         return std::max(1.0f, std::min(keyValue / avgLuminance, 32.0f));
     }
@@ -418,8 +419,8 @@ namespace motioncam {
         }
                 
         // Estimate blacks
-        const float maxDehazePercent = 0.005f;
-        const int maxEndBin = 18; // Max bin
+        const float maxDehazePercent = 0.03f;
+        const int maxEndBin = 10; // Max bin
 
         int endBin = 0;
         
@@ -901,7 +902,7 @@ namespace motioncam {
 
         cv::Mat referenceImage(referenceBuffer.height(), referenceBuffer.width(), CV_8U, (void*) referenceBuffer.data());
         cv::Mat toAlignImage(toAlignBuffer.height(), toAlignBuffer.width(), CV_8U, (void*) toAlignBuffer.data());
-        auto detector = cv::BRISK::create();
+        auto detector = cv::ORB::create(1000);
         
         std::vector<cv::KeyPoint> keypoints1, keypoints2;
         cv::Mat descriptors1, descriptors2;
@@ -913,30 +914,25 @@ namespace motioncam {
         extractor->compute(referenceImage, keypoints1, descriptors1);
         extractor->compute(toAlignImage, keypoints2, descriptors2);
 
-        auto matcher = cv::BFMatcher::create(cv::NORM_HAMMING, false);
-        
-        std::vector< std::vector<cv::DMatch> > knn_matches;
-        matcher->knnMatch( descriptors1, descriptors2, knn_matches, 2 );
-        
-        // Filter matches using the Lowe's ratio test
-        const float ratio_thresh = 0.75f;
-        std::vector<cv::DMatch> good_matches;
+        auto matcher = cv::BFMatcher::create(cv::NORM_HAMMING, true);
+        std::vector<cv::DMatch> matches;
 
-        for (auto& m : knn_matches)
-        {
-            if (m[0].distance < ratio_thresh * m[1].distance)
-                good_matches.push_back(m[0]);
-        }
+        matcher->match( descriptors1, descriptors2, matches );
+        
+        std::sort(matches.begin(), matches.end(), [](auto a, auto b) {
+            return a.distance < b.distance;
+        });
         
         std::vector<cv::Point2f> obj;
         std::vector<cv::Point2f> scene;
         
-        for(auto& m : good_matches)
-        {
+        for(int i = 0; i < (int) (0.9f * matches.size()); i++ ) {
+            auto m = matches[i];
+            
             obj.push_back( keypoints1[ m.queryIdx ].pt );
             scene.push_back( keypoints2[ m.trainIdx ].pt );
         }
-        
+
         if(obj.empty()) {
             cv::Mat m(3, 3, CV_32F);
             cv::setIdentity(m);
@@ -1120,7 +1116,7 @@ namespace motioncam {
                 sum += hist.at<float>(x);
             }
 
-            // Check if there's any point even using the underexposed image (less than 0.5% in the >95% bins)
+            // Check if there's any point even using the underexposed image (less than 0.1% in the >95% bins)
             float p = sum * 100.0f;
             if(p < 0.1f) {
                 logger::log("Skipping HDR processing (" + std::to_string(p) + ")");
@@ -1139,9 +1135,8 @@ namespace motioncam {
                     if(hdrMetadata->error < MAX_HDR_ERROR) {
                         // Reduce the shadows if applying HDR to avoid the image looking too flat due to
                         // extreme dynamic range compression
-                        //settings.shadows = std::max(0.90f * settings.shadows, 2.0f);
+                        settings.shadows = std::max(0.5f * settings.shadows, 2.0f);
                         underExposedImage = *underexposedFrameIt;
-
                         break;
                     }
                     else {
@@ -1168,7 +1163,7 @@ namespace motioncam {
                                    rawContainer.getCameraMetadata(),
                                    settings.shadows,
                                    settings.blacks,
-                                   0.9995f,
+                                   0.999f,
                                    settings.whitePoint);
             }
             else {
@@ -1176,7 +1171,7 @@ namespace motioncam {
                                    rawContainer.getCameraMetadata(),
                                    settings.shadows * (1.0f/hdrMetadata->exposureScale),
                                    settings.blacks,
-                                   0.9995f,
+                                   0.999f,
                                    settings.whitePoint);
             }
         }

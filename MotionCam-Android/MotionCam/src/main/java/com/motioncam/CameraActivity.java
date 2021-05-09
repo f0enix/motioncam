@@ -41,6 +41,7 @@ import androidx.viewpager2.widget.ViewPager2;
 
 import com.bumptech.glide.Glide;
 import com.jakewharton.processphoenix.ProcessPhoenix;
+import com.motioncam.camera.AsyncNativeCameraOps;
 import com.motioncam.camera.CameraManualControl;
 import com.motioncam.camera.NativeCameraBuffer;
 import com.motioncam.camera.NativeCameraInfo;
@@ -72,7 +73,7 @@ public class CameraActivity extends AppCompatActivity implements
         NativeCameraSessionBridge.CameraRawPreviewListener,
         View.OnTouchListener,
         ProcessorReceiver.Receiver,
-        MotionLayout.TransitionListener {
+        MotionLayout.TransitionListener, AsyncNativeCameraOps.CaptureImageListener {
 
     public static final String TAG = "MotionCam";
 
@@ -107,6 +108,7 @@ public class CameraActivity extends AppCompatActivity implements
     private List<CameraManualControl.SHUTTER_SPEED> mExposureValues;
     private List<CameraManualControl.ISO> mIsoValues;
     private NativeCameraSessionBridge mNativeCamera;
+    private AsyncNativeCameraOps mAsyncNativeCameraOps;
     private List<NativeCameraInfo> mCameraInfos;
     private NativeCameraInfo mSelectedCamera;
     private int mSelectedCameraIdx;
@@ -117,7 +119,7 @@ public class CameraActivity extends AppCompatActivity implements
 
     private CameraCapturePreviewAdapter mCameraCapturePreviewAdapter;
 
-    private ViewPager2.OnPageChangeCallback mCapturedPreviewPagerListener = new ViewPager2.OnPageChangeCallback() {
+    private final ViewPager2.OnPageChangeCallback mCapturedPreviewPagerListener = new ViewPager2.OnPageChangeCallback() {
         @Override
         public void onPageSelected(int position) {
             onCapturedPreviewPageChanged(position);
@@ -719,8 +721,6 @@ public class CameraActivity extends AppCompatActivity implements
             DenoiseSettings denoiseSettings =
                     new DenoiseSettings(baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), settings.shadows);
 
-            Log.i(TAG, "Requested HDR capture (denoiseSettings=" + denoiseSettings.toString() + ")");
-
             settings.chromaEps = denoiseSettings.chromaEps;
             settings.spatialDenoiseAggressiveness = denoiseSettings.spatialWeight;
             settings.exposure = 0.0f;
@@ -730,13 +730,32 @@ public class CameraActivity extends AppCompatActivity implements
             long exposure = baseExposure.shutterSpeed.getExposureTime();
             int iso = baseExposure.iso.getIso();
 
-            // Use a single underexposed image
             if(mCaptureMode == CaptureMode.ZSL) {
-                exposure = -1;
-                iso = -1;
+                // Don't bother with HDR if the scene is underexposed/no clipped pixels
+                boolean noHdr = estimatedSettings.exposure > 0;
+
+                if(noHdr) {
+                    Log.i(TAG, "Requested ZSL capture (denoiseSettings=" + denoiseSettings.toString() + ")");
+
+                    mAsyncNativeCameraOps.captureImage(
+                            -1,
+                            denoiseSettings.numMergeImages,
+                            settings,
+                            CameraProfile.generateCaptureFile(this).getPath(),
+                            this);
+
+                    return;
+                }
+                else {
+                    // Use a single underexposed image
+                    exposure = -1;
+                    iso = -1;
+                }
             }
 
             if(mImageCaptureInProgress.compareAndSet(false, true)) {
+                Log.i(TAG, "Requested HDR capture (denoiseSettings=" + denoiseSettings.toString() + ")");
+
                 mNativeCamera.captureHdrImage(
                         denoiseSettings.numMergeImages,
                         iso,
@@ -853,6 +872,7 @@ public class CameraActivity extends AppCompatActivity implements
             }
 
             mNativeCamera = new NativeCameraSessionBridge(this, nativeCameraMemoryUseBytes, null);
+            mAsyncNativeCameraOps = new AsyncNativeCameraOps(mNativeCamera);
 
             // Get supported cameras and filter out ignored ones
             NativeCameraInfo[] cameraInfos = mNativeCamera.getSupportedCameras();
@@ -1281,6 +1301,24 @@ public class CameraActivity extends AppCompatActivity implements
 
             startImageProcessor();
         });
+    }
+
+    @Override
+    public void onCaptured(long handle) {
+        Log.i(TAG, "ZSL capture completed");
+
+        mImageCaptureInProgress.set(false);
+
+        mBinding.captureBtn.setEnabled(true);
+        mBinding.captureProgressBar.setVisibility(View.INVISIBLE);
+
+        mBinding.cameraFrame
+                .animate()
+                .alpha(1.0f)
+                .setDuration(250)
+                .start();
+
+        startImageProcessor();
     }
 
     @Override
