@@ -66,4 +66,12 @@
     <string name="burst_mode">BURST</string>
     <string name="processing">Processing</string>
     <string name="send_to">Send To</string>
+    <string name="automatic_night_mode">Automatic night mode</string>
+    <string name="enable_automatic_night_mode">Enable automatic night mode</string>
+    <string name="automatically_switch_to_night_mode">Automatically switch to night mode</string>
+    <string name="capture_mode">Capture Mode</string>
+    <string name="value_percent">%1$d%%</string>
+    <string name="low">Low</string>
+    <string name="medium">Medium</string>
+    <string name="high">High</string>
 </resources>

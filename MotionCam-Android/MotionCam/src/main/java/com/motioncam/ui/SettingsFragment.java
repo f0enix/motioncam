@@ -39,15 +39,15 @@ public class SettingsFragment extends Fragment {
         mViewModel.cameraPreviewQuality.observe(getViewLifecycleOwner(), (value) -> {
             switch(value) {
                 case 0:
-                    dataBinding.cameraQualityPreviewText.setText(String.format(Locale.US, "Low"));
+                    dataBinding.cameraQualityPreviewText.setText(getString(R.string.low));
                     break;
 
                 case 1:
-                    dataBinding.cameraQualityPreviewText.setText(String.format(Locale.US, "Medium"));
+                    dataBinding.cameraQualityPreviewText.setText(getString(R.string.medium));
                     break;
 
                 case 2:
-                    dataBinding.cameraQualityPreviewText.setText(String.format(Locale.US, "High"));
+                    dataBinding.cameraQualityPreviewText.setText(getString(R.string.high));
                     break;
             }
 
@@ -66,13 +66,9 @@ public class SettingsFragment extends Fragment {
             mViewModel.save(getContext());
         });
 
-        mViewModel.raw10.observe(getViewLifecycleOwner(), (value) -> {
-            mViewModel.save(getContext());
-        });
-
-        mViewModel.raw16.observe(getViewLifecycleOwner(), (value) -> {
-            mViewModel.save(getContext());
-        });
+        mViewModel.autoNightMode.observe(getViewLifecycleOwner(), (value) -> mViewModel.save(getContext()));
+        mViewModel.raw10.observe(getViewLifecycleOwner(), (value) -> mViewModel.save(getContext()));
+        mViewModel.raw16.observe(getViewLifecycleOwner(), (value) -> mViewModel.save(getContext()));
     }
 
     @Nullable

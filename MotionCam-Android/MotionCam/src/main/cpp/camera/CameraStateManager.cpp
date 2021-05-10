@@ -113,7 +113,6 @@ namespace motioncam {
 
         if( mState == State::PAUSED ) {
             setState(State::AUTO_FOCUS_WAIT);
-
             triggerAutoFocus();
         }
     }

@@ -153,7 +153,7 @@ extern "C" int extern_min_max(halide_buffer_t *in, int32_t width, int32_t height
 namespace motioncam {
     const int DENOISE_LEVELS    = 6;
     const int EXPANDED_RANGE    = 16384;
-    const float MAX_HDR_ERROR   = 0.03f;
+    const float MAX_HDR_ERROR   = 0.04f;
 
     struct RawData {
         Halide::Runtime::Buffer<uint16_t> rawBuffer;
@@ -420,7 +420,7 @@ namespace motioncam {
                 
         // Estimate blacks
         const float maxDehazePercent = 0.03f;
-        const int maxEndBin = 10; // Max bin
+        const int maxEndBin = 12; // Max bin
 
         int endBin = 0;
         
@@ -504,7 +504,7 @@ namespace motioncam {
         outSettings.temperature    = static_cast<float>(temperature.temperature());
         outSettings.tint           = static_cast<float>(temperature.tint());
         outSettings.shadows        = estimateShadows(histogram, shadowsKeyValue);
-        outSettings.exposure       = estimateExposureCompensation(histogram);
+        outSettings.exposure       = estimateExposureCompensation(histogram, 1e-3f);
     }
 
     void ImageProcessor::estimateWhiteBalance(const RawImageBuffer& rawBuffer,
@@ -897,13 +897,16 @@ namespace motioncam {
         outSceneLuminosity = std::max(std::max(mean[0], mean[1]), mean[2]);
     }
 
-    cv::Mat ImageProcessor::registerImage(const Halide::Runtime::Buffer<uint8_t>& referenceBuffer, const Halide::Runtime::Buffer<uint8_t>& toAlignBuffer, int scale) {
+    cv::Mat ImageProcessor::registerImage(
+        const Halide::Runtime::Buffer<uint8_t>& referenceBuffer, const Halide::Runtime::Buffer<uint8_t>& toAlignBuffer, int scale)
+    {
         Measure measure("registerImage()");
-
+        
         cv::Mat referenceImage(referenceBuffer.height(), referenceBuffer.width(), CV_8U, (void*) referenceBuffer.data());
         cv::Mat toAlignImage(toAlignBuffer.height(), toAlignBuffer.width(), CV_8U, (void*) toAlignBuffer.data());
+
         auto detector = cv::ORB::create(1000);
-        
+
         std::vector<cv::KeyPoint> keypoints1, keypoints2;
         cv::Mat descriptors1, descriptors2;
         auto extractor = cv::xfeatures2d::BriefDescriptorExtractor::create();
@@ -918,17 +921,17 @@ namespace motioncam {
         std::vector<cv::DMatch> matches;
 
         matcher->match( descriptors1, descriptors2, matches );
-        
+
         std::sort(matches.begin(), matches.end(), [](auto a, auto b) {
             return a.distance < b.distance;
         });
-        
+
         std::vector<cv::Point2f> obj;
         std::vector<cv::Point2f> scene;
-        
-        for(int i = 0; i < (int) (0.9f * matches.size()); i++ ) {
+
+        for(int i = 0; i < (int) (0.75f * matches.size()); i++ ) {
             auto m = matches[i];
-            
+
             obj.push_back( keypoints1[ m.queryIdx ].pt );
             scene.push_back( keypoints2[ m.trainIdx ].pt );
         }
@@ -938,7 +941,7 @@ namespace motioncam {
             cv::setIdentity(m);
             return m;
         }
-        
+
         return findHomography( scene, obj, cv::RANSAC );
     }
 
@@ -1059,7 +1062,7 @@ namespace motioncam {
         
         // Started
         progressListener.onProgressUpdate(0);
-                
+        
         if(rawContainer.isHdr()) {
             double maxEv = -1e10;
             double minEv = 1e10;
@@ -1094,7 +1097,44 @@ namespace motioncam {
         }
 
         auto referenceRawBuffer = rawContainer.loadFrame(rawContainer.getReferenceImage());
+        PostProcessSettings settings = rawContainer.getPostProcessSettings();
+
+        // Estimate black point of not provided
+        if(settings.blacks < 0) {
+            estimateBlacks(*referenceRawBuffer,
+                           rawContainer.getCameraMetadata(),
+                           settings.shadows,
+                           settings.blacks);
+        }
         
+        // Estimate white point if not supplied
+        if(settings.whitePoint < 0) {
+            estimateWhitePoint(*referenceRawBuffer,
+                               rawContainer.getCameraMetadata(),
+                               settings.shadows,
+                               settings.blacks,
+                               0.999f,
+                               settings.whitePoint);
+        }
+
+        //
+        // Save preview
+        //
+        
+        auto preview = createPreview(*referenceRawBuffer, 2, rawContainer.getCameraMetadata(), settings);
+        std::string basePath, filename;
+
+        cv::Mat previewOutput(preview.height(), preview.width(), CV_8UC4, preview.data());
+                
+        util::GetBasePath(outputPath, basePath, filename);
+        
+        std::string previewPath = basePath + "/PREVIEW_" + filename;
+        
+        cv::cvtColor(previewOutput, previewOutput, cv::COLOR_RGBA2BGR);
+        cv::imwrite(previewPath, previewOutput);
+        
+        progressListener.onPreviewSaved(previewPath);
+
         //
         // HDR
         //
@@ -1102,8 +1142,6 @@ namespace motioncam {
         shared_ptr<HdrMetadata> hdrMetadata;
         shared_ptr<RawImageBuffer> underExposedImage;
         
-        PostProcessSettings settings = rawContainer.getPostProcessSettings();
-
         if(!underexposedImages.empty()) {
             auto referenceRawBuffer = rawContainer.loadFrame(rawContainer.getReferenceImage());
             auto underexposedFrameIt = underexposedImages.begin();
@@ -1137,6 +1175,15 @@ namespace motioncam {
                         // extreme dynamic range compression
                         settings.shadows = std::max(0.5f * settings.shadows, 2.0f);
                         underExposedImage = *underexposedFrameIt;
+                        
+                        // Update white point
+                        estimateWhitePoint(*underExposedImage,
+                                           rawContainer.getCameraMetadata(),
+                                           settings.shadows * (1.0f/hdrMetadata->exposureScale),
+                                           settings.blacks,
+                                           0.999f,
+                                           settings.whitePoint);
+
                         break;
                     }
                     else {
@@ -1149,51 +1196,6 @@ namespace motioncam {
             }
         }
                 
-        // Estimate settings if not supplied
-        if(settings.blacks < 0) {
-            estimateBlacks(*referenceRawBuffer,
-                           rawContainer.getCameraMetadata(),
-                           settings.shadows,
-                           settings.blacks);
-        }
-
-        if(settings.whitePoint < 0) {
-            if(!underExposedImage) {
-                estimateWhitePoint(*referenceRawBuffer,
-                                   rawContainer.getCameraMetadata(),
-                                   settings.shadows,
-                                   settings.blacks,
-                                   0.999f,
-                                   settings.whitePoint);
-            }
-            else {
-                estimateWhitePoint(*underExposedImage,
-                                   rawContainer.getCameraMetadata(),
-                                   settings.shadows * (1.0f/hdrMetadata->exposureScale),
-                                   settings.blacks,
-                                   0.999f,
-                                   settings.whitePoint);
-            }
-        }
-        
-        //
-        // Save preview
-        //
-        
-        auto preview = createPreview(*referenceRawBuffer, 2, rawContainer.getCameraMetadata(), settings);
-        std::string basePath, filename;
-
-        cv::Mat previewOutput(preview.height(), preview.width(), CV_8UC4, preview.data());
-                
-        util::GetBasePath(outputPath, basePath, filename);
-        
-        std::string previewPath = basePath + "/PREVIEW_" + filename;
-        
-        cv::cvtColor(previewOutput, previewOutput, cv::COLOR_RGBA2BGR);
-        cv::imwrite(previewPath, previewOutput);
-        
-        progressListener.onPreviewSaved(previewPath);
-        
         //
         // Denoise
         //
@@ -1863,17 +1865,17 @@ namespace motioncam {
         cv::Mat alignedExposure;
 
         cv::warpPerspective(underExposedExposure, alignedExposure, warpMatrix, underExposedExposure.size(), cv::INTER_LINEAR, cv::BORDER_REPLICATE);
-                
+
         Halide::Runtime::Buffer<uint8_t> alignedBuffer = ToHalideBuffer<uint8_t>(alignedExposure);
         Halide::Runtime::Buffer<uint8_t> ghostMapBuffer(alignedBuffer.width(), alignedBuffer.height());
         Halide::Runtime::Buffer<uint8_t> maskBuffer(alignedBuffer.width(), alignedBuffer.height());
         
-        hdr_mask(refImage->previewBuffer, alignedBuffer, 1.0f, 1.0f, 4.0f, ghostMapBuffer, maskBuffer);
+        hdr_mask(refImage->previewBuffer, alignedBuffer, 6.0f, ghostMapBuffer, maskBuffer);
         
         // Calculate error
         cv::Mat ghostMap(ghostMapBuffer.height(), ghostMapBuffer.width(), CV_8U, ghostMapBuffer.data());
         float error = cv::mean(ghostMap)[0] * 100;
-                
+
         //
         // Create input image for post processing
         //
@@ -1904,9 +1906,9 @@ namespace motioncam {
         outputBuffer = Halide::Runtime::Buffer<uint16_t>(underexposedImage->rawBuffer.width()*2, underexposedImage->rawBuffer.height()*2, 3);
         
         // Upscale and blur mask
-        cv::GaussianBlur(mask, mask, cv::Size(15, 15), -1);
+        cv::GaussianBlur(mask, mask, cv::Size(11, 11), -1);
         cv::resize(mask, mask, cv::Size(mask.cols*2, mask.rows*2));
-
+        
         cv::Mat cameraToPcs;
         cv::Mat pcsToSrgb;
         

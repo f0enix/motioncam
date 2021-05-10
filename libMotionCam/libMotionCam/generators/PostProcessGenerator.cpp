@@ -2713,8 +2713,6 @@ public:
     Input<Buffer<uint8_t>> input0{"input0", 2};
     Input<Buffer<uint8_t>> input1{"input1", 2};    
 
-    Input<float> scaleInput0{"scaleInput0"};
-    Input<float> scaleInput1{"scaleInput1"};
     Input<float> c{"c"};
 
     Output<Buffer<uint8_t>> outputGhost{"outputGhost", 2};
@@ -2735,8 +2733,8 @@ void HdrMaskGenerator::generate() {
     Func map0, map1;
     Func ghostMap;
 
-    inputf0(v_x, v_y) = max(0.0f, min(1.0f, cast<float>(BoundaryConditions::repeat_edge(input0)(v_x, v_y)) / 255.0f * scaleInput0));
-    inputf1(v_x, v_y) = max(0.0f, min(1.0f, cast<float>(BoundaryConditions::repeat_edge(input1)(v_x, v_y)) / 255.0f * scaleInput1));
+    inputf0(v_x, v_y) = max(0.0f, min(1.0f, cast<float>(BoundaryConditions::repeat_edge(input0)(v_x, v_y)) / 255.0f));
+    inputf1(v_x, v_y) = max(0.0f, min(1.0f, cast<float>(BoundaryConditions::repeat_edge(input1)(v_x, v_y)) / 255.0f));
 
     mask0(v_x, v_y) = exp(-c * (inputf0(v_x, v_y) - 1.0f) * (inputf0(v_x, v_y) - 1.0f));
     mask1(v_x, v_y) = exp(-c * (inputf1(v_x, v_y) - 1.0f) * (inputf1(v_x, v_y) - 1.0f));
@@ -2746,12 +2744,12 @@ void HdrMaskGenerator::generate() {
 
     ghostMap(v_x, v_y) = map0(v_x, v_y) & (map0(v_x, v_y) ^ map1(v_x, v_y));
 
-    outputGhost(v_x, v_y) =
-        ghostMap(v_x - 1, v_y - 1)  & ghostMap(v_x, v_y - 1)    & ghostMap(v_x + 1, v_y - 1) &
-        ghostMap(v_x - 1, v_y)      & ghostMap(v_x, v_y)        & ghostMap(v_x + 1, v_y)     &
-        ghostMap(v_x - 1, v_y + 1)  & ghostMap(v_x, v_y + 1)    & ghostMap(v_x + 1, v_y + 1);
+    RDom r(-1, 1, -1, 1);
 
-    outputMask(v_x, v_y) = cast<uint8_t>(clamp(mask0(v_x, v_y) * mask1(v_x, v_y) * 255.0f + 0.5f, 0, 255));
+    outputGhost(v_x, v_y) = cast<uint8_t>(1);
+    outputGhost(v_x, v_y) = outputGhost(v_x, v_y) & ghostMap(v_x + r.x, v_y + r.y);
+    
+    outputMask(v_x, v_y) = cast<uint8_t>(clamp(0.5f*(mask0(v_x, v_y) + mask1(v_x, v_y)) * 255.0f + 0.5f, 0, 255));
 
     outputGhost
         .compute_root()

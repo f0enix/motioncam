@@ -17,6 +17,7 @@ public class SettingsViewModel extends ViewModel {
     public static final String PREFS_KEY_JPEG_QUALITY               = "jpeg_quality";
     public static final String PREFS_KEY_SAVE_DNG                   = "save_dng";
     public static final String PREFS_KEY_CAMERA_PREVIEW_QUALITY     = "camera_preview_quality";
+    public static final String PREFS_KEY_AUTO_NIGHT_MODE            = "auto_night_mode";
     public static final String PREFS_KEY_DUAL_EXPOSURE_CONTROLS     = "dual_exposure_controls";
     public static final String PREFS_KEY_CAPTURE_MODE               = "capture_mode";
     public static final String PREFS_KEY_HDR_EV                     = "hdr_ev";
@@ -40,14 +41,16 @@ public class SettingsViewModel extends ViewModel {
     final public MutableLiveData<Boolean> raw10 = new MutableLiveData<>();
     final public MutableLiveData<Boolean> raw16 = new MutableLiveData<>();
     final public MutableLiveData<Integer> jpegQuality = new MutableLiveData<>();
+    final public MutableLiveData<Boolean> autoNightMode = new MutableLiveData<>();
     final public MutableLiveData<Boolean> dualExposureControls = new MutableLiveData<>();
 
     public void load(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
 
-        memoryUseMb.setValue(prefs.getInt(PREFS_KEY_MEMORY_USE_MBYTES, 384) - MINIMUM_MEMORY_USE_MB);
+        memoryUseMb.setValue(prefs.getInt(PREFS_KEY_MEMORY_USE_MBYTES, MINIMUM_MEMORY_USE_MB) - MINIMUM_MEMORY_USE_MB);
         cameraPreviewQuality.setValue(prefs.getInt(PREFS_KEY_CAMERA_PREVIEW_QUALITY, 0));
         jpegQuality.setValue(prefs.getInt(PREFS_KEY_JPEG_QUALITY, CameraProfile.DEFAULT_JPEG_QUALITY));
+        autoNightMode.setValue(prefs.getBoolean(PREFS_KEY_AUTO_NIGHT_MODE, true));
         dualExposureControls.setValue(prefs.getBoolean(PREFS_KEY_DUAL_EXPOSURE_CONTROLS, false));
         hdrEv.setValue(prefs.getInt(PREFS_KEY_HDR_EV, 6));
 
@@ -72,9 +75,10 @@ public class SettingsViewModel extends ViewModel {
         SharedPreferences prefs = context.getSharedPreferences(CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
 
-        editor.putInt(PREFS_KEY_MEMORY_USE_MBYTES, MINIMUM_MEMORY_USE_MB + getSetting(memoryUseMb, 256));
+        editor.putInt(PREFS_KEY_MEMORY_USE_MBYTES, MINIMUM_MEMORY_USE_MB + getSetting(memoryUseMb, MINIMUM_MEMORY_USE_MB));
         editor.putInt(PREFS_KEY_CAMERA_PREVIEW_QUALITY, getSetting(cameraPreviewQuality, 0));
         editor.putInt(PREFS_KEY_JPEG_QUALITY, getSetting(jpegQuality, 95));
+        editor.putBoolean(PREFS_KEY_AUTO_NIGHT_MODE, getSetting(autoNightMode, true));
         editor.putBoolean(PREFS_KEY_DUAL_EXPOSURE_CONTROLS, getSetting(dualExposureControls, false));
         editor.putInt(PREFS_KEY_HDR_EV, getSetting(hdrEv, 6));
 

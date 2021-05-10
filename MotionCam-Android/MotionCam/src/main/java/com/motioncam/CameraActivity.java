@@ -101,6 +101,89 @@ public class CameraActivity extends AppCompatActivity implements
         WARMTH
     }
 
+    private static class Settings {
+        boolean useDualExposure;
+        boolean saveDng;
+        boolean autoNightMode;
+        float contrast;
+        float saturation;
+        float temperatureOffset;
+        float tintOffset;
+        float hdrEv;
+        int jpegQuality;
+        long memoryUseBytes;
+        CaptureMode captureMode;
+        SettingsViewModel.RawMode rawMode;
+        int cameraPreviewQuality;
+
+        void load(SharedPreferences prefs) {
+            this.jpegQuality = prefs.getInt(SettingsViewModel.PREFS_KEY_JPEG_QUALITY, CameraProfile.DEFAULT_JPEG_QUALITY);
+            this.contrast = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, 0.5f);
+            this.saturation = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, 1.0f);
+            this.temperatureOffset = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, 0);
+            this.tintOffset = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, 0);
+            this.saveDng = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, false);
+            this.autoNightMode = prefs.getBoolean(SettingsViewModel.PREFS_KEY_AUTO_NIGHT_MODE, true);
+            this.hdrEv = (float) Math.pow(2.0f, prefs.getInt(SettingsViewModel.PREFS_KEY_HDR_EV, 6) / 2.0f);
+
+            long nativeCameraMemoryUseMb = prefs.getInt(SettingsViewModel.PREFS_KEY_MEMORY_USE_MBYTES, SettingsViewModel.MINIMUM_MEMORY_USE_MB);
+            nativeCameraMemoryUseMb = Math.min(nativeCameraMemoryUseMb, SettingsViewModel.MAXIMUM_MEMORY_USE_MB);
+
+            this.useDualExposure = prefs.getBoolean(SettingsViewModel.PREFS_KEY_DUAL_EXPOSURE_CONTROLS, false);
+            this.memoryUseBytes = nativeCameraMemoryUseMb * 1024 * 1024;
+
+            this.captureMode =
+                    CaptureMode.valueOf(prefs.getString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, CaptureMode.ZSL.name()));
+
+            String captureModeStr = prefs.getString(SettingsViewModel.PREFS_KEY_CAPTURE_MODE, SettingsViewModel.RawMode.RAW10.name());
+            this.rawMode = SettingsViewModel.RawMode.valueOf(captureModeStr);
+
+            switch(prefs.getInt(SettingsViewModel.PREFS_KEY_CAMERA_PREVIEW_QUALITY, 0)) {
+                default:
+                case 0: // Low
+                    this.cameraPreviewQuality = 4;
+                    break;
+                case 1: // Medium
+                    this.cameraPreviewQuality = 3;
+                    break;
+                case 2: // High
+                    this.cameraPreviewQuality = 2;
+                    break;
+            }
+        }
+
+        void save(SharedPreferences prefs) {
+            prefs.edit()
+                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, this.contrast)
+                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, this.saturation)
+                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, this.temperatureOffset)
+                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, this.tintOffset)
+                .putBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, this.saveDng)
+                .putString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, this.captureMode.name())
+                .commit();
+        }
+
+        @Override
+        public String toString() {
+            return "Settings{" +
+                    "useDualExposure=" + useDualExposure +
+                    ", saveDng=" + saveDng +
+                    ", autoNightMode=" + autoNightMode +
+                    ", contrast=" + contrast +
+                    ", saturation=" + saturation +
+                    ", temperatureOffset=" + temperatureOffset +
+                    ", tintOffset=" + tintOffset +
+                    ", hdrEv=" + hdrEv +
+                    ", jpegQuality=" + jpegQuality +
+                    ", memoryUseBytes=" + memoryUseBytes +
+                    ", captureMode=" + captureMode +
+                    ", rawMode=" + rawMode +
+                    ", cameraPreviewQuality=" + cameraPreviewQuality +
+                    '}';
+        }
+    }
+
+    private Settings mSettings;
     private boolean mHavePermissions;
     private TextureView mTextureView;
     private Surface mSurface;
@@ -115,7 +198,6 @@ public class CameraActivity extends AppCompatActivity implements
     private NativeCameraMetadata mCameraMetadata;
     private SensorEventManager mSensorEventManager;
     private ProcessorReceiver mProgressReceiver;
-    private double mHdrEv;
 
     private CameraCapturePreviewAdapter mCameraCapturePreviewAdapter;
 
@@ -205,6 +287,7 @@ public class CameraActivity extends AppCompatActivity implements
         mBinding = CameraActivityBinding.inflate(getLayoutInflater());
         setContentView(mBinding.getRoot());
 
+        mSettings = new Settings();
         mProgressReceiver = new ProcessorReceiver(new Handler());
 
         mBinding.focusLockPointFrame.setOnClickListener(v -> onFixedFocusCancelled());
@@ -366,13 +449,9 @@ public class CameraActivity extends AppCompatActivity implements
         // Set initial preview values
         mPostProcessSettings = new PostProcessSettings();
 
-        SharedPreferences prefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
-
-        int jpegQuality = prefs.getInt(SettingsViewModel.PREFS_KEY_JPEG_QUALITY, CameraProfile.DEFAULT_JPEG_QUALITY);
-
         mPostProcessSettings.shadows = 1.0f;
-        mPostProcessSettings.contrast = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, 0.5f);
-        mPostProcessSettings.saturation = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, 1.0f);
+        mPostProcessSettings.contrast = mSettings.contrast;
+        mPostProcessSettings.saturation = mSettings.saturation;
         mPostProcessSettings.greenSaturation = 1.0f;
         mPostProcessSettings.blueSaturation = 1.0f;
         mPostProcessSettings.sharpen0 = 5.0f;
@@ -380,21 +459,19 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.whitePoint = -1;
         mPostProcessSettings.blacks = -1;
         mPostProcessSettings.tonemapVariance = 0.25f;
-        mPostProcessSettings.jpegQuality = jpegQuality;
+        mPostProcessSettings.jpegQuality = mSettings.jpegQuality;
 
-        mTemperatureOffset = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, 0);
-        mTintOffset = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, 0);
-        mPostProcessSettings.dng = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, false);
+        mTemperatureOffset = mSettings.temperatureOffset;
+        mTintOffset = mSettings.tintOffset;
+        mPostProcessSettings.dng = mSettings.saveDng;
 
         mShadowOffset = 0.0f;
 
         updatePreviewTabUi(true);
         updatePreviewSettings();
 
-        mCaptureMode = getCaptureMode(prefs);
-
-        updateCaptureModeUi();
-        updateSaveRawUi();
+        setCaptureMode(mSettings.captureMode);
+        setSaveRaw(mSettings.saveDng);
     }
 
     @Override
@@ -406,6 +483,12 @@ public class CameraActivity extends AppCompatActivity implements
 
         mBinding.rawCameraPreview.setBitmap(null);
         mBinding.main.transitionToStart();
+
+        // Load UI settings
+        SharedPreferences sharedPrefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
+        mSettings.load(sharedPrefs);
+
+        Log.d(TAG, mSettings.toString());
 
         // Reset manual controls
         ((Switch) findViewById(R.id.manualControlSwitch)).setChecked(false);
@@ -427,6 +510,19 @@ public class CameraActivity extends AppCompatActivity implements
     protected void onPause() {
         super.onPause();
 
+        // Save UI settings
+        SharedPreferences sharedPrefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
+
+        // Update the settings
+        mSettings.contrast = mPostProcessSettings.contrast;
+        mSettings.saturation = mPostProcessSettings.saturation;
+        mSettings.tintOffset = mTintOffset;
+        mSettings.temperatureOffset = mTemperatureOffset;
+        mSettings.saveDng = mPostProcessSettings.dng;
+        mSettings.captureMode = mCaptureMode;
+
+        mSettings.save(sharedPrefs);
+
         mSensorEventManager.disable();
         mProgressReceiver.setReceiver(null);
         mBinding.previewPager.unregisterOnPageChangeCallback(mCapturedPreviewPagerListener);
@@ -442,20 +538,6 @@ public class CameraActivity extends AppCompatActivity implements
 
         mBinding.cameraFrame.removeView(mTextureView);
         mTextureView = null;
-
-        // Save UI state (TODO: do this per camera id)
-        if(mPostProcessSettings != null) {
-            SharedPreferences prefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
-            prefs
-                .edit()
-                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, mPostProcessSettings.contrast)
-                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, mPostProcessSettings.saturation)
-                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, mTemperatureOffset)
-                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, mTintOffset)
-                .putString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, mCaptureMode.name())
-                .putBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, mPostProcessSettings.dng)
-                .apply();
-        }
     }
 
     @Override
@@ -524,10 +606,17 @@ public class CameraActivity extends AppCompatActivity implements
 
         View selectionView = null;
 
-        mBinding.previewFrame.contrastValue.setText(Math.round(mPostProcessSettings.contrast * 100) + "%");
-        mBinding.previewFrame.colourValue.setText(Math.round(mPostProcessSettings.saturation / 2.0f * 100)  + "%");
-        mBinding.previewFrame.warmthValue.setText( Math.round((mTemperatureOffset + 1000.0f) / 2000.0f * 100.0f) + "%" );
-        mBinding.previewFrame.tintValue.setText( Math.round((mTintOffset + 50.0f) / 100.0f * 100.0f) + "%" );
+        mBinding.previewFrame.contrastValue.setText(
+                getString(R.string.value_percent, Math.round(mPostProcessSettings.contrast * 100)));
+
+        mBinding.previewFrame.colourValue.setText(
+                getString(R.string.value_percent, Math.round(mPostProcessSettings.saturation / 2.0f * 100)));
+
+        mBinding.previewFrame.warmthValue.setText(
+                getString(R.string.value_percent, Math.round((mTemperatureOffset + 1000.0f) / 2000.0f * 100.0f)));
+
+        mBinding.previewFrame.tintValue.setText(
+                getString(R.string.value_percent, Math.round((mTintOffset + 50.0f) / 100.0f * 100.0f)));
 
         switch(mPreviewControlMode) {
             case CONTRAST:
@@ -562,10 +651,15 @@ public class CameraActivity extends AppCompatActivity implements
         }
     }
 
-    private void updateCaptureModeUi() {
+    private void setCaptureMode(CaptureMode captureMode) {
+        if(mCaptureMode == captureMode)
+            return;
+
         mBinding.nightModeBtn.setTextColor(getColor(R.color.textColor));
         mBinding.zslModeBtn.setTextColor(getColor(R.color.textColor));
         mBinding.burstModeBtn.setTextColor(getColor(R.color.textColor));
+
+        mCaptureMode = captureMode;
 
         switch(mCaptureMode) {
             case NIGHT:
@@ -582,8 +676,8 @@ public class CameraActivity extends AppCompatActivity implements
         }
     }
 
-    private void updateSaveRawUi() {
-        int color = mPostProcessSettings.dng ? R.color.colorAccent : R.color.white;
+    private void setSaveRaw(boolean saveRaw) {
+        int color = saveRaw ? R.color.colorAccent : R.color.white;
         mBinding.previewFrame.rawEnableBtn.setTextColor(getColor(color));
 
         for (Drawable drawable : mBinding.previewFrame.rawEnableBtn.getCompoundDrawables()) {
@@ -591,20 +685,20 @@ public class CameraActivity extends AppCompatActivity implements
                 drawable.setColorFilter(new PorterDuffColorFilter(ContextCompat.getColor(this, color), PorterDuff.Mode.SRC_IN));
             }
         }
+
+        mPostProcessSettings.dng = saveRaw;
     }
 
     private void onCaptureModeClicked(View v) {
         if(v == mBinding.nightModeBtn) {
-            mCaptureMode = CaptureMode.NIGHT;
+            setCaptureMode(CaptureMode.NIGHT);
         }
         else if(v == mBinding.zslModeBtn) {
-            mCaptureMode = CaptureMode.ZSL;
+            setCaptureMode(CaptureMode.ZSL);
         }
         else if(v == mBinding.burstModeBtn) {
-            mCaptureMode = CaptureMode.BURST;
+            setCaptureMode(CaptureMode.BURST);
         }
-
-        updateCaptureModeUi();
     }
 
     private void onPreviewModeClicked(View v) {
@@ -709,7 +803,7 @@ public class CameraActivity extends AppCompatActivity implements
                     CameraManualControl.GetClosestIso(mIsoValues, mIso));
 
             CameraManualControl.Exposure hdrExposure = CameraManualControl.Exposure.Create(
-                    CameraManualControl.GetClosestShutterSpeed(Math.round(cameraExposure / mHdrEv)),
+                    CameraManualControl.GetClosestShutterSpeed(Math.round(cameraExposure / mSettings.hdrEv)),
                     CameraManualControl.GetClosestIso(mIsoValues, mIso));
 
             // If the user has not override the shutter speed/iso, pick our own
@@ -840,26 +934,9 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void initCamera() {
-        // Get how much memory to allow the native camera
-        SharedPreferences sharedPrefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
-
-        // Make sure we don't exceed our maximum memory use
-        long nativeCameraMemoryUseMb = sharedPrefs.getInt(SettingsViewModel.PREFS_KEY_MEMORY_USE_MBYTES, 256);
-        nativeCameraMemoryUseMb = Math.min(nativeCameraMemoryUseMb, SettingsViewModel.MAXIMUM_MEMORY_USE_MB);
-
-        boolean enableRawPreview = sharedPrefs.getBoolean(SettingsViewModel.PREFS_KEY_DUAL_EXPOSURE_CONTROLS, false);
-
-        // Create camera bridge
-        long nativeCameraMemoryUseBytes = nativeCameraMemoryUseMb * 1024 * 1024;
-
-        // Load HDR underexpose EV value
-        mHdrEv = Math.pow(2.0, sharedPrefs.getInt(SettingsViewModel.PREFS_KEY_HDR_EV, 6) / 2.0);
-
-        Log.d(TAG, "Using HDR EV " + mHdrEv);
-
         if (mNativeCamera == null) {
             // Load our native camera library
-            if(enableRawPreview) {
+            if(mSettings.useDualExposure) {
                 try {
                     System.loadLibrary("native-camera-opencl");
                 } catch (Exception e) {
@@ -871,7 +948,7 @@ public class CameraActivity extends AppCompatActivity implements
                 System.loadLibrary("native-camera-host");
             }
 
-            mNativeCamera = new NativeCameraSessionBridge(this, nativeCameraMemoryUseBytes, null);
+            mNativeCamera = new NativeCameraSessionBridge(this, mSettings.memoryUseBytes, null);
             mAsyncNativeCameraOps = new AsyncNativeCameraOps(mNativeCamera);
 
             // Get supported cameras and filter out ignored ones
@@ -1004,26 +1081,6 @@ public class CameraActivity extends AppCompatActivity implements
         mTextureView.setTransform(cameraMatrix);
     }
 
-    private int getCameraPreviewQuality(SharedPreferences sharedPrefs) {
-        // Get preview quality
-        int cameraPreviewQuality = sharedPrefs.getInt(SettingsViewModel.PREFS_KEY_CAMERA_PREVIEW_QUALITY, 0);
-
-        switch(cameraPreviewQuality) {
-            default:
-            case 0:
-                return 4;
-            case 1:
-                return 3;
-            case 2:
-                return 2;
-        }
-    }
-
-    private CaptureMode getCaptureMode(SharedPreferences sharedPrefs) {
-        return CaptureMode.valueOf(
-                sharedPrefs.getString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, CaptureMode.ZSL.name()));
-    }
-
     @Override
     public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surfaceTexture, int width, int height) {
         Log.d(TAG, "onSurfaceTextureAvailable() w: " + width + " h: " + height);
@@ -1043,16 +1100,10 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void startCamera(SurfaceTexture surfaceTexture, int width, int height) {
-        SharedPreferences sharedPrefs = getSharedPreferences(SettingsViewModel.CAMERA_SHARED_PREFS, Context.MODE_PRIVATE);
-
-        boolean enableRawPreview = sharedPrefs.getBoolean(SettingsViewModel.PREFS_KEY_DUAL_EXPOSURE_CONTROLS, false);
-        String captureModeStr = sharedPrefs.getString(SettingsViewModel.PREFS_KEY_CAPTURE_MODE, SettingsViewModel.RawMode.RAW10.name());
-        SettingsViewModel.RawMode rawMode = SettingsViewModel.RawMode.valueOf(captureModeStr);
-
         int displayWidth;
         int displayHeight;
 
-        if(enableRawPreview) {
+        if(mSettings.useDualExposure) {
             // Use small preview window since we're not using the camera preview.
             displayWidth = 640;
             displayHeight = 480;
@@ -1081,21 +1132,20 @@ public class CameraActivity extends AppCompatActivity implements
         configureTransform(width, height, previewOutputSize);
 
         mSurface = new Surface(surfaceTexture);
-        mNativeCamera.startCapture(mSelectedCamera, mSurface, enableRawPreview, rawMode == SettingsViewModel.RawMode.RAW16);
+        mNativeCamera.startCapture(mSelectedCamera, mSurface, mSettings.useDualExposure, mSettings.rawMode == SettingsViewModel.RawMode.RAW16);
 
         // Update orientation in case we've switched front/back cameras
         NativeCameraBuffer.ScreenOrientation orientation = mSensorEventManager.getOrientation();
         if(orientation != null)
             onOrientationChanged(orientation);
 
-        // Schedule timer to update shadows
-        if(enableRawPreview) {
+        if(mSettings.useDualExposure) {
             mBinding.rawCameraPreview.setVisibility(View.VISIBLE);
             mBinding.shadowsLayout.setVisibility(View.VISIBLE);
 
             mTextureView.setAlpha(0);
 
-            mNativeCamera.enableRawPreview(this, getCameraPreviewQuality(sharedPrefs), false);
+            mNativeCamera.enableRawPreview(this, mSettings.cameraPreviewQuality, false);
         }
         else {
             mBinding.rawCameraPreview.setVisibility(View.GONE);
@@ -1116,10 +1166,7 @@ public class CameraActivity extends AppCompatActivity implements
             mBinding.previewFrame.previewAdjustments.setVisibility(View.GONE);
         });
 
-        mBinding.previewFrame.rawEnableBtn.setOnClickListener(v -> {
-            mPostProcessSettings.dng = !mPostProcessSettings.dng;
-            updateSaveRawUi();
-        });
+        mBinding.previewFrame.rawEnableBtn.setOnClickListener(v -> setSaveRaw(!mPostProcessSettings.dng));
     }
 
     @Override
@@ -1203,8 +1250,8 @@ public class CameraActivity extends AppCompatActivity implements
     public void onCameraExposureStatus(int iso, long exposureTime) {
 //        Log.i(TAG, "ISO: " + iso + " Exposure Time: " + exposureTime/(1000.0*1000.0));
 
-        CameraManualControl.ISO cameraIso = CameraManualControl.GetClosestIso(mIsoValues, iso);
-        CameraManualControl.SHUTTER_SPEED cameraShutterSpeed = CameraManualControl.GetClosestShutterSpeed(exposureTime);
+        final CameraManualControl.ISO cameraIso = CameraManualControl.GetClosestIso(mIsoValues, iso);
+        final CameraManualControl.SHUTTER_SPEED cameraShutterSpeed = CameraManualControl.GetClosestShutterSpeed(exposureTime);
 
         runOnUiThread(() -> {
             if(!mManualControlsSet) {
@@ -1220,6 +1267,15 @@ public class CameraActivity extends AppCompatActivity implements
 
             mIso = iso;
             mExposureTime = exposureTime;
+
+            // Switch to night mode if we high ISO/shutter speed
+            if(mSettings.autoNightMode && mCaptureMode != CaptureMode.BURST)
+            {
+                if(mIso >= 1600 || mExposureTime >= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_30.getExposureTime())
+                    setCaptureMode(CaptureMode.NIGHT);
+                else
+                    setCaptureMode(CaptureMode.ZSL);
+            }
         });
     }
 
@@ -1403,6 +1459,13 @@ public class CameraActivity extends AppCompatActivity implements
                 .rotation(orientation.angle)
                 .setDuration(duration)
                 .start();
+
+        mBinding.capturePreview
+                .animate()
+                .rotation(orientation.angle)
+                .setDuration(duration)
+                .start();
+
     }
 
     private void onShadowsSeekBarChanged(int progress) {
