@@ -2741,8 +2741,8 @@ void HdrMaskGenerator::generate() {
     mask0(v_x, v_y) = exp(-c * (inputf0(v_x, v_y) - 1.0f) * (inputf0(v_x, v_y) - 1.0f));
     mask1(v_x, v_y) = exp(-c * (inputf1(v_x, v_y) - 1.0f) * (inputf1(v_x, v_y) - 1.0f));
 
-    map0(v_x, v_y) = cast<uint8_t>(select(mask0(v_x, v_y) > 0.5f, 1, 0));
-    map1(v_x, v_y) = cast<uint8_t>(select(mask1(v_x, v_y) > 0.5f, 1, 0));
+    map0(v_x, v_y) = cast<uint8_t>(select(mask0(v_x, v_y) > 0.75f, 1, 0));
+    map1(v_x, v_y) = cast<uint8_t>(select(mask1(v_x, v_y) > 0.75f, 1, 0));
 
     ghostMap(v_x, v_y) = map0(v_x, v_y) & (map0(v_x, v_y) ^ map1(v_x, v_y));
 

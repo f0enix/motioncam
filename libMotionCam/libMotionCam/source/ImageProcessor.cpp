@@ -420,7 +420,7 @@ namespace motioncam {
                 
         // Estimate blacks
         const float maxDehazePercent = 0.03f;
-        const int maxEndBin = 12; // Max bin
+        const int maxEndBin = 15; // Max bin
 
         int endBin = 0;
         
@@ -905,7 +905,7 @@ namespace motioncam {
         cv::Mat referenceImage(referenceBuffer.height(), referenceBuffer.width(), CV_8U, (void*) referenceBuffer.data());
         cv::Mat toAlignImage(toAlignBuffer.height(), toAlignBuffer.width(), CV_8U, (void*) toAlignBuffer.data());
 
-        auto detector = cv::ORB::create(2000);
+        auto detector = cv::ORB::create(1000);
 
         std::vector<cv::KeyPoint> keypoints1, keypoints2;
         cv::Mat descriptors1, descriptors2;
@@ -1173,7 +1173,7 @@ namespace motioncam {
                     if(hdrMetadata->error < MAX_HDR_ERROR) {
                         // Reduce the shadows if applying HDR to avoid the image looking too flat due to
                         // extreme dynamic range compression
-                        settings.shadows = std::max(0.5f * settings.shadows, 2.0f);
+                        settings.shadows = std::max(0.75f * settings.shadows, 4.0f);
                         underExposedImage = *underexposedFrameIt;
                         
                         // Update white point
@@ -1870,7 +1870,7 @@ namespace motioncam {
         Halide::Runtime::Buffer<uint8_t> ghostMapBuffer(alignedBuffer.width(), alignedBuffer.height());
         Halide::Runtime::Buffer<uint8_t> maskBuffer(alignedBuffer.width(), alignedBuffer.height());
         
-        hdr_mask(refImage->previewBuffer, alignedBuffer, 4.0f, ghostMapBuffer, maskBuffer);
+        hdr_mask(refImage->previewBuffer, alignedBuffer, 6.0f, ghostMapBuffer, maskBuffer);
         
         // Calculate error
         cv::Mat ghostMap(ghostMapBuffer.height(), ghostMapBuffer.width(), CV_8U, ghostMapBuffer.data());

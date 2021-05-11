@@ -155,11 +155,11 @@ public class PostProcessViewModel extends ViewModel {
     }
 
     public float getSharpnessSetting() {
-        return 1.0f + getSetting(sharpness, CameraProfile.DEFAULT_SHARPNESS) / 25.0f;
+        return 1.0f + getSetting(sharpness, CameraProfile.DEFAULT_SHARPNESS) / 20.0f;
     }
 
     public float getDetailSetting() {
-        return 1.0f + getSetting(detail, CameraProfile.DEFAULT_DETAIL) / 25.0f;
+        return 1.0f + getSetting(detail, CameraProfile.DEFAULT_DETAIL) / 20.0f;
     }
 
     public SpatialDenoiseAggressiveness getSpatialDenoiseAggressivenessSetting() {

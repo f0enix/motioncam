@@ -305,8 +305,7 @@ public class CameraActivity extends AppCompatActivity implements
         mBinding.shadowsSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if(fromUser)
-                    onShadowsSeekBarChanged(progress);
+                onShadowsSeekBarChanged(progress);
             }
 
             @Override
@@ -321,8 +320,7 @@ public class CameraActivity extends AppCompatActivity implements
         mBinding.exposureSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if(fromUser)
-                    onExposureCompSeekBarChanged(progress);
+                onExposureCompSeekBarChanged(progress);
             }
 
             @Override
@@ -493,8 +491,6 @@ public class CameraActivity extends AppCompatActivity implements
         updateManualControlView(mSensorEventManager.getOrientation());
 
         mBinding.focusLockPointFrame.setVisibility(View.INVISIBLE);
-        mBinding.exposureSeekBar.setProgress(0);
-        mBinding.shadowsSeekBar.setProgress(50);
         mBinding.previewPager.registerOnPageChangeCallback(mCapturedPreviewPagerListener);
 
         mFocusState = FocusState.AUTO;
@@ -1008,6 +1004,8 @@ public class CameraActivity extends AppCompatActivity implements
         int numEvSteps = mSelectedCamera.exposureCompRangeMax - mSelectedCamera.exposureCompRangeMin;
         mBinding.exposureSeekBar.setMax(numEvSteps);
         mBinding.exposureSeekBar.setProgress(numEvSteps / 2);
+
+        mBinding.shadowsSeekBar.setProgress(50);
 
         // Create texture view for camera preview
         mTextureView = new TextureView(this);
@@ -1636,8 +1634,11 @@ public class CameraActivity extends AppCompatActivity implements
             return;
 
         if(currentId == mBinding.main.getEndState()) {
-            mNativeCamera.pauseCapture();
+            // Reset exposure/shadows
+            mBinding.exposureSeekBar.setProgress(mBinding.exposureSeekBar.getMax()/2);
+            mBinding.shadowsSeekBar.setProgress(mBinding.shadowsSeekBar.getMax()/2);
 
+            mNativeCamera.pauseCapture();
             mBinding.previewPager.setCurrentItem(0);
 
             if(mCameraCapturePreviewAdapter.isProcessing(mBinding.previewPager.getCurrentItem())) {

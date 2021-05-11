@@ -39,6 +39,7 @@ namespace motioncam {
         EVENT_CAMERA_ERROR,
         EVENT_CAMERA_DISCONNECTED,
         EVENT_CAMERA_SESSION_CHANGED,
+        EVENT_CAMERA_SEQUENCE_COMPLETED,
 
         EVENT_CAMERA_EXPOSURE_STATUS_CHANGED,
         EVENT_CAMERA_AUTO_EXPOSURE_STATE_CHANGED,
@@ -912,7 +913,11 @@ namespace motioncam {
             mHdrCaptureSequenceCompleted = true;
         }
         else {
-            mCameraStateManager->onCameraCaptureSequenceCompleted(sequenceId);
+            json11::Json::object data = {
+                    { "sequenceId", sequenceId }
+            };
+
+            pushEvent(EventAction::EVENT_CAMERA_SEQUENCE_COMPLETED, data);
         }
     }
 
@@ -1152,6 +1157,11 @@ namespace motioncam {
 
             case EventAction::EVENT_CAMERA_AUTO_FOCUS_STATE_CHANGED: {
                 doCameraAutoFocusStateChanged(static_cast<CameraFocusState>(eventLoopData->data["state"].int_value()));
+                break;
+            }
+
+            case EventAction::EVENT_CAMERA_SEQUENCE_COMPLETED: {
+                mCameraStateManager->onCameraCaptureSequenceCompleted(eventLoopData->data["sequenceId"].int_value());
                 break;
             }
 

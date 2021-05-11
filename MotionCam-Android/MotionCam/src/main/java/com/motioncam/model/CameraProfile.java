@@ -47,8 +47,8 @@ public class CameraProfile {
     public static final int DEFAULT_BLUE_SATURATION = 50;
 
     // Detail
-    public static final int DEFAULT_SHARPNESS = 50;
-    public static final int DEFAULT_DETAIL = 35;
+    public static final int DEFAULT_SHARPNESS = 80;
+    public static final int DEFAULT_DETAIL = 50;
 
     // Denoise
     public static final float DEFAULT_CHROMA_EPS = 4;
