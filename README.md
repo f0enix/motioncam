@@ -24,9 +24,7 @@ Motion Cam uses the GPU to generate a real time preview of the camera from its R
 
 ### Noise Reduction
 
-The denoising algorithm uses bayer RAW images as input. Motion Cam treats the RAW data as four colour channels (red, blue and two green channels). It starts by creating an optical flow map between a set of images and the reference image utilising [Fast Optical Flow using Dense Inverse Search](https://arxiv.org/abs/1603.03590). Then, each colour channel is transformed into the wavelet domain using a [dual tree wavelet transform](https://en.wikipedia.org/wiki/Complex_wavelet_transform#Dual-tree_complex_wavelet_transform). The wavelet coefficients are fused with the low pass subband acting as a guide to minimize artifacts due to errors in the optical flow map from occlusion or alignment failure.
-
-The amount of noise present in the image is used to determine how many RAW images are merged together. It is estimated from the high frequency subband of the wavelet transform. A well-lit scene may not need much noise reduction whereas a low light scene will have greater noise and require more images.
+The denoising algorithm uses bayer RAW images as input. Motion Cam treats the RAW data as four colour channels (red, blue and two green channels). It starts by creating an optical flow map between a set of images and the reference image utilising [Fast Optical Flow using Dense Inverse Search](https://arxiv.org/abs/1603.03590). Then, each colour channel is fused using a simplified Gaussian pyramid.
 
 ### Demosaicing
 
@@ -42,7 +40,7 @@ Motion Cam uses the algorithm [exposure fusion](https://mericam.github.io/exposu
 
 ### Sharpening and Detail Enhancement
 
-The details of the image are enhanced and sharpened with the [Guided filter](http://kaiminghe.com/eccv10/). Motion Cam uses two levels to enhance finer and courser details of the output.
+The details of the image are enhanced and sharpened using an unsharp mask with a threshold to avoid increasing the noise.
 
 ## Getting started
 
