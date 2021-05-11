@@ -2721,6 +2721,8 @@ public:
     void generate();
 
 private:
+    void schedule_for_cpu(::Halide::Pipeline pipeline, ::Halide::Target target);
+
     Var v_x{"x"};
     Var v_y{"y"};
     Var v_yo{"yo"};
@@ -2744,26 +2746,82 @@ void HdrMaskGenerator::generate() {
 
     ghostMap(v_x, v_y) = map0(v_x, v_y) & (map0(v_x, v_y) ^ map1(v_x, v_y));
 
-    RDom r(-1, 1, -1, 1);
+    RDom r(-3, 3, -3, 3);
 
     outputGhost(v_x, v_y) = cast<uint8_t>(1);
     outputGhost(v_x, v_y) = outputGhost(v_x, v_y) & ghostMap(v_x + r.x, v_y + r.y);
     
     outputMask(v_x, v_y) = cast<uint8_t>(clamp(0.5f*(mask0(v_x, v_y) + mask1(v_x, v_y)) * 255.0f + 0.5f, 0, 255));
 
-    outputGhost
-        .compute_root()
-        .reorder(v_x, v_y)
-        .split(v_y, v_yo, v_yi, 16)
-        .parallel(v_yo)
-        .vectorize(v_x, 8);
+    c.set_estimate(4.0f);
 
-    outputMask
-        .compute_root()
-        .reorder(v_x, v_y)
-        .split(v_y, v_yo, v_yi, 16)
-        .parallel(v_yo)
-        .vectorize(v_x, 8);
+    input0.set_estimates({{0, 2048}, {0, 1536}});
+    input1.set_estimates({{0, 2048}, {0, 1536}});
+
+    outputGhost.set_estimates({{0, 2048}, {0, 1536}});
+    outputMask.set_estimates({{0, 2048}, {0, 1536}});
+
+    if(!auto_schedule) {
+        schedule_for_cpu(get_pipeline(), get_target());
+    }
+}
+
+void HdrMaskGenerator::schedule_for_cpu(::Halide::Pipeline pipeline, ::Halide::Target target) {
+    using ::Halide::Func;
+    using ::Halide::MemoryType;
+    using ::Halide::RVar;
+    using ::Halide::TailStrategy;
+    using ::Halide::Var;
+    Var x_i("x_i");
+    Var x_i_vi("x_i_vi");
+    Var x_i_vo("x_i_vo");
+    Var x_o("x_o");
+    Var x_vi("x_vi");
+    Var x_vo("x_vo");
+    Var y_i("y_i");
+    Var y_o("y_o");
+
+    Func f6 = pipeline.get_func(12);
+    Func outputGhost = pipeline.get_func(13);
+    Func outputMask = pipeline.get_func(14);
+
+    {
+        Var x = f6.args()[0];
+        f6
+            .compute_at(outputGhost, x_o)
+            .split(x, x_vo, x_vi, 32)
+            .vectorize(x_vi);
+    }
+    {
+        Var x = outputGhost.args()[0];
+        Var y = outputGhost.args()[1];
+        RVar r30$x(outputGhost.update(0).get_schedule().rvars()[0].var);
+        RVar r30$y(outputGhost.update(0).get_schedule().rvars()[1].var);
+        outputGhost
+            .compute_root()
+            .split(x, x_vo, x_vi, 32)
+            .vectorize(x_vi)
+            .parallel(y);
+        outputGhost.update(0)
+            .reorder(r30$x, x, r30$y, y)
+            .split(x, x_o, x_i, 256, TailStrategy::GuardWithIf)
+            .split(y, y_o, y_i, 256, TailStrategy::GuardWithIf)
+            .reorder(r30$x, x_i, r30$y, y_i, x_o, y_o)
+            .split(x_i, x_i_vo, x_i_vi, 32, TailStrategy::GuardWithIf)
+            .vectorize(x_i_vi)
+            .parallel(y_o)
+            .parallel(x_o);
+    }
+    {
+        Var x = outputMask.args()[0];
+        Var y = outputMask.args()[1];
+        outputMask
+            .compute_root()
+            .split(x, x_vo, x_vi, 32)
+            .vectorize(x_vi)
+            .parallel(y);
+    }
+
 }
 
 //////////////
@@ -2797,7 +2855,7 @@ public:
     void generate();
 
 private:
-    void schedule_for_cpu();
+    void schedule_for_cpu(::Halide::Pipeline pipeline, ::Halide::Target target);
 
     std::unique_ptr<Demosaic> demosaic;
     Func shadingMap[4];
@@ -2889,74 +2947,173 @@ void LinearImageGenerator::generate() {
             0, 65535)
     );
 
+    in0.set_estimates({{0, 2048}, {0, 1536}});
+    in1.set_estimates({{0, 2048}, {0, 1536}});
+    in2.set_estimates({{0, 2048}, {0, 1536}});
+    in3.set_estimates({{0, 2048}, {0, 1536}});
+
+    inShadingMap0.set_estimates({{0, 17}, {0, 13}});
+    inShadingMap1.set_estimates({{0, 17}, {0, 13}});
+    inShadingMap2.set_estimates({{0, 17}, {0, 13}});
+    inShadingMap3.set_estimates({{0, 17}, {0, 13}});
+
+    asShotVector.set_estimate(0, 1.0f);
+    asShotVector.set_estimate(1, 1.0f);
+    asShotVector.set_estimate(2, 1.0f);
+
+    cameraToPcs.set_estimates({{0, 3}, {0, 3}});
+    sensorArrangement.set_estimate(0);
+
+    blackLevel.set_estimate(0, 64);
+    blackLevel.set_estimate(1, 64);
+    blackLevel.set_estimate(2, 64);
+    blackLevel.set_estimate(3, 64);
+    whiteLevel.set_estimate(1023);
+    whitePoint.set_estimate(1.0f);
+    width.set_estimate(2048);
+    height.set_estimate(1536);
+
+    output.set_estimates({{0, 4096}, {0, 3072}, {0, 3}});
+
     if(!auto_schedule)
-        schedule_for_cpu();
+        schedule_for_cpu(get_pipeline(), get_target());
 }
 
-void LinearImageGenerator::schedule_for_cpu() { 
-    int vector_size_u8 = natural_vector_size<uint8_t>();
-    int vector_size_u16 = natural_vector_size<uint16_t>();
+void LinearImageGenerator::schedule_for_cpu(::Halide::Pipeline pipeline, ::Halide::Target target) {
+    using ::Halide::Func;
+    using ::Halide::MemoryType;
+    using ::Halide::RVar;
+    using ::Halide::TailStrategy;
+    using ::Halide::Var;
+    Var x_i("x_i");
+    Var x_i_vi("x_i_vi");
+    Var x_i_vo("x_i_vo");
+    Var x_o("x_o");
+    Var x_vi("x_vi");
+    Var x_vo("x_vo");
+    Var y_i("y_i");
+    Var y_o("y_o");
 
-    for(int c = 0; c < 4; c++) {
-        shadingMap[c]
-            .reorder(v_x, v_y)
-            .compute_at(combinedInput, v_yi)
-            .store_at(combinedInput, v_yo)
-            .vectorize(v_x, vector_size_u16);
+    Func bayerInput = pipeline.get_func(26);
+    Func blue = pipeline.get_func(32);
+    Func f0 = pipeline.get_func(15);
+    Func f1 = pipeline.get_func(17);
+    Func f12 = pipeline.get_func(34);
+    Func f16 = pipeline.get_func(30);
+    Func f2 = pipeline.get_func(19);
+    Func f3 = pipeline.get_func(21);
+    Func green = pipeline.get_func(28);
+    Func greenIntermediate = pipeline.get_func(27);
+    Func mirror_image = pipeline.get_func(25);
+    Func output = pipeline.get_func(41);
+    Func red = pipeline.get_func(36);
+
+    {
+        Var x = bayerInput.args()[0];
+        bayerInput
+            .compute_at(output, x_o)
+            .split(x, x_vo, x_vi, 16)
+            .vectorize(x_vi);
     }
-
-    shaded
-        .reorder(v_c, v_x, v_y)
-        .unroll(v_c)
-        .compute_at(combinedInput, v_yi)
-        .store_at(combinedInput, v_yo)
-        .vectorize(v_x, vector_size_u16);
-
-    combinedInput
-        .compute_root()
-        .reorder(v_x, v_y)
-        .split(v_y, v_yo, v_yi, 32)
-        .parallel(v_yo)
-        .vectorize(v_x, vector_size_u16);
-
-    bayerInput
-        .compute_root()
-        .reorder(v_x, v_y)
-        .split(v_y, v_yo, v_yi, 32)
-        .parallel(v_yo)
-        .vectorize(v_x, vector_size_u16);
-
-    demosaic->green
-        .compute_at(demosaic->output, v_yi)
-        .store_at(demosaic->output, v_yo)
-        .vectorize(v_x, vector_size_u16);
-
-    demosaic->blueIntermediate
-        .compute_at(demosaic->output, v_yi)
-        .store_at(demosaic->output, v_yo)
-        .vectorize(v_x, vector_size_u16);
-
-    demosaic->blue
-        .compute_at(demosaic->output, v_yi)
-        .store_at(demosaic->output, v_yo)
-        .vectorize(v_x, vector_size_u16);
-
-    demosaic->output
-        .compute_root()
-        .reorder(v_c, v_x, v_y)
-        .split(v_y, v_yo, v_yi, 32)
-        .unroll(v_c)
-        .parallel(v_yo)
-        .vectorize(v_x, vector_size_u16);
-
-    output
-        .compute_root()
-        .bound(v_c, 0, 3)
-        .reorder(v_c, v_x, v_y)
-        .split(v_y, v_yo, v_yi, 32)
-        .parallel(v_yo)
-        .unroll(v_c)
-        .vectorize(v_x, vector_size_u8);
+    {
+        Var x = blue.args()[0];
+        blue
+            .compute_at(output, x_o)
+            .split(x, x_vo, x_vi, 16)
+            .vectorize(x_vi);
+    }
+    {
+        Var x = f0.args()[0];
+        Var y = f0.args()[1];
+        f0
+            .compute_root()
+            .split(x, x_vo, x_vi, 8)
+            .vectorize(x_vi)
+            .parallel(y);
+    }
+    {
+        Var x = f1.args()[0];
+        Var y = f1.args()[1];
+        f1
+            .compute_root()
+            .split(x, x_vo, x_vi, 8)
+            .vectorize(x_vi)
+            .parallel(y);
+    }
+    {
+        Var x = f12.args()[0];
+        f12
+            .compute_at(output, x_o)
+            .split(x, x_vo, x_vi, 8)
+            .vectorize(x_vi);
+    }
+    {
+        Var x = f16.args()[0];
+        f16
+            .compute_at(output, x_o)
+            .split(x, x_vo, x_vi, 8)
+            .vectorize(x_vi);
+    }
+    {
+        Var x = f2.args()[0];
+        Var y = f2.args()[1];
+        f2
+            .compute_root()
+            .split(x, x_vo, x_vi, 8)
+            .vectorize(x_vi)
+            .parallel(y);
+    }
+    {
+        Var x = f3.args()[0];
+        Var y = f3.args()[1];
+        f3
+            .compute_root()
+            .split(x, x_vo, x_vi, 8)
+            .vectorize(x_vi)
+            .parallel(y);
+    }
+    {
+        Var x = green.args()[0];
+        green
+            .compute_at(output, x_o)
+            .split(x, x_vo, x_vi, 16)
+            .vectorize(x_vi);
+    }
+    {
+        Var x = greenIntermediate.args()[0];
+        greenIntermediate
+            .compute_at(output, x_o)
+            .split(x, x_vo, x_vi, 16)
+            .vectorize(x_vi);
+    }
+    {
+        Var x = mirror_image.args()[0];
+        mirror_image
+            .compute_at(output, x_o)
+            .split(x, x_vo, x_vi, 16)
+            .vectorize(x_vi);
+    }
+    {
+        Var x = output.args()[0];
+        Var y = output.args()[1];
+        Var c = output.args()[2];
+        output
+            .compute_root()
+            .split(x, x_o, x_i, 256)
+            .split(y, y_o, y_i, 256)
+            .reorder(x_i, y_i, c, x_o, y_o)
+            .split(x_i, x_i_vo, x_i_vi, 16)
+            .vectorize(x_i_vi)
+            .parallel(y_o)
+            .parallel(x_o);
+    }
+    {
+        Var x = red.args()[0];
+        red
+            .compute_at(output, x_o)
+            .split(x, x_vo, x_vi, 16)
+            .vectorize(x_vi);
+    }
 }
 
 //////////////

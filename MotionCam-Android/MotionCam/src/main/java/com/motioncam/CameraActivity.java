@@ -208,7 +208,7 @@ public class CameraActivity extends AppCompatActivity implements
         }
     };
 
-    private PostProcessSettings mPostProcessSettings;
+    private PostProcessSettings mPostProcessSettings = new PostProcessSettings();
 
     private float mTemperatureOffset;
     private float mTintOffset;
@@ -447,8 +447,6 @@ public class CameraActivity extends AppCompatActivity implements
 
     private void setPostProcessingDefaults() {
         // Set initial preview values
-        mPostProcessSettings = new PostProcessSettings();
-
         mPostProcessSettings.shadows = 1.0f;
         mPostProcessSettings.contrast = mSettings.contrast;
         mPostProcessSettings.saturation = mSettings.saturation;
@@ -466,12 +464,6 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.dng = mSettings.saveDng;
 
         mShadowOffset = 0.0f;
-
-        updatePreviewTabUi(true);
-        updatePreviewSettings();
-
-        setCaptureMode(mSettings.captureMode);
-        setSaveRaw(mSettings.saveDng);
     }
 
     @Override
@@ -489,6 +481,12 @@ public class CameraActivity extends AppCompatActivity implements
         mSettings.load(sharedPrefs);
 
         Log.d(TAG, mSettings.toString());
+
+        updatePreviewTabUi(true);
+        setPostProcessingDefaults();
+
+        setCaptureMode(mSettings.captureMode);
+        setSaveRaw(mSettings.saveDng);
 
         // Reset manual controls
         ((Switch) findViewById(R.id.manualControlSwitch)).setChecked(false);
@@ -1240,8 +1238,7 @@ public class CameraActivity extends AppCompatActivity implements
             runOnUiThread(() ->
             {
                 mBinding.switchCameraBtn.setEnabled(true);
-
-                setPostProcessingDefaults();
+                updatePreviewSettings();
             });
         }
     }
@@ -1271,7 +1268,7 @@ public class CameraActivity extends AppCompatActivity implements
             // Switch to night mode if we high ISO/shutter speed
             if(mSettings.autoNightMode && mCaptureMode != CaptureMode.BURST)
             {
-                if(mIso >= 1600 || mExposureTime >= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_30.getExposureTime())
+                if(mIso >= 1600 && mExposureTime >= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_30.getExposureTime())
                     setCaptureMode(CaptureMode.NIGHT);
                 else
                     setCaptureMode(CaptureMode.ZSL);

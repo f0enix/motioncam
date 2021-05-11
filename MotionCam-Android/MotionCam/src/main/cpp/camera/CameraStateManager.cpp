@@ -71,8 +71,8 @@ namespace motioncam {
     }
 
     void CameraStateManager::start() {
-        setState(State::AUTO_FOCUS_ACTIVE);
-        setAutoFocus();
+        setState(State::AUTO_FOCUS_WAIT);
+        triggerAutoFocus();
     }
 
     void CameraStateManager::setState(State state) {

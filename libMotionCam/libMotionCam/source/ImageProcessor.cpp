@@ -905,7 +905,7 @@ namespace motioncam {
         cv::Mat referenceImage(referenceBuffer.height(), referenceBuffer.width(), CV_8U, (void*) referenceBuffer.data());
         cv::Mat toAlignImage(toAlignBuffer.height(), toAlignBuffer.width(), CV_8U, (void*) toAlignBuffer.data());
 
-        auto detector = cv::ORB::create(1000);
+        auto detector = cv::ORB::create(2000);
 
         std::vector<cv::KeyPoint> keypoints1, keypoints2;
         cv::Mat descriptors1, descriptors2;
@@ -1870,7 +1870,7 @@ namespace motioncam {
         Halide::Runtime::Buffer<uint8_t> ghostMapBuffer(alignedBuffer.width(), alignedBuffer.height());
         Halide::Runtime::Buffer<uint8_t> maskBuffer(alignedBuffer.width(), alignedBuffer.height());
         
-        hdr_mask(refImage->previewBuffer, alignedBuffer, 6.0f, ghostMapBuffer, maskBuffer);
+        hdr_mask(refImage->previewBuffer, alignedBuffer, 4.0f, ghostMapBuffer, maskBuffer);
         
         // Calculate error
         cv::Mat ghostMap(ghostMapBuffer.height(), ghostMapBuffer.width(), CV_8U, ghostMapBuffer.data());
