@@ -240,8 +240,7 @@ public class PostProcessViewModel extends ViewModel {
         whitePoint.setValue(Math.round(-200.0f * settings.whitePoint + 250.0f));
         contrast.setValue(Math.round(settings.contrast * 100));
         blacks.setValue(Math.round(settings.blacks * 400));
-        exposure.setValue(Math.round(settings.exposure * 4 + 16)); // Ignore this for now
-        exposure.setValue(16);
+        exposure.setValue(Math.round(settings.exposure * 4 + 16));
 
         // Saturation
         saturation.setValue(Math.round(settings.saturation * 100) / 2);
@@ -253,8 +252,8 @@ public class PostProcessViewModel extends ViewModel {
         tint.setValue(Math.round(settings.tint + 150));
 
         // Detail
-        sharpness.setValue(Math.round((settings.sharpen0 - 1.0f) * 25.0f));
-        detail.setValue(Math.round((settings.sharpen1 - 1.0f) * 25.0f));
+        sharpness.setValue(Math.round((settings.sharpen0 - 1.0f) * 20.0f));
+        detail.setValue(Math.round((settings.sharpen1 - 1.0f) * 20.0f));
 
         // Denoise settings
         DenoiseSettings denoiseSettings = new DenoiseSettings(iso, shutterSpeed, settings.shadows);

@@ -99,6 +99,8 @@ namespace motioncam {
 
     void CameraStateManager::requestMode(CameraMode mode) {
         mCameraMode = mode;
+
+        setAutoFocus();
     }
 
     void CameraStateManager::requestPause() {

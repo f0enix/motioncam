@@ -244,8 +244,9 @@ public class CameraActivity extends AppCompatActivity implements
 
                 mManualControlsSet = true;
 
-                if(mFocusState == FocusState.FIXED_AF_AE)
-                    setFocusState(FocusState.FIXED, mAutoFocusPoint);
+                // Don't allow night mode
+                if(mCaptureMode == CaptureMode.NIGHT)
+                    setCaptureMode(CaptureMode.ZSL);
             }
         }
 
@@ -1192,6 +1193,17 @@ public class CameraActivity extends AppCompatActivity implements
     public void onSurfaceTextureUpdated(@NonNull SurfaceTexture surface) {
     }
 
+    private void autoSwitchCaptureMode() {
+        if(!mSettings.autoNightMode || mCaptureMode == CaptureMode.BURST || mManualControlsSet)
+            return;
+
+        // Switch to night mode if we high ISO/shutter speed
+        if(mIso >= 1600 && mExposureTime > CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_40.getExposureTime())
+            setCaptureMode(CaptureMode.NIGHT);
+        else
+            setCaptureMode(CaptureMode.ZSL);
+    }
+
     @Override
     public void onCameraDisconnected() {
         Log.i(TAG, "Camera has disconnected");
@@ -1263,14 +1275,7 @@ public class CameraActivity extends AppCompatActivity implements
             mIso = iso;
             mExposureTime = exposureTime;
 
-            // Switch to night mode if we high ISO/shutter speed
-            if(mSettings.autoNightMode && mCaptureMode != CaptureMode.BURST)
-            {
-                if(mIso >= 1600 && mExposureTime >= CameraManualControl.SHUTTER_SPEED.EXPOSURE_1_30.getExposureTime())
-                    setCaptureMode(CaptureMode.NIGHT);
-                else
-                    setCaptureMode(CaptureMode.ZSL);
-            }
+            autoSwitchCaptureMode();
         });
     }
 
@@ -1635,11 +1640,12 @@ public class CameraActivity extends AppCompatActivity implements
 
         if(currentId == mBinding.main.getEndState()) {
             // Reset exposure/shadows
-            mBinding.exposureSeekBar.setProgress(mBinding.exposureSeekBar.getMax()/2);
-            mBinding.shadowsSeekBar.setProgress(mBinding.shadowsSeekBar.getMax()/2);
+            mBinding.exposureSeekBar.setProgress(mBinding.exposureSeekBar.getMax() / 2);
+            mBinding.shadowsSeekBar.setProgress(mBinding.shadowsSeekBar.getMax() / 2);
+
+            mBinding.previewPager.setCurrentItem(0);
 
             mNativeCamera.pauseCapture();
-            mBinding.previewPager.setCurrentItem(0);
 
             if(mCameraCapturePreviewAdapter.isProcessing(mBinding.previewPager.getCurrentItem())) {
                 mBinding.previewProcessingFrame.setVisibility(View.VISIBLE);
