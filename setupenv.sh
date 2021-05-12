@@ -14,7 +14,7 @@ fi
 NUM_CORES="$(python3 -c 'import multiprocessing as mp; print(mp.cpu_count())')"
 
 ANDROID_ABI="arm64-v8a"
-OPENCV_VERSION="4.5.0"
+OPENCV_VERSION="4.5.2"
 LIBEXPAT_VERSION="2.2.10"
 LIBEXIV2_VERSION="0.27.3"
 ZSTD_VERSION="v1.4.9"

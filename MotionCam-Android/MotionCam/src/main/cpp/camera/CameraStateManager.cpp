@@ -277,8 +277,8 @@ namespace motioncam {
         int px = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.left + mCameraDescription.sensorSize.width) * 0.5f);
         int py = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.top + mCameraDescription.sensorSize.height) * 0.5f);
 
-        int w = static_cast<int>(mCameraDescription.sensorSize.width * 0.25f);
-        int h = static_cast<int>(mCameraDescription.sensorSize.height * 0.25f);
+        int w = static_cast<int>(mCameraDescription.sensorSize.width * 0.125f);
+        int h = static_cast<int>(mCameraDescription.sensorSize.height * 0.125f);
 
         int32_t afRegion[5] = { px - w, py - h,
                                 px + w, py + h,
