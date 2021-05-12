@@ -804,8 +804,9 @@ public class CameraActivity extends AppCompatActivity implements
             // If the user has not override the shutter speed/iso, pick our own
             if(!mManualControlsSet) {
                 baseExposure = CameraManualControl.MapToExposureLine(1.0, baseExposure);
-                hdrExposure = CameraManualControl.MapToExposureLine(1.0, hdrExposure);
             }
+
+            hdrExposure = CameraManualControl.MapToExposureLine(1.0, hdrExposure);
 
             DenoiseSettings denoiseSettings =
                     new DenoiseSettings(baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), settings.shadows);

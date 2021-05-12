@@ -29,7 +29,7 @@
 namespace motioncam {
     static const int COPY_THREADS = 1; // More than one copy thread breaks RAW preview
     static const int MINIMUM_BUFFERS = 16;
-    static const float SHADOW_BIAS = 2.0f;
+    static const float SHADOW_BIAS = 10.0f;
     static const int ESTIMATE_SHADOWS_FRAME_INTERVAL = 8;
 
 #ifdef GPU_CAMERA_PREVIEW

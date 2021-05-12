@@ -351,18 +351,19 @@ namespace motioncam {
 
     float ImageProcessor::estimateShadows(const cv::Mat& histogram, float keyValue) {
         float avgLuminance = 0.0f;
+        
         float totalPixels = 0;
         
-        int lowerBound = 5;
-        int upperBound = 240;
+        int lowerBound = 0;
+        int upperBound = histogram.cols;
         
         for(int i = lowerBound; i < upperBound; i++) {
-            avgLuminance += histogram.at<float>(i) * (i / 255.0f);
+            avgLuminance += histogram.at<float>(i) * log(1e-5 + i / 255.0f);
             totalPixels += histogram.at<float>(i);
         }
         
-        avgLuminance = avgLuminance / (totalPixels + 1e-5f);
-
+        avgLuminance = exp(avgLuminance / (totalPixels + 1e-5f));
+        
         return std::max(1.0f, std::min(keyValue / avgLuminance, 32.0f));
     }
 
@@ -1098,7 +1099,7 @@ namespace motioncam {
 
         auto referenceRawBuffer = rawContainer.loadFrame(rawContainer.getReferenceImage());
         PostProcessSettings settings = rawContainer.getPostProcessSettings();
-
+        
         // Estimate black point of not provided
         if(settings.blacks < 0) {
             estimateBlacks(*referenceRawBuffer,
@@ -1173,7 +1174,7 @@ namespace motioncam {
                     if(hdrMetadata->error < MAX_HDR_ERROR) {
                         // Reduce the shadows if applying HDR to avoid the image looking too flat due to
                         // extreme dynamic range compression
-                        settings.shadows = std::max(0.75f * settings.shadows, 4.0f);
+                        settings.shadows = std::max(0.5f * settings.shadows, 4.0f);
                         underExposedImage = *underexposedFrameIt;
                         
                         // Update white point
@@ -1304,7 +1305,7 @@ namespace motioncam {
         cv::resize(outputImage, thumbnail, cv::Size(width, height));
         
         // Add exif data to the output image
-        addExifMetadata(referenceRawBuffer->metadata,
+        addExifMetadata(underExposedImage == nullptr ? referenceRawBuffer->metadata : underExposedImage->metadata,
                         thumbnail,
                         rawContainer.getCameraMetadata(),
                         rawContainer.getPostProcessSettings().flipped,

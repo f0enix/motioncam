@@ -35,7 +35,11 @@ public class SettingsFragment extends Fragment {
             mViewModel.save(getContext());
         });
 
-        mViewModel.jpegQuality.observe(getViewLifecycleOwner(), (value) -> dataBinding.jpegQualityText.setText(String.format(Locale.US, "%d%%", value)));
+        mViewModel.jpegQuality.observe(getViewLifecycleOwner(), (value) -> {
+            dataBinding.jpegQualityText.setText(String.format(Locale.US, "%d%%", value));
+            mViewModel.save(getContext());
+        });
+
         mViewModel.cameraPreviewQuality.observe(getViewLifecycleOwner(), (value) -> {
             switch(value) {
                 case 0:
