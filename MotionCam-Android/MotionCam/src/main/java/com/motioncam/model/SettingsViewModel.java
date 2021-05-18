@@ -20,7 +20,7 @@ public class SettingsViewModel extends ViewModel {
     public static final String PREFS_KEY_AUTO_NIGHT_MODE            = "auto_night_mode";
     public static final String PREFS_KEY_DUAL_EXPOSURE_CONTROLS     = "dual_exposure_controls";
     public static final String PREFS_KEY_CAPTURE_MODE               = "capture_mode";
-    public static final String PREFS_KEY_HDR_EV                     = "hdr_ev";
+    public static final String PREFS_KEY_HDR_EV                     = "ev";
 
     public static final String PREFS_KEY_IGNORE_CAMERA_IDS                  = "ignore_camera_ids";
     public static final String PREFS_KEY_UI_PREVIEW_CONTRAST                = "ui_preview_contrast";
@@ -52,7 +52,7 @@ public class SettingsViewModel extends ViewModel {
         jpegQuality.setValue(prefs.getInt(PREFS_KEY_JPEG_QUALITY, CameraProfile.DEFAULT_JPEG_QUALITY));
         autoNightMode.setValue(prefs.getBoolean(PREFS_KEY_AUTO_NIGHT_MODE, true));
         dualExposureControls.setValue(prefs.getBoolean(PREFS_KEY_DUAL_EXPOSURE_CONTROLS, false));
-        hdrEv.setValue(prefs.getInt(PREFS_KEY_HDR_EV, 6));
+        hdrEv.setValue(prefs.getInt(PREFS_KEY_HDR_EV, 4));
 
         // Capture mode
         String rawModeStr = prefs.getString(PREFS_KEY_CAPTURE_MODE, RawMode.RAW10.name());
@@ -80,7 +80,7 @@ public class SettingsViewModel extends ViewModel {
         editor.putInt(PREFS_KEY_JPEG_QUALITY, getSetting(jpegQuality, 95));
         editor.putBoolean(PREFS_KEY_AUTO_NIGHT_MODE, getSetting(autoNightMode, true));
         editor.putBoolean(PREFS_KEY_DUAL_EXPOSURE_CONTROLS, getSetting(dualExposureControls, false));
-        editor.putInt(PREFS_KEY_HDR_EV, getSetting(hdrEv, 6));
+        editor.putInt(PREFS_KEY_HDR_EV, getSetting(hdrEv, 4));
 
         // Capture mode
         RawMode rawMode = RawMode.RAW10;

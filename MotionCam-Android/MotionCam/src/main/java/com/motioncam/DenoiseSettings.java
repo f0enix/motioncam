@@ -18,8 +18,8 @@ public class DenoiseSettings {
                 '}';
     }
 
-    public DenoiseSettings(int iso, long exposure, float shadows) {
-        final double s = 1.8*1.8;
+    public DenoiseSettings(float aperture, int iso, long exposure, float shadows) {
+        final double s = aperture*aperture;
         final double ev = log2(s / (exposure / 1.0e9)) - log2(iso / 100.0);
 
         int mergeImages;
@@ -46,19 +46,24 @@ public class DenoiseSettings {
             mergeImages         = 4;
         }
         else if(ev > 3.99) {
-            this.spatialWeight  = 1.5f;
+            this.spatialWeight  = 1.0f;
             chromaEps           = 16.0f;
             mergeImages         = 9;
         }
         else if(ev > 1.99) {
-            this.spatialWeight  = 2.0f;
+            this.spatialWeight  = 1.0f;
+            chromaEps           = 16.0f;
+            mergeImages         = 9;
+        }
+        else if(ev > 0) {
+            this.spatialWeight  = 1.5f;
             chromaEps           = 16.0f;
             mergeImages         = 9;
         }
         else {
-            this.spatialWeight  = 3.0f;
-            chromaEps           = 20.0f;
-            mergeImages         = 9;
+            this.spatialWeight  = 2.0f;
+            chromaEps           = 16.0f;
+            mergeImages         = 12;
         }
 
         // If shadows are increased by a significant amount, use more images

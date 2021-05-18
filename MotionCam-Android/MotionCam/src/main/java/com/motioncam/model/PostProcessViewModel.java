@@ -256,7 +256,7 @@ public class PostProcessViewModel extends ViewModel {
         detail.setValue(Math.round((settings.sharpen1 - 1.0f) * 20.0f));
 
         // Denoise settings
-        DenoiseSettings denoiseSettings = new DenoiseSettings(iso, shutterSpeed, settings.shadows);
+        DenoiseSettings denoiseSettings = new DenoiseSettings(1.6f, iso, shutterSpeed, settings.shadows);
         PostProcessViewModel.SpatialDenoiseAggressiveness spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
 
         numMergeImages.setValue(denoiseSettings.numMergeImages);

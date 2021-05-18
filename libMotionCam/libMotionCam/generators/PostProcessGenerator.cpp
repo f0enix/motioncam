@@ -2741,17 +2741,17 @@ void HdrMaskGenerator::generate() {
     mask0(v_x, v_y) = exp(-c * (inputf0(v_x, v_y) - 1.0f) * (inputf0(v_x, v_y) - 1.0f));
     mask1(v_x, v_y) = exp(-c * (inputf1(v_x, v_y) - 1.0f) * (inputf1(v_x, v_y) - 1.0f));
 
-    map0(v_x, v_y) = cast<uint8_t>(select(mask0(v_x, v_y) > 0.75f, 1, 0));
-    map1(v_x, v_y) = cast<uint8_t>(select(mask1(v_x, v_y) > 0.75f, 1, 0));
+    map0(v_x, v_y) = cast<uint8_t>(select(mask0(v_x, v_y) > 0.5f, 1, 0));
+    map1(v_x, v_y) = cast<uint8_t>(select(mask1(v_x, v_y) > 0.5f, 1, 0));
 
-    ghostMap(v_x, v_y) = map0(v_x, v_y) & (map0(v_x, v_y) ^ map1(v_x, v_y));
+    ghostMap(v_x, v_y) = map0(v_x, v_y) ^ map1(v_x, v_y);
 
     RDom r(-3, 3, -3, 3);
 
     outputGhost(v_x, v_y) = cast<uint8_t>(1);
     outputGhost(v_x, v_y) = outputGhost(v_x, v_y) & ghostMap(v_x + r.x, v_y + r.y);
     
-    outputMask(v_x, v_y) = cast<uint8_t>(clamp(0.5f*(mask0(v_x, v_y) + mask1(v_x, v_y)) * 255.0f + 0.5f, 0, 255));
+    outputMask(v_x, v_y) = cast<uint8_t>(clamp(map0(v_x, v_y) * 255.0f + 0.5f, 0, 255));
 
     c.set_estimate(4.0f);
 

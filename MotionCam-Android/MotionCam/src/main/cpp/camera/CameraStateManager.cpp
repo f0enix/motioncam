@@ -59,6 +59,7 @@ namespace motioncam {
     CameraStateManager::CameraStateManager(const CameraCaptureSessionContext& context, const CameraDescription& cameraDescription) :
         mSessionContext(context),
         mCameraDescription(cameraDescription),
+        mCaptureSessionState(CameraCaptureSessionState::ACTIVE),
         mCameraMode(CameraMode::AUTO),
         mState(State::AUTO_FOCUS_ACTIVE),
         mRequestedAction(Action::NONE),
@@ -106,7 +107,7 @@ namespace motioncam {
     void CameraStateManager::requestPause() {
         LOGD("requestPause()");
 
-        mState = State::PAUSED;
+        setState(State::PAUSED);
         ACameraCaptureSession_stopRepeating(mSessionContext.captureSession.get());
     }
 
@@ -128,7 +129,7 @@ namespace motioncam {
         if( mState == State::AUTO_FOCUS_ACTIVE ||
             mState == State::USER_FOCUS_ACTIVE)
         {
-            mState = State::USER_FOCUS_WAIT;
+            setState(State::USER_FOCUS_WAIT);
             ACameraCaptureSession_stopRepeating(mSessionContext.captureSession.get());
         }
         else {
@@ -277,12 +278,12 @@ namespace motioncam {
         int px = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.left + mCameraDescription.sensorSize.width) * 0.5f);
         int py = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.top + mCameraDescription.sensorSize.height) * 0.5f);
 
-        int w = static_cast<int>(mCameraDescription.sensorSize.width * 0.16667f);
-        int h = static_cast<int>(mCameraDescription.sensorSize.height * 0.16667f);
+        int w = mCameraDescription.sensorSize.width;
+        int h = mCameraDescription.sensorSize.height;
 
-        int32_t afRegion[5] = { px - w, py - h,
-                                px + w, py + h,
-                                1000 };
+        int32_t afRegion[5] = { 0, 0,
+                                w, h,
+                                0 };
 
         ACaptureRequest_setEntry_i32(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_REGIONS, 5, &afRegion[0]);
 
@@ -351,7 +352,8 @@ namespace motioncam {
         setNextAction(Action::NONE);
     }
 
-    void CameraStateManager::onCameraSessionStateChanged(const CameraCaptureSessionState state) {
+    void CameraStateManager::nextState(CameraCaptureSessionState state) {
+
         //
         // Move state when camera session state changes
         //
@@ -386,6 +388,12 @@ namespace motioncam {
         }
     }
 
+    void CameraStateManager::onCameraSessionStateChanged(const CameraCaptureSessionState state) {
+        mCaptureSessionState = state;
+
+        nextState(state);
+    }
+
     void CameraStateManager::onCameraCaptureSequenceCompleted(const int sequenceId) {
         if(mSessionContext.captureCallbacks.at(CaptureEvent::REPEAT)->sequenceId == sequenceId) {
             if(mState == State::USER_FOCUS_WAIT) {
@@ -407,6 +415,12 @@ namespace motioncam {
             else if(mState == State::AUTO_FOCUS_ACTIVE) {
                 LOGD("AUTO_FOCUS_ACTIVE completed");
                 setState(State::AUTO_FOCUS_WAIT);
+            }
+
+            // If the capture session state has changed synchronously
+            if(mCaptureSessionState == CameraCaptureSessionState::READY) {
+                LOGD("nextState() [mCaptureSessionState == CameraCaptureSessionState::READY]");
+                nextState(mCaptureSessionState);
             }
         }
     }

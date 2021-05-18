@@ -88,8 +88,7 @@ namespace motioncam {
         static void measureImage(RawImageBuffer& rawImage, const RawCameraMetadata& cameraMetadata, float& outSceneLuminosity);
         
         static cv::Mat registerImage(const Halide::Runtime::Buffer<uint8_t>& referenceBuffer,
-                                     const Halide::Runtime::Buffer<uint8_t>& toAlignBuffer,
-                                     int scale=1);
+                                     const Halide::Runtime::Buffer<uint8_t>& toAlignBuffer);
         
         static void matchExposures(
             const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const RawImageBuffer& toMatch, float& outScale, float& outWhitePoint);

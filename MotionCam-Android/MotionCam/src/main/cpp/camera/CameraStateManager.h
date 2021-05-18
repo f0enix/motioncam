@@ -58,6 +58,7 @@ namespace motioncam {
         void setNextAction(Action action);
 
         void nextAction();
+        void nextState(CameraCaptureSessionState state);
 
         void updateCaptureRequestExposure();
 
@@ -65,6 +66,7 @@ namespace motioncam {
         const CameraCaptureSessionContext& mSessionContext;
         const CameraDescription& mCameraDescription;
 
+        CameraCaptureSessionState mCaptureSessionState;
         State mState;
         Action mRequestedAction;
         CameraMode mCameraMode;

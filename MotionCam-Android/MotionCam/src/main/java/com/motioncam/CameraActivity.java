@@ -124,7 +124,7 @@ public class CameraActivity extends AppCompatActivity implements
             this.tintOffset = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, 0);
             this.saveDng = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, false);
             this.autoNightMode = prefs.getBoolean(SettingsViewModel.PREFS_KEY_AUTO_NIGHT_MODE, true);
-            this.hdrEv = (float) Math.pow(2.0f, prefs.getInt(SettingsViewModel.PREFS_KEY_HDR_EV, 6) / 2.0f);
+            this.hdrEv = (float) Math.pow(2.0f, prefs.getInt(SettingsViewModel.PREFS_KEY_HDR_EV, 4) / 2.0f);
 
             long nativeCameraMemoryUseMb = prefs.getInt(SettingsViewModel.PREFS_KEY_MEMORY_USE_MBYTES, SettingsViewModel.MINIMUM_MEMORY_USE_MB);
             nativeCameraMemoryUseMb = Math.min(nativeCameraMemoryUseMb, SettingsViewModel.MAXIMUM_MEMORY_USE_MB);
@@ -808,8 +808,12 @@ public class CameraActivity extends AppCompatActivity implements
 
             hdrExposure = CameraManualControl.MapToExposureLine(1.0, hdrExposure);
 
+            float a = 1.6f;
+            if(mCameraMetadata.cameraApertures.length > 0)
+                a = mCameraMetadata.cameraApertures[0];
+
             DenoiseSettings denoiseSettings =
-                    new DenoiseSettings(baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), settings.shadows);
+                    new DenoiseSettings(a, baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), settings.shadows);
 
             settings.chromaEps = denoiseSettings.chromaEps;
             settings.spatialDenoiseAggressiveness = denoiseSettings.spatialWeight;
@@ -821,8 +825,8 @@ public class CameraActivity extends AppCompatActivity implements
             int iso = baseExposure.iso.getIso();
 
             if(mCaptureMode == CaptureMode.ZSL) {
-                // Don't bother with HDR if the scene is underexposed/no clipped pixels
-                boolean noHdr = estimatedSettings.exposure > 0;
+                // Don't bother with HDR if the scene is underexposed/few clipped pixels
+                boolean noHdr = estimatedSettings.exposure > 0.5f;
 
                 if(noHdr) {
                     Log.i(TAG, "Requested ZSL capture (denoiseSettings=" + denoiseSettings.toString() + ")");
