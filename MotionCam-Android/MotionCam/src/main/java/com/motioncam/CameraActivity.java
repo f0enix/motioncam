@@ -12,9 +12,11 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.SurfaceTexture;
 import android.graphics.drawable.Drawable;
+import android.location.Location;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.util.Size;
 import android.view.Display;
@@ -40,6 +42,11 @@ import androidx.core.content.ContextCompat;
 import androidx.viewpager2.widget.ViewPager2;
 
 import com.bumptech.glide.Glide;
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
+import com.google.android.gms.location.LocationServices;
 import com.jakewharton.processphoenix.ProcessPhoenix;
 import com.motioncam.camera.AsyncNativeCameraOps;
 import com.motioncam.camera.CameraManualControl;
@@ -61,8 +68,10 @@ import org.apache.commons.io.FileUtils;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -77,10 +86,15 @@ public class CameraActivity extends AppCompatActivity implements
 
     public static final String TAG = "MotionCam";
 
-    private static final int PERMISSION_REQUEST_CODE        = 1;
+    private static final int PERMISSION_REQUEST_CODE = 1;
     private static final int SETTINGS_ACTIVITY_REQUEST_CODE = 0x10;
 
     private static final CameraManualControl.SHUTTER_SPEED MAX_EXPOSURE_TIME = CameraManualControl.SHUTTER_SPEED.EXPOSURE_1__0;
+
+    private static final String[] REQUEST_PERMISSIONS = {
+            Manifest.permission.CAMERA,
+            Manifest.permission.ACCESS_FINE_LOCATION
+    };
 
     private enum FocusState {
         AUTO,
@@ -105,6 +119,7 @@ public class CameraActivity extends AppCompatActivity implements
         boolean useDualExposure;
         boolean saveDng;
         boolean autoNightMode;
+        boolean hdr;
         float contrast;
         float saturation;
         float temperatureOffset;
@@ -124,6 +139,7 @@ public class CameraActivity extends AppCompatActivity implements
             this.tintOffset = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, 0);
             this.saveDng = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, false);
             this.autoNightMode = prefs.getBoolean(SettingsViewModel.PREFS_KEY_AUTO_NIGHT_MODE, true);
+            this.hdr = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_HDR, true);
             this.hdrEv = (float) Math.pow(2.0f, prefs.getInt(SettingsViewModel.PREFS_KEY_HDR_EV, 4) / 2.0f);
 
             long nativeCameraMemoryUseMb = prefs.getInt(SettingsViewModel.PREFS_KEY_MEMORY_USE_MBYTES, SettingsViewModel.MINIMUM_MEMORY_USE_MB);
@@ -138,7 +154,7 @@ public class CameraActivity extends AppCompatActivity implements
             String captureModeStr = prefs.getString(SettingsViewModel.PREFS_KEY_CAPTURE_MODE, SettingsViewModel.RawMode.RAW10.name());
             this.rawMode = SettingsViewModel.RawMode.valueOf(captureModeStr);
 
-            switch(prefs.getInt(SettingsViewModel.PREFS_KEY_CAMERA_PREVIEW_QUALITY, 0)) {
+            switch (prefs.getInt(SettingsViewModel.PREFS_KEY_CAMERA_PREVIEW_QUALITY, 0)) {
                 default:
                 case 0: // Low
                     this.cameraPreviewQuality = 4;
@@ -154,13 +170,14 @@ public class CameraActivity extends AppCompatActivity implements
 
         void save(SharedPreferences prefs) {
             prefs.edit()
-                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, this.contrast)
-                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, this.saturation)
-                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, this.temperatureOffset)
-                .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, this.tintOffset)
-                .putBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, this.saveDng)
-                .putString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, this.captureMode.name())
-                .commit();
+                    .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, this.contrast)
+                    .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, this.saturation)
+                    .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, this.temperatureOffset)
+                    .putFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, this.tintOffset)
+                    .putBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, this.saveDng)
+                    .putBoolean(SettingsViewModel.PREFS_KEY_UI_HDR, this.hdr)
+                    .putString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, this.captureMode.name())
+                    .commit();
         }
 
         @Override
@@ -168,6 +185,7 @@ public class CameraActivity extends AppCompatActivity implements
             return "Settings{" +
                     "useDualExposure=" + useDualExposure +
                     ", saveDng=" + saveDng +
+                    ", hdr=" + hdr +
                     ", autoNightMode=" + autoNightMode +
                     ", contrast=" + contrast +
                     ", saturation=" + saturation +
@@ -197,7 +215,9 @@ public class CameraActivity extends AppCompatActivity implements
     private int mSelectedCameraIdx;
     private NativeCameraMetadata mCameraMetadata;
     private SensorEventManager mSensorEventManager;
+    private FusedLocationProviderClient mFusedLocationClient;
     private ProcessorReceiver mProgressReceiver;
+    private Location mLastLocation;
 
     private CameraCapturePreviewAdapter mCameraCapturePreviewAdapter;
 
@@ -205,6 +225,16 @@ public class CameraActivity extends AppCompatActivity implements
         @Override
         public void onPageSelected(int position) {
             onCapturedPreviewPageChanged(position);
+        }
+    };
+
+    private final LocationCallback mLocationCallback = new LocationCallback() {
+        public void onLocationResult(LocationResult locationResult) {
+            if (locationResult == null) {
+                return;
+            }
+
+            onReceivedLocation(locationResult.getLastLocation());
         }
     };
 
@@ -230,7 +260,7 @@ public class CameraActivity extends AppCompatActivity implements
     private final SeekBar.OnSeekBarChangeListener mManualControlsSeekBar = new SeekBar.OnSeekBarChangeListener() {
         @Override
         public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-            if(mManualControlsEnabled && mNativeCamera != null && fromUser) {
+            if (mManualControlsEnabled && mNativeCamera != null && fromUser) {
                 int shutterSpeedIdx = ((SeekBar) findViewById(R.id.manualControlShutterSpeedSeekBar)).getProgress();
                 int isoIdx = ((SeekBar) findViewById(R.id.manualControlIsoSeekBar)).getProgress();
 
@@ -245,7 +275,7 @@ public class CameraActivity extends AppCompatActivity implements
                 mManualControlsSet = true;
 
                 // Don't allow night mode
-                if(mCaptureMode == CaptureMode.NIGHT)
+                if (mCaptureMode == CaptureMode.NIGHT)
                     setCaptureMode(CaptureMode.ZSL);
             }
         }
@@ -261,10 +291,9 @@ public class CameraActivity extends AppCompatActivity implements
 
     @Override
     public void onBackPressed() {
-        if(mBinding.main.getCurrentState() == mBinding.main.getEndState()) {
+        if (mBinding.main.getCurrentState() == mBinding.main.getEndState()) {
             mBinding.main.transitionToStart();
-        }
-        else {
+        } else {
             super.onBackPressed();
         }
     }
@@ -280,8 +309,7 @@ public class CameraActivity extends AppCompatActivity implements
         File previewDirectory = new File(getFilesDir(), ProcessorService.PREVIEW_PATH);
         try {
             FileUtils.deleteDirectory(previewDirectory);
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
 
@@ -337,7 +365,7 @@ public class CameraActivity extends AppCompatActivity implements
         mBinding.previewFrame.previewSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if(fromUser)
+                if (fromUser)
                     updatePreviewControlsParam(progress);
             }
 
@@ -369,13 +397,14 @@ public class CameraActivity extends AppCompatActivity implements
         ((Switch) findViewById(R.id.manualControlSwitch)).setOnCheckedChangeListener((buttonView, isChecked) -> onCameraManualControlEnabled(isChecked));
 
         mSensorEventManager = new SensorEventManager(this, this);
+        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
         requestPermissions();
     }
 
     private void open(View view) {
         Uri uri = mCameraCapturePreviewAdapter.getOutput(mBinding.previewPager.getCurrentItem());
-        if(uri == null)
+        if (uri == null)
             return;
 
         Intent openIntent = new Intent();
@@ -389,7 +418,7 @@ public class CameraActivity extends AppCompatActivity implements
 
     private void share(View view) {
         Uri uri = mCameraCapturePreviewAdapter.getOutput(mBinding.previewPager.getCurrentItem());
-        if(uri == null)
+        if (uri == null)
             return;
 
         Intent shareIntent = new Intent();
@@ -402,7 +431,7 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void onExposureCompSeekBarChanged(int progress) {
-        if(mNativeCamera != null) {
+        if (mNativeCamera != null) {
             float value = progress / (float) mBinding.exposureSeekBar.getMax();
             mNativeCamera.setExposureCompensation(value);
         }
@@ -418,25 +447,24 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void onCameraManualControlEnabled(boolean enabled) {
-        if(mManualControlsEnabled == enabled)
+        if (mManualControlsEnabled == enabled)
             return;
 
         mManualControlsEnabled = enabled;
         mManualControlsSet = false;
 
-        if(mManualControlsEnabled) {
+        if (mManualControlsEnabled) {
             findViewById(R.id.cameraManualControlFrame).setVisibility(View.VISIBLE);
             findViewById(R.id.infoFrame).setVisibility(View.GONE);
             mBinding.exposureLayout.setVisibility(View.GONE);
-        }
-        else {
+        } else {
             findViewById(R.id.cameraManualControlFrame).setVisibility(View.GONE);
             findViewById(R.id.infoFrame).setVisibility(View.VISIBLE);
             findViewById(R.id.exposureCompFrame).setVisibility(View.VISIBLE);
 
             mBinding.exposureLayout.setVisibility(View.VISIBLE);
 
-            if(mNativeCamera != null) {
+            if (mNativeCamera != null) {
                 mNativeCamera.setAutoExposure();
             }
         }
@@ -486,6 +514,7 @@ public class CameraActivity extends AppCompatActivity implements
 
         setCaptureMode(mSettings.captureMode);
         setSaveRaw(mSettings.saveDng);
+        setHdr(mSettings.hdr);
 
         // Reset manual controls
         ((Switch) findViewById(R.id.manualControlSwitch)).setChecked(false);
@@ -497,8 +526,18 @@ public class CameraActivity extends AppCompatActivity implements
         mFocusState = FocusState.AUTO;
 
         // Start camera when we have all the permissions
-        if(mHavePermissions)
+        if (mHavePermissions) {
             initCamera();
+
+            // Request location updates
+            if (    ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                ||  ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED)
+            {
+                LocationRequest locationRequest = LocationRequest.create();
+
+                mFusedLocationClient.requestLocationUpdates(locationRequest, mLocationCallback, Looper.getMainLooper());
+            }
+        }
     }
 
     @Override
@@ -533,6 +572,8 @@ public class CameraActivity extends AppCompatActivity implements
 
         mBinding.cameraFrame.removeView(mTextureView);
         mTextureView = null;
+
+        mFusedLocationClient.removeLocationUpdates(mLocationCallback);
     }
 
     @Override
@@ -669,6 +710,19 @@ public class CameraActivity extends AppCompatActivity implements
                 mBinding.burstModeBtn.setTextColor(getColor(R.color.colorAccent));
                 break;
         }
+    }
+
+    private void setHdr(boolean hdr) {
+        int color = hdr ? R.color.colorAccent : R.color.white;
+        mBinding.previewFrame.hdrEnableBtn.setTextColor(getColor(color));
+
+        for (Drawable drawable : mBinding.previewFrame.hdrEnableBtn.getCompoundDrawables()) {
+            if (drawable != null) {
+                drawable.setColorFilter(new PorterDuffColorFilter(ContextCompat.getColor(this, color), PorterDuff.Mode.SRC_IN));
+            }
+        }
+
+        mSettings.hdr = hdr;
     }
 
     private void setSaveRaw(boolean saveRaw) {
@@ -826,7 +880,7 @@ public class CameraActivity extends AppCompatActivity implements
 
             if(mCaptureMode == CaptureMode.ZSL) {
                 // Don't bother with HDR if the scene is underexposed/few clipped pixels
-                boolean noHdr = estimatedSettings.exposure > 0.5f;
+                boolean noHdr = !mSettings.hdr || estimatedSettings.exposure > 0.5f;
 
                 if(noHdr) {
                     Log.i(TAG, "Requested ZSL capture (denoiseSettings=" + denoiseSettings.toString() + ")");
@@ -882,10 +936,9 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void requestPermissions() {
-        String[] requestPermissions = { Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE };
         ArrayList<String> needPermissions = new ArrayList<>();
 
-        for(String permission : requestPermissions) {
+        for(String permission : REQUEST_PERMISSIONS) {
             if (ActivityCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
                 needPermissions.add(permission);
             }
@@ -907,18 +960,15 @@ public class CameraActivity extends AppCompatActivity implements
             return;
         }
 
-        boolean grantedAll = true;
-
-        for(int hasGranted : grantResults) {
-            grantedAll = grantedAll & (hasGranted == PackageManager.PERMISSION_GRANTED);
+        // Check if camera permission has been denied
+        for(int i = 0; i < permissions.length; i++) {
+            if(grantResults[i] == PackageManager.PERMISSION_DENIED && permissions[i].equals(Manifest.permission.CAMERA)) {
+                runOnUiThread(this::onPermissionsDenied);
+                return;
+            }
         }
 
-        if(grantedAll) {
-            runOnUiThread(this::onPermissionsGranted);
-        }
-        else {
-            runOnUiThread(this::onPermissionsDenied);
-        }
+        runOnUiThread(this::onPermissionsGranted);
     }
 
     private void onPermissionsGranted() {
@@ -1169,6 +1219,7 @@ public class CameraActivity extends AppCompatActivity implements
         });
 
         mBinding.previewFrame.rawEnableBtn.setOnClickListener(v -> setSaveRaw(!mPostProcessSettings.dng));
+        mBinding.previewFrame.hdrEnableBtn.setOnClickListener(v -> setHdr(!mSettings.hdr));
     }
 
     @Override
@@ -1671,6 +1722,17 @@ public class CameraActivity extends AppCompatActivity implements
         }
         else {
             mBinding.previewProcessingFrame.setVisibility(View.INVISIBLE);
+        }
+    }
+
+    void onReceivedLocation(Location lastLocation) {
+        mLastLocation = lastLocation;
+
+        if(mPostProcessSettings != null) {
+            mPostProcessSettings.gpsLatitude = mLastLocation.getLatitude();
+            mPostProcessSettings.gpsLongitude = mLastLocation.getLongitude();
+            mPostProcessSettings.gpsAltitude = mLastLocation.getAltitude();
+            mPostProcessSettings.gpsTime = String.valueOf(mLastLocation.getTime());
         }
     }
 }

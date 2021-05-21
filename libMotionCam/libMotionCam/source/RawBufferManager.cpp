@@ -192,7 +192,7 @@ namespace motioncam {
         }
 
         // Save the container
-        if(mPendingContainers.size_approx() > 0) {
+        if(mPendingContainers.size_approx() > 1) {
             rawContainer->save(outputPath);
         }
         else {
@@ -291,7 +291,7 @@ namespace motioncam {
         }
 
         // Save container
-        if(mPendingContainers.size_approx() > 0) {
+        if(mPendingContainers.size_approx() > 1) {
             rawContainer->save(outputPath);
         }
         else {

@@ -18,26 +18,38 @@
             android:id="@+id/previewAdjustmentsBtn"
             android:layout_width="100dp"
             android:layout_height="match_parent"
-            android:layout_marginLeft="10dp"
+            android:layout_marginStart="10dp"
             android:gravity="center"
-            android:drawableTop="@drawable/baseline_settings_brightness_white_24"
             android:textAppearance="@style/MotionCam.TextAppearance.Small"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
-            android:text="ADJUSTMENTS"/>
+            android:text="@string/adjustments"
+            app:drawableTopCompat="@drawable/baseline_settings_brightness_white_24" />
 
         <TextView
             android:id="@+id/rawEnableBtn"
-            android:layout_width="100dp"
+            android:layout_width="75dp"
             android:layout_height="match_parent"
             android:gravity="center"
-            android:drawableTop="@drawable/baseline_photo_white_24"
             android:textAppearance="@style/MotionCam.TextAppearance.Small"
             app:layout_constraintLeft_toRightOf="@id/previewAdjustmentsBtn"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
-            android:text="RAW"/>
+            android:text="@string/raw"
+            app:drawableTopCompat="@drawable/baseline_photo_white_24" />
+
+        <TextView
+            android:id="@+id/hdrEnableBtn"
+            android:layout_width="75dp"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:textAppearance="@style/MotionCam.TextAppearance.Small"
+            app:layout_constraintLeft_toRightOf="@id/rawEnableBtn"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            android:text="@string/hdr"
+            app:drawableTopCompat="@drawable/baseline_wb_sunny_white_24" />
 
         <ImageView
             android:id="@+id/settingsBtn"
@@ -64,14 +76,15 @@
             android:id="@+id/closePreviewAdjustmentsBtn"
             android:layout_width="24dp"
             android:layout_height="24dp"
-            android:layout_gravity="right"
+            android:layout_gravity="end"
             android:layout_margin="5dp"
             android:background="@drawable/baseline_cancel_24" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:baselineAligned="false">
 
             <LinearLayout
                 android:id="@+id/contrastBtn"
@@ -87,7 +100,7 @@
                     android:layout_height="wrap_content"
                     android:gravity="center_horizontal"
                     android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                    android:text="CONTRAST"/>
+                    android:text="@string/preview_contrast"/>
 
                 <TextView
                     android:id="@+id/contrastValue"
@@ -111,7 +124,7 @@
                     android:layout_height="wrap_content"
                     android:gravity="center_horizontal"
                     android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                    android:text="COLOUR"/>
+                    android:text="@string/preview_colour"/>
 
                 <TextView
                     android:id="@+id/colourValue"
@@ -135,7 +148,7 @@
                     android:layout_height="wrap_content"
                     android:gravity="center_horizontal"
                     android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                    android:text="TINT"/>
+                    android:text="@string/preview_tint"/>
 
                 <TextView
                     android:id="@+id/tintValue"
@@ -159,7 +172,7 @@
                     android:layout_height="wrap_content"
                     android:gravity="center_horizontal"
                     android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                    android:text="WARMTH"/>
+                    android:text="@string/preview_warmth"/>
 
                 <TextView
                     android:id="@+id/warmthValue"

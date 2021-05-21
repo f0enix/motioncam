@@ -21,9 +21,18 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
 
+import com.google.android.gms.tasks.Task;
+import com.google.android.gms.tasks.Tasks;
+import com.google.mlkit.vision.common.InputImage;
+import com.google.mlkit.vision.face.Face;
+import com.google.mlkit.vision.face.FaceDetection;
+import com.google.mlkit.vision.face.FaceDetector;
+import com.google.mlkit.vision.face.FaceDetectorOptions;
 import com.motioncam.BuildConfig;
 import com.motioncam.R;
 import com.motioncam.model.CameraProfile;
+import com.squareup.moshi.JsonAdapter;
+import com.squareup.moshi.Moshi;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtil;
@@ -32,6 +41,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Callable;
 
 public class ProcessorService extends IntentService {
@@ -43,6 +54,25 @@ public class ProcessorService extends IntentService {
 
     public static final int NOTIFICATION_ID                     = 1;
     public static final String NOTIFICATION_CHANNEL_ID          = "MotionCamNotification";
+
+    static class Rect {
+        public final int left;
+        public final int top;
+        public final int right;
+        public final int bottom;
+
+        Rect(int left, int top, int right, int bottom) {
+            this.left = left;
+            this.top = top;
+            this.right = right;
+            this.bottom = bottom;
+        }
+    }
+    static class Metadata {
+        List<Rect> faces;
+        Double longitude;
+        Double latitude;
+    }
 
     static class ProcessFile implements Callable<Boolean>, NativeProcessorProgressListener {
         private final Context mContext;
@@ -67,7 +97,12 @@ public class ProcessorService extends IntentService {
             return filename;
         }
 
-        ProcessFile(Context context, File rawContainerPath, File previewDirectory, boolean processInMemory, ResultReceiver receiver) {
+        ProcessFile(Context context,
+                    File rawContainerPath,
+                    File previewDirectory,
+                    boolean processInMemory,
+                    ResultReceiver receiver)
+        {
             mContext = context;
             mNativeProcessor = new NativeProcessor();
             mReceiver = receiver;
@@ -279,11 +314,53 @@ public class ProcessorService extends IntentService {
         }
 
         @Override
-        public void onPreviewSaved(String outputPath) {
+        public String onPreviewSaved(String outputPath) {
+            // We'll run the Android built in face detection and return it as metadata
+            FaceDetectorOptions options =
+                    new FaceDetectorOptions.Builder()
+                            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
+                            .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
+                            .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
+                            .build();
+
+            FaceDetector detector = FaceDetection.getClient(options);
+
+            Metadata metadata = new Metadata();
+
+            metadata.faces = new ArrayList<>();
+
+            try {
+                Task<List<Face>> task = detector.process(InputImage.fromFilePath(mContext, Uri.fromFile(new File(outputPath))));
+                List<Face> faces = Tasks.await(task);
+
+                Log.i(TAG, "Detected " + faces.size() + " faces");
+
+                for(Face f : faces) {
+                    metadata.faces.add(
+                            new Rect(f.getBoundingBox().left,
+                                    f.getBoundingBox().top,
+                                    f.getBoundingBox().right,
+                                    f.getBoundingBox().bottom));
+                }
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            // Get users location and add to metadata
             Bundle bundle = new Bundle();
             bundle.putString(ProcessorReceiver.PROCESS_CODE_OUTPUT_FILE_PATH_KEY, outputPath);
 
             mReceiver.send(ProcessorReceiver.PROCESS_CODE_PREVIEW_READY, bundle);
+
+            // Return metadata about the image
+            Moshi moshi = new Moshi.Builder().build();
+            JsonAdapter<Metadata> jsonAdapter = moshi.adapter(Metadata.class);
+
+            String result = jsonAdapter.toJson(metadata);
+            Log.d(TAG, "Returning metadata " + result);
+
+            return result;
         }
 
         @Override
@@ -332,7 +409,8 @@ public class ProcessorService extends IntentService {
 
         while(moreToProcess) {
             File inMemoryTmp = CameraProfile.generateCaptureFile(getApplicationContext());
-            ProcessFile inMemoryProcess = new ProcessFile(getApplicationContext(), inMemoryTmp, previewDirectory, true, receiver);
+            ProcessFile inMemoryProcess = new ProcessFile(
+                    getApplicationContext(), inMemoryTmp, previewDirectory, true, receiver);
 
             try {
                 Log.d(TAG, "Processing in-memory container");
@@ -351,7 +429,8 @@ public class ProcessorService extends IntentService {
 
         // Process all files
         for(File file : pendingFiles) {
-            ProcessFile processFile = new ProcessFile(getApplicationContext(), file, previewDirectory, false, receiver);
+            ProcessFile processFile = new ProcessFile(
+                    getApplicationContext(), file, previewDirectory, false, receiver);
 
             try {
                 Log.d(TAG, "Processing " + file.getPath());

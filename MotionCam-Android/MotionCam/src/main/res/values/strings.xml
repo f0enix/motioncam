@@ -74,4 +74,10 @@
     <string name="low">Low</string>
     <string name="medium">Medium</string>
     <string name="high">High</string>
+    <string name="adjustments">ADJUSTMENTS</string>
+    <string name="raw">RAW</string>
+    <string name="preview_contrast">CONTRAST</string>
+    <string name="preview_colour">COLOUR</string>
+    <string name="preview_tint">TINT</string>
+    <string name="preview_warmth">WARMTH</string>
 </resources>

@@ -29,6 +29,7 @@ public class SettingsViewModel extends ViewModel {
     public static final String PREFS_KEY_UI_PREVIEW_TINT_OFFSET             = "ui_preview_tint_offset";
     public static final String PREFS_KEY_UI_CAPTURE_MODE                    = "ui_capture_mode";
     public static final String PREFS_KEY_UI_SAVE_RAW                        = "ui_save_raw";
+    public static final String PREFS_KEY_UI_HDR                             = "ui_hdr";
 
     public enum RawMode {
         RAW10,

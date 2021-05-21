@@ -17,6 +17,7 @@ namespace motioncam {
     class Temperature;
     struct RawData;
     struct HdrMetadata;
+    struct PreviewMetadata;
     
     class ImageProgressHelper {
     public:
@@ -117,7 +118,7 @@ namespace motioncam {
         static void addExifMetadata(const RawImageMetadata& metadata,
                                     const cv::Mat& thumbnail,
                                     const RawCameraMetadata& cameraMetadata,
-                                    const bool isFlipped,
+                                    const PostProcessSettings& settings,
                                     const std::string& inputOutput);
 
         static cv::Mat postProcess(std::vector<Halide::Runtime::Buffer<uint16_t>>& inputBuffers,
@@ -136,6 +137,8 @@ namespace motioncam {
         
         static double calcEv(const RawCameraMetadata& cameraMetadata, const RawImageMetadata& metadata);
 
+        static float adjustShadowsForFaces(cv::Mat input, PreviewMetadata& metadata);
+        
     #ifdef DNG_SUPPORT
         static cv::Mat buildRawImage(std::vector<cv::Mat> channels, int cropX, int cropY);
         

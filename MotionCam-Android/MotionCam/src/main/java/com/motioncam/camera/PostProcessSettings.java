@@ -29,6 +29,11 @@ public class PostProcessSettings implements Cloneable {
     public boolean flipped                      = false;
     public boolean dng                          = false;
 
+    public double gpsLatitude                   = 0;
+    public double gpsLongitude                  = 0;
+    public double gpsAltitude                   = 0;
+    public String gpsTime                       = "";
+
     @Override
     public PostProcessSettings clone() {
         try {

@@ -7,6 +7,7 @@ namespace motioncam {
     float getSetting(const json11::Json& json, const std::string& key, const float defaultValue);
     int getSetting(const json11::Json& json, const std::string& key, const int defaultValue);
     bool getSetting(const json11::Json& json, const std::string& key, const bool defaultValue);
+    std::string getSetting(const json11::Json& json, const std::string& key, const std::string& defaultValue);
 
     struct PostProcessSettings {
         // Denoising
@@ -39,6 +40,11 @@ namespace motioncam {
         bool flipped;
         bool dng;
 
+        float gpsLatitude;
+        float gpsLongitude;
+        float gpsAltitude;
+        std::string gpsTime;
+
         PostProcessSettings() :
             spatialDenoiseAggressiveness(1.0f),
             temperature(-1),
@@ -60,7 +66,10 @@ namespace motioncam {
             greenSaturation(1.0f),
             jpegQuality(95),
             flipped(false),
-            dng(false)
+            dng(false),
+            gpsLatitude(0),
+            gpsLongitude(0),
+            gpsAltitude(0)
         {
         }
         
@@ -92,6 +101,11 @@ namespace motioncam {
             jpegQuality                     = getSetting(json, "jpegQuality",       jpegQuality);
             flipped                         = getSetting(json, "flipped",       	flipped);
             dng                             = getSetting(json, "dng",       	    dng);
+            
+            gpsLatitude                     = getSetting(json, "gpsLatitude",       gpsLatitude);
+            gpsLongitude                    = getSetting(json, "gpsLongitude",      gpsLongitude);
+            gpsAltitude                     = getSetting(json, "gpsAltitude",       gpsAltitude);
+            gpsTime                         = getSetting(json, "gpsTime",           gpsTime);
         }
         
         json11::Json toJson() const {
@@ -121,6 +135,11 @@ namespace motioncam {
             json["jpegQuality"]                     = jpegQuality;
             json["flipped"]                         = flipped;
             json["dng"]                             = dng;
+
+            json["gpsLatitude"]                     = gpsLatitude;
+            json["gpsLongitude"]                    = gpsLongitude;
+            json["gpsAltitude"]                     = gpsAltitude;
+            json["gpsTime"]                         = gpsTime;
             
             return json;
         }

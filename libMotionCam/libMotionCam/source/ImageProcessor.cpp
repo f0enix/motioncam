@@ -168,6 +168,74 @@ namespace motioncam {
         Halide::Runtime::Buffer<uint8_t> mask;
     };
 
+    struct PreviewMetadata {
+        std::vector<cv::Rect> faces;
+        
+        PreviewMetadata(const std::string& metadata) {
+            std::string err;
+            json11::Json metadataJson = json11::Json::parse(metadata, err);
+
+            if(!err.empty()) {
+                return;
+            }
+
+            auto facesIt = metadataJson.object_items().find("faces");
+            if(facesIt != metadataJson.object_items().end()) {
+                auto facesArray = facesIt->second.array_items();
+                for(auto& f : facesArray) {
+                    auto data = f.object_items();
+                    
+                    int left = data["left"].int_value();
+                    int top = data["top"].int_value();
+                    int right = data["right"].int_value();
+                    int bottom = data["bottom"].int_value();
+                    
+                    auto boundingBox = cv::Rect(left, top, right - left, bottom - top);
+                    
+                    faces.push_back(boundingBox);
+                }
+            }
+        }
+    };
+
+    // https://exiv2.org/doc/geotag_8cpp-example.html
+    static std::string toExifString(double d, bool isRational, bool isLatitude)
+    {
+        const char* NS   = d>=0.0?"N":"S";
+        const char* EW   = d>=0.0?"E":"W";
+        const char* NSEW = isLatitude  ? NS: EW;
+        
+        if ( d < 0 ) d = -d;
+        
+        int deg = (int) d;
+            d  -= deg;
+            d  *= 60;
+        
+        int min = (int) d ;
+            d  -= min;
+            d  *= 60;
+        
+        int sec = (int)d;
+        
+        char result[200];
+        
+        if (isRational)
+            sprintf(result,"%d/1 %d/1 %d/1",deg, min, sec);
+        else
+            sprintf(result,"%03d%s%02d'%02d\"%s", deg, "deg", min, sec, NSEW);
+        
+        return std::string(result);
+    }
+
+    static std::string toExifString(double d)
+    {
+        char result[200];
+        d *= 100;
+        sprintf(result,"%d/100",abs((int)d));
+        
+        return std::string(result);
+    }
+
     template<typename T>
     static Halide::Runtime::Buffer<T> ToHalideBuffer(const cv::Mat& input) {
         return Halide::Runtime::Buffer<T>((T*) input.data, input.cols, input.rows);
@@ -1115,17 +1183,26 @@ namespace motioncam {
         auto preview = createPreview(*referenceRawBuffer, 2, rawContainer.getCameraMetadata(), settings);
         std::string basePath, filename;
 
-        cv::Mat previewOutput(preview.height(), preview.width(), CV_8UC4, preview.data());
+        cv::Mat previewImage(preview.height(), preview.width(), CV_8UC4, preview.data());
                 
         util::GetBasePath(outputPath, basePath, filename);
-        
         std::string previewPath = basePath + "/PREVIEW_" + filename;
         
-        cv::cvtColor(previewOutput, previewOutput, cv::COLOR_RGBA2BGR);
-        cv::imwrite(previewPath, previewOutput);
-        
-        progressListener.onPreviewSaved(previewPath);
+        cv::cvtColor(previewImage, previewImage, cv::COLOR_RGBA2BGR);
+        cv::imwrite(previewPath, previewImage);
 
+//        previewImage.release();
+        
+        // Parse the returned metadata
+        std::string metadataJson = progressListener.onPreviewSaved(previewPath);
+        PreviewMetadata previewMetadata(metadataJson);
+
+        // Adjust shadows to lighten any faces in the image
+        float shadowsScale = adjustShadowsForFaces(previewImage, previewMetadata);
+        logger::log("Adjusting shadows by " + std::to_string(shadowsScale));
+        
+        settings.shadows *= shadowsScale;
+        
         //
         // HDR
         //
@@ -1271,9 +1348,7 @@ namespace motioncam {
         }
 #endif
 
-        cv::Mat outputImage;
-
-        outputImage = postProcess(
+        cv::Mat outputImage = postProcess(
             denoiseOutput,
             hdrMetadata,
             offsetX,
@@ -1281,7 +1356,7 @@ namespace motioncam {
             referenceRawBuffer->metadata,
             rawContainer.getCameraMetadata(),
             settings);
-
+        
         progressHelper.postProcessCompleted();
 
         // Write image
@@ -1290,17 +1365,17 @@ namespace motioncam {
 
         // Create thumbnail
         cv::Mat thumbnail;
-        
+
         int width = 320;
         int height = (int) std::lround((outputImage.rows / (double) outputImage.cols) * width);
-        
+
         cv::resize(outputImage, thumbnail, cv::Size(width, height));
-        
+
         // Add exif data to the output image
         addExifMetadata(underExposedImage == nullptr ? referenceRawBuffer->metadata : underExposedImage->metadata,
                         thumbnail,
                         rawContainer.getCameraMetadata(),
-                        rawContainer.getPostProcessSettings().flipped,
+                        rawContainer.getPostProcessSettings(),
                         outputPath);
         
         progressHelper.imageSaved();
@@ -1322,11 +1397,29 @@ namespace motioncam {
         
         process(rawContainer, outputPath, progressListener);
     }
+
+    float ImageProcessor::adjustShadowsForFaces(cv::Mat input, PreviewMetadata& metadata) {
+        if(metadata.faces.empty())
+            return 1.0f;
+
+        cv::Mat gray;
+        cv::cvtColor(input, gray, cv::COLOR_BGR2GRAY);
+
+        float L = 0;
+        
+        for(auto f : metadata.faces) {
+            auto m = cv::mean(gray(f & cv::Rect(0, 0, input.cols, input.rows)));
+            L += m[0];
+        }
+
+        L = L / (float) metadata.faces.size();
+        return std::min(4.0f, std::max(1.0f, 128.0f / L));
+    }
     
     void ImageProcessor::addExifMetadata(const RawImageMetadata& metadata,
                                          const cv::Mat& thumbnail,
                                          const RawCameraMetadata& cameraMetadata,
-                                         const bool isFlipped,
+                                         const PostProcessSettings& settings,
                                          const std::string& inputOutput)
     {
         auto image = Exiv2::ImageFactory::open(inputOutput);
@@ -1348,19 +1441,19 @@ namespace motioncam {
         {
             default:
             case ScreenOrientation::LANDSCAPE:
-                exifData["Exif.Image.Orientation"] = isFlipped ? uint16_t(2) : uint16_t(1);
+                exifData["Exif.Image.Orientation"] = settings.flipped ? uint16_t(2) : uint16_t(1);
                 break;
                 
             case ScreenOrientation::PORTRAIT:
-                exifData["Exif.Image.Orientation"] = isFlipped ? uint16_t(5) : uint16_t(6);
+                exifData["Exif.Image.Orientation"] = settings.flipped ? uint16_t(5) : uint16_t(6);
                 break;
                                 
             case ScreenOrientation::REVERSE_LANDSCAPE:
-                exifData["Exif.Image.Orientation"] = isFlipped ? uint16_t(4) : uint16_t(3);
+                exifData["Exif.Image.Orientation"] = settings.flipped ? uint16_t(4) : uint16_t(3);
                 break;
                 
             case ScreenOrientation::REVERSE_PORTRAIT:
-                exifData["Exif.Image.Orientation"] = isFlipped ? uint16_t(7) : uint16_t(8);
+                exifData["Exif.Image.Orientation"] = settings.flipped ? uint16_t(7) : uint16_t(8);
                 break;
         }
                 
@@ -1379,13 +1472,33 @@ namespace motioncam {
         exifData["Exif.Image.YResolution"]  = Exiv2::Rational(72, 1);
         exifData["Exif.Photo.WhiteBalance"] = uint8_t(0);
         
+        // Store GPS coords
+        if(!settings.gpsTime.empty()) {
+            exifData["Exif.GPSInfo.GPSProcessingMethod"]    = "65 83 67 73 73 0 0 0 72 89 66 82 73 68 45 70 73 88"; // ASCII HYBRID-FIX
+            exifData["Exif.GPSInfo.GPSVersionID"]           = "2 2 0 0";
+            exifData["Exif.GPSInfo.GPSMapDatum"]            = "WGS-84";
+            
+            exifData["Exif.GPSInfo.GPSLatitude"]            = toExifString(settings.gpsLatitude, true, true);
+            exifData["Exif.GPSInfo.GPSLatitudeRef"]         = settings.gpsLatitude > 0 ? "N" : "S";
+
+            exifData["Exif.GPSInfo.GPSLongitude"]           = toExifString(settings.gpsLongitude, true, false);
+            exifData["Exif.GPSInfo.GPSLongitudeRef"]        = settings.gpsLongitude > 0 ? "E" : "W";
+            
+            exifData["Exif.GPSInfo.GPSAltitude"]            = toExifString(settings.gpsAltitude);
+            exifData["Exif.GPSInfo.GPSAltitudeRef"]         = settings.gpsAltitude < 0.0 ? "1" : "0";
+            
+            exifData["Exif.Image.GPSTag"]                   = 4908;
+        }
+        
         // Set thumbnail
-        Exiv2::ExifThumb exifThumb(exifData);
-        std::vector<uint8_t> thumbnailBuffer;
-        
-        cv::imencode(".jpg", thumbnail, thumbnailBuffer);
-        
-        exifThumb.setJpegThumbnail(thumbnailBuffer.data(), thumbnailBuffer.size());
+        if(!thumbnail.empty()) {
+            Exiv2::ExifThumb exifThumb(exifData);
+            std::vector<uint8_t> thumbnailBuffer;
+            
+            cv::imencode(".jpg", thumbnail, thumbnailBuffer);
+            
+            exifThumb.setJpegThumbnail(thumbnailBuffer.data(), thumbnailBuffer.size());
+        }
         
         image->writeMetadata();
     }

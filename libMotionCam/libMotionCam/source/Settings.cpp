@@ -1,6 +1,15 @@
 #include "motioncam/Settings.h"
 
 namespace motioncam {
+std::string getSetting(const json11::Json& json, const std::string& key, const std::string& defaultValue) {
+        auto objs = json.object_items();
+        if(objs.find(key) == objs.end()) {
+            return defaultValue;
+        }
+        
+        return json[key].is_string() ? json[key].string_value() : defaultValue;
+    }
+
     float getSetting(const json11::Json& json, const std::string& key, const float defaultValue) {
         auto objs = json.object_items();
         if(objs.find(key) == objs.end()) {
