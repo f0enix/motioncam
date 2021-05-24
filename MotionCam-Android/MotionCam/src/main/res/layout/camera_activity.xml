@@ -179,7 +179,7 @@
                         android:layout_height="match_parent"
                         android:layout_marginStart="5dp"
                         android:gravity="center_vertical"
-                        app:drawableStartCompat="@drawable/baseline_tonality_white_24" />
+                        app:drawableStartCompat="@drawable/baseline_tonality_24" />
 
                     <SeekBar
                         android:id="@+id/shadowsSeekBar"
@@ -213,7 +213,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="match_parent"
-                        android:drawableStart="@drawable/baseline_wb_sunny_white_24"
+                        android:drawableStart="@drawable/baseline_wb_sunny_24"
                         android:drawablePadding="5dp"
                         android:gravity="center_vertical" />
 

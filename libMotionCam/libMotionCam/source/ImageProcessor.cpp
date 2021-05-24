@@ -489,7 +489,7 @@ namespace motioncam {
                 
         // Estimate blacks
         const float maxDehazePercent = 0.03f;
-        const int maxEndBin = 15; // Max bin
+        const int maxEndBin = 12; // Max bin
 
         int endBin = 0;
         
@@ -1190,8 +1190,6 @@ namespace motioncam {
         
         cv::cvtColor(previewImage, previewImage, cv::COLOR_RGBA2BGR);
         cv::imwrite(previewPath, previewImage);
-
-//        previewImage.release();
         
         // Parse the returned metadata
         std::string metadataJson = progressListener.onPreviewSaved(previewPath);
@@ -1202,7 +1200,9 @@ namespace motioncam {
         logger::log("Adjusting shadows by " + std::to_string(shadowsScale));
         
         settings.shadows *= shadowsScale;
-        
+
+        previewImage.release();
+
         //
         // HDR
         //
@@ -1551,7 +1551,7 @@ namespace motioncam {
         
         // Linearly increase difference threshold based on the exposure value
         float ev = calcEv(rawContainer.getCameraMetadata(), reference->metadata);
-        float differenceWeight = std::min(32.0f, -2.0f*ev + 32.0f);
+        float differenceWeight = std::max(1.0f, std::min(16.0f, -ev + 16.0f));
         
         while(it != processFrames.end()) {
             if(rawContainer.getReferenceImage() == *it) {

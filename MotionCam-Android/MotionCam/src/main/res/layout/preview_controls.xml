@@ -25,7 +25,7 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
             android:text="@string/adjustments"
-            app:drawableTopCompat="@drawable/baseline_settings_brightness_white_24" />
+            app:drawableTopCompat="@drawable/baseline_settings_brightness_24" />
 
         <TextView
             android:id="@+id/rawEnableBtn"
@@ -36,8 +36,8 @@
             app:layout_constraintLeft_toRightOf="@id/previewAdjustmentsBtn"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
-            android:text="@string/raw"
-            app:drawableTopCompat="@drawable/baseline_photo_white_24" />
+            android:text="@string/dng"
+            app:drawableTopCompat="@drawable/baseline_photo_24" />
 
         <TextView
             android:id="@+id/hdrEnableBtn"
@@ -49,7 +49,7 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
             android:text="@string/hdr"
-            app:drawableTopCompat="@drawable/baseline_wb_sunny_white_24" />
+            app:drawableTopCompat="@drawable/baseline_brightness_7_24" />
 
         <ImageView
             android:id="@+id/settingsBtn"
