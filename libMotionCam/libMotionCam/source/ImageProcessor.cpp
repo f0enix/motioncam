@@ -1627,50 +1627,57 @@ namespace motioncam {
 
         std::vector<Halide::Runtime::Buffer<uint16_t>> denoiseOutput;
 
-        vector<vector<WaveletBuffer>> refWavelet;
-        vector<float> noiseSigma;
+        if(rawContainer.getPostProcessSettings().spatialDenoiseAggressiveness > 0) {
+            vector<vector<WaveletBuffer>> refWavelet;
+            vector<float> noiseSigma;
 
-        for(int c = 0; c < 4; c++) {
-            refWavelet.push_back(
-                 createWaveletBuffers(denoiseInput.width(), denoiseInput.height()));
+            for(int c = 0; c < 4; c++) {
+                refWavelet.push_back(
+                     createWaveletBuffers(denoiseInput.width(), denoiseInput.height()));
 
-            forward_transform(denoiseInput,
-                              denoiseInput.width(),
-                              denoiseInput.height(),
-                              c,
-                              refWavelet[c][0],
-                              refWavelet[c][1],
-                              refWavelet[c][2],
-                              refWavelet[c][3],
-                              refWavelet[c][4],
-                              refWavelet[c][5]);
+                forward_transform(denoiseInput,
+                                  denoiseInput.width(),
+                                  denoiseInput.height(),
+                                  c,
+                                  refWavelet[c][0],
+                                  refWavelet[c][1],
+                                  refWavelet[c][2],
+                                  refWavelet[c][3],
+                                  refWavelet[c][4],
+                                  refWavelet[c][5]);
 
-            int offset = 3 * refWavelet[c][0].stride(2);
+                int offset = 3 * refWavelet[c][0].stride(2);
 
-            cv::Mat hh(refWavelet[c][0].height(), refWavelet[c][0].width(), CV_32F, refWavelet[c][0].data() + offset);
-            noiseSigma.push_back(estimateNoise(hh));
+                cv::Mat hh(refWavelet[c][0].height(), refWavelet[c][0].width(), CV_32F, refWavelet[c][0].data() + offset);
+                noiseSigma.push_back(estimateNoise(hh));
+            }
+
+            // Invert output wavelet
+            for(int c = 0; c < 4; c++) {
+                Halide::Runtime::Buffer<uint16_t> outputBuffer(width, height);
+                
+                inverse_transform(refWavelet[c][0],
+                                  refWavelet[c][1],
+                                  refWavelet[c][2],
+                                  refWavelet[c][3],
+                                  refWavelet[c][4],
+                                  refWavelet[c][5],
+                                  rawContainer.getPostProcessSettings().spatialDenoiseAggressiveness*noiseSigma[c],
+                                  false,
+                                  1,
+                                  1,
+                                  outputBuffer);
+
+                // Clean up
+                denoiseOutput.push_back(outputBuffer);
+            }
         }
-
-        // Invert output wavelet
-        for(int c = 0; c < 4; c++) {
-            Halide::Runtime::Buffer<uint16_t> outputBuffer(width, height);
-            
-            inverse_transform(refWavelet[c][0],
-                              refWavelet[c][1],
-                              refWavelet[c][2],
-                              refWavelet[c][3],
-                              refWavelet[c][4],
-                              refWavelet[c][5],
-                              rawContainer.getPostProcessSettings().spatialDenoiseAggressiveness*noiseSigma[c],
-                              false,
-                              1,
-                              1,
-                              outputBuffer);
-
-            // Clean up
-            denoiseOutput.push_back(outputBuffer);
+        else {
+            for(int c = 0; c < 4; c++) {
+                denoiseOutput.push_back(denoiseInput.sliced(2, c));
+            }
         }
-
+        
         return denoiseOutput;
     }
 
