@@ -24,51 +24,52 @@ public class DenoiseSettings {
 
         int mergeImages;
         float chromaEps;
+        float spatialDenoiseWeight = 0.0f;
 
         if(ev > 11.99) {
-            this.spatialWeight  = 0.0f;
-            chromaEps           = 2.0f;
-            mergeImages         = 1;
+            spatialDenoiseWeight    = 0.0f;
+            chromaEps               = 2.0f;
+            mergeImages             = 1;
         }
         else if(ev > 9.99) {
-            this.spatialWeight  = 0.0f;
-            chromaEps           = 4.0f;
-            mergeImages         = 2;
+            spatialDenoiseWeight    = 0.0f;
+            chromaEps               = 4.0f;
+            mergeImages             = 2;
         }
         else if(ev > 7.99) {
-            this.spatialWeight  = 0.5f;
-            chromaEps           = 8.0f;
-            mergeImages         = 4;
+            spatialDenoiseWeight    = 0.5f;
+            chromaEps               = 8.0f;
+            mergeImages             = 4;
         }
         else if(ev > 5.99) {
-            this.spatialWeight  = 1.0f;
-            chromaEps           = 8.0f;
-            mergeImages         = 4;
+            spatialDenoiseWeight    = 1.0f;
+            chromaEps               = 8.0f;
+            mergeImages             = 4;
         }
         else if(ev > 3.99) {
-            this.spatialWeight  = 1.0f;
-            chromaEps           = 16.0f;
-            mergeImages         = 9;
+            spatialDenoiseWeight    = 1.0f;
+            chromaEps               = 16.0f;
+            mergeImages             = 9;
         }
         else if(ev > 1.99) {
-            this.spatialWeight  = 1.0f;
-            chromaEps           = 16.0f;
-            mergeImages         = 9;
+            spatialDenoiseWeight    = 1.0f;
+            chromaEps               = 16.0f;
+            mergeImages             = 9;
         }
         else if(ev > 0) {
-            this.spatialWeight  = 1.5f;
-            chromaEps           = 16.0f;
-            mergeImages         = 9;
+            spatialDenoiseWeight    = 1.5f;
+            chromaEps               = 16.0f;
+            mergeImages             = 9;
         }
         else {
-            this.spatialWeight  = 2.0f;
-            chromaEps           = 16.0f;
-            mergeImages         = 12;
+            spatialDenoiseWeight    = 2.0f;
+            chromaEps               = 16.0f;
+            mergeImages             = 12;
         }
 
         // If shadows are increased by a significant amount, use more images
         if(shadows >= 3.99) {
-            this.spatialWeight = Math.max(1.0f, this.spatialWeight);
+            spatialDenoiseWeight = Math.max(1.0f, this.spatialWeight);
             mergeImages += 2;
             chromaEps   += 4;
         }
@@ -85,5 +86,6 @@ public class DenoiseSettings {
 
         this.numMergeImages = mergeImages;
         this.chromaEps      = chromaEps;
+        this.spatialWeight  = spatialDenoiseWeight;
     }
 }
