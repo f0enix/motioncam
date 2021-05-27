@@ -27,7 +27,7 @@ public class DenoiseSettings {
 
         if(ev > 11.99) {
             this.spatialWeight  = 0.0f;
-            chromaEps           = 1.0f;
+            chromaEps           = 2.0f;
             mergeImages         = 1;
         }
         else if(ev > 9.99) {
@@ -68,6 +68,7 @@ public class DenoiseSettings {
 
         // If shadows are increased by a significant amount, use more images
         if(shadows >= 3.99) {
+            this.spatialWeight = Math.max(1.0f, this.spatialWeight);
             mergeImages += 2;
             chromaEps   += 4;
         }
