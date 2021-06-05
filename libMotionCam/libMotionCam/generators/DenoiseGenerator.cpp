@@ -64,6 +64,7 @@ private:
     void cmpSwap(Expr& a, Expr& b);
     Expr median(Expr A, Expr B, Expr C, Expr D);
     Func registeredInput();
+    Func calcThreshold(Func inHigh);
 
     Var v_i{"i"};
     Var v_x{"x"};
@@ -133,7 +134,47 @@ Expr DenoiseGenerator::median(Expr A, Expr B, Expr C, Expr D) {
     cmpSwap(B, D);
     cmpSwap(B, C);
 
-    return 0.5f * (B + C);
+    return (B + C) / 2;
+}
+
+Func DenoiseGenerator::calcThreshold(Func inHigh) {
+    Func T{"T"};
+
+    Expr T0 = median(
+        abs(inHigh(v_x-1,  v_y-1,  v_c, v_i)),
+        abs(inHigh(v_x,    v_y-1,  v_c, v_i)),
+        abs(inHigh(v_x,    v_y,    v_c, v_i)),
+        abs(inHigh(v_x-1,  v_y,    v_c, v_i ))
+    );
+
+    Expr T1 = median(
+        abs(inHigh(v_x,    v_y-1,  v_c, v_i)),
+        abs(inHigh(v_x+1,  v_y-1,  v_c, v_i)),
+        abs(inHigh(v_x+1,  v_y,    v_c, v_i)),
+        abs(inHigh(v_x,    v_y,    v_c, v_i))
+    );
+
+    Expr T2 = median(
+        abs(inHigh(v_x,    v_y,    v_c, v_i)),
+        abs(inHigh(v_x+1,  v_y,    v_c, v_i)),
+        abs(inHigh(v_x,    v_y+1,  v_c, v_i)),
+        abs(inHigh(v_x+1,  v_y+1,  v_c, v_i))
+    );
+
+    Expr T3 = median(
+        abs(inHigh(v_x-1,  v_y,    v_c, v_i)),
+        abs(inHigh(v_x,    v_y,    v_c, v_i)),
+        abs(inHigh(v_x,    v_y+1,  v_c, v_i)),
+        abs(inHigh(v_x-1,  v_y+1,  v_c, v_i))
+    );
+
+    T(v_x, v_y, v_c, v_i) =
+        select( v_i == 0, T0,
+                v_i == 1, T1,
+                v_i == 2, T2,
+                          T3 );
+
+    return T;
 }
 
 Func DenoiseGenerator::registeredInput() {
@@ -145,7 +186,7 @@ Func DenoiseGenerator::registeredInput() {
         .dim(2).set_stride(1);
 
     Func clamped = BoundaryConditions::repeat_edge(input1, { {0, width}, {0, height}, {0, 4} } );
-    inputF32(v_x, v_y, v_c) = cast<float>(clamped(v_x, v_y, v_c));
+    // inputF32(v_x, v_y, v_c) = cast<float>(clamped(v_x, v_y, v_c));
     
     Expr flowX = clamp(v_x, 0, flowMap.width() - 1);
     Expr flowY = clamp(v_y, 0, flowMap.height() - 1);
@@ -153,16 +194,18 @@ Func DenoiseGenerator::registeredInput() {
     Expr fx = v_x + flowMap(flowX, flowY, 0);
     Expr fy = v_y + flowMap(flowX, flowY, 1);
     
-    Expr x = cast<int16_t>(fx);
-    Expr y = cast<int16_t>(fy);
+    Expr x = cast<int16_t>(fx + 0.5f);
+    Expr y = cast<int16_t>(fy + 0.5f);
     
-    Expr a = fx - x;
-    Expr b = fy - y;
+    result(v_x, v_y, v_c) = clamped(x, y, v_c);
+
+    // Expr a = fx - x;
+    // Expr b = fy - y;
     
-    Expr p0 = lerp(inputF32(x, y, v_c), inputF32(x + 1, y, v_c), a);
-    Expr p1 = lerp(inputF32(x, y + 1, v_c), inputF32(x + 1, y + 1, v_c), a);
+    // Expr p0 = lerp(inputF32(x, y, v_c), inputF32(x + 1, y, v_c), a);
+    // Expr p1 = lerp(inputF32(x, y + 1, v_c), inputF32(x + 1, y + 1, v_c), a);
     
-    result(v_x, v_y, v_c) = saturating_cast<uint16_t>(lerp(p0, p1, b) + 0.5f);
+    // result(v_x, v_y, v_c) = saturating_cast<uint16_t>(lerp(p0, p1, b) + 0.5f);
 
     return result;
 }
@@ -184,41 +227,7 @@ void DenoiseGenerator::generate() {
     inHigh0(v_x, v_y, v_c, v_i) = inSigned0(v_x, v_y, v_c) - inMean0(v_x, v_y, v_c, v_i);
     inHigh1(v_x, v_y, v_c, v_i) = inSigned1(v_x, v_y, v_c) - inMean1(v_x, v_y, v_c, v_i);
 
-    Func T{"T"};
-
-    Expr T0 = median(
-        abs(inHigh0(v_x-1,  v_y-1,  v_c, v_i)),
-        abs(inHigh0(v_x,    v_y-1,  v_c, v_i)),
-        abs(inHigh0(v_x,    v_y,    v_c, v_i)),
-        abs(inHigh0(v_x-1,  v_y,    v_c, v_i ))
-    );
-
-    Expr T1 = median(
-        abs(inHigh0(v_x,    v_y-1,  v_c, v_i)),
-        abs(inHigh0(v_x+1,  v_y-1,  v_c, v_i)),
-        abs(inHigh0(v_x+1,  v_y,    v_c, v_i)),
-        abs(inHigh0(v_x,    v_y,    v_c, v_i))
-    );
-
-    Expr T2 = median(
-        abs(inHigh0(v_x,    v_y,    v_c, v_i)),
-        abs(inHigh0(v_x+1,  v_y,    v_c, v_i)),
-        abs(inHigh0(v_x,    v_y+1,  v_c, v_i)),
-        abs(inHigh0(v_x+1,  v_y+1,  v_c, v_i))
-    );
-
-    Expr T3 = median(
-        abs(inHigh0(v_x-1,  v_y,    v_c, v_i)),
-        abs(inHigh0(v_x,    v_y,    v_c, v_i)),
-        abs(inHigh0(v_x,    v_y+1,  v_c, v_i)),
-        abs(inHigh0(v_x-1,  v_y+1,  v_c, v_i))
-    );
-
-    T(v_x, v_y, v_c, v_i) =
-        select( v_i == 0, T0,
-                v_i == 1, T1,
-                v_i == 2, T2,
-                          T3 );
+    Func T = calcThreshold(inHigh0);
 
     Expr D = abs(inMean0(v_x, v_y, v_c, v_i) - inMean1(v_x, v_y, v_c, v_i));
     Expr M = flowMap(v_x, v_y, 0)*flowMap(v_x, v_y, 0) + flowMap(v_x, v_y, 1)*flowMap(v_x, v_y, 1);

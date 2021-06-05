@@ -315,37 +315,37 @@ public class ProcessorService extends IntentService {
 
         @Override
         public String onPreviewSaved(String outputPath) {
-            // We'll run the Android built in face detection and return it as metadata
-            FaceDetectorOptions options =
-                    new FaceDetectorOptions.Builder()
-                            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
-                            .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
-                            .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
-                            .build();
-
-            FaceDetector detector = FaceDetection.getClient(options);
-
             Metadata metadata = new Metadata();
-
             metadata.faces = new ArrayList<>();
 
-            try {
-                Task<List<Face>> task = detector.process(InputImage.fromFilePath(mContext, Uri.fromFile(new File(outputPath))));
-                List<Face> faces = Tasks.await(task);
-
-                Log.i(TAG, "Detected " + faces.size() + " faces");
-
-                for(Face f : faces) {
-                    metadata.faces.add(
-                            new Rect(f.getBoundingBox().left,
-                                    f.getBoundingBox().top,
-                                    f.getBoundingBox().right,
-                                    f.getBoundingBox().bottom));
-                }
-            }
-            catch (Exception e) {
-                e.printStackTrace();
-            }
+//            // We'll run the Android built in face detection and return it as metadata
+//            FaceDetectorOptions options =
+//                    new FaceDetectorOptions.Builder()
+//                            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
+//                            .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
+//                            .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
+//                            .build();
+//
+//            FaceDetector detector = FaceDetection.getClient(options);
+//
+//
+//            try {
+//                Task<List<Face>> task = detector.process(InputImage.fromFilePath(mContext, Uri.fromFile(new File(outputPath))));
+//                List<Face> faces = Tasks.await(task);
+//
+//                Log.i(TAG, "Detected " + faces.size() + " faces");
+//
+//                for(Face f : faces) {
+//                    metadata.faces.add(
+//                            new Rect(f.getBoundingBox().left,
+//                                    f.getBoundingBox().top,
+//                                    f.getBoundingBox().right,
+//                                    f.getBoundingBox().bottom));
+//                }
+//            }
+//            catch (Exception e) {
+//                e.printStackTrace();
+//            }
 
             // Get users location and add to metadata
             Bundle bundle = new Bundle();

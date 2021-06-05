@@ -287,89 +287,58 @@ void Demosaic::weightedMedianFilter(Func& output, Func input) {
     Expr p3 = input(v_x,   v_y);
 
     Expr p4 = input(v_x-1, v_y);
-    Expr p5 = input(v_x-1, v_y);
-
-    Expr p6 = input(v_x+1, v_y);
-    Expr p7 = input(v_x+1, v_y);
-
-    Expr p8 = input(v_x,   v_y-1);
-    Expr p9 = input(v_x,   v_y-1);
-
-    Expr p10 = input(v_x,  v_y+1);
-    Expr p11 = input(v_x,  v_y+1);
-
-    Expr p12 = input(v_x-1, v_y-1);
-    Expr p13 = input(v_x-1, v_y+1);
-    Expr p14 = input(v_x+1, v_y-1);
-    Expr p15 = input(v_x+1, v_y+1);
+    Expr p5 = input(v_x+1, v_y);
+    Expr p6 = input(v_x, v_y-1);
+    Expr p7 = input(v_x, v_y+1);
+    Expr p8 = input(v_x-1, v_y-1);
+    Expr p9 = input(v_x-1, v_y+1);
+    Expr p10 = input(v_x+1, v_y-1);
+    Expr p11 = input(v_x+1, v_y+1);
     
-    cmpSwap(p0, p1);
-    cmpSwap(p2, p3);
-    cmpSwap(p0, p2);
-    cmpSwap(p1, p3);
     cmpSwap(p1, p2);
+    cmpSwap(p0, p2);
+    cmpSwap(p0, p1);
     cmpSwap(p4, p5);
-    cmpSwap(p6, p7);
-    cmpSwap(p4, p6);
-    cmpSwap(p5, p7);
-    cmpSwap(p5, p6);
-    cmpSwap(p0, p4);
-    cmpSwap(p1, p5);
-    cmpSwap(p1, p4);
-    cmpSwap(p2, p6);
-    cmpSwap(p3, p7);
-    cmpSwap(p3, p6);
-    cmpSwap(p2, p4);
     cmpSwap(p3, p5);
     cmpSwap(p3, p4);
-    cmpSwap(p8, p9);
-    cmpSwap(p10, p11);
-    cmpSwap(p8, p10);
+    cmpSwap(p0, p3);
+    cmpSwap(p1, p4);
+    cmpSwap(p2, p5);
+    cmpSwap(p2, p4);
+    cmpSwap(p1, p3);
+    cmpSwap(p2, p3);
+    cmpSwap(p7, p8);
+    cmpSwap(p6, p8);
+    cmpSwap(p6, p7);
+    cmpSwap(p10,p11);
     cmpSwap(p9, p11);
     cmpSwap(p9, p10);
-    cmpSwap(p12, p13);
-    cmpSwap(p14, p15);
-    cmpSwap(p12, p14);
-    cmpSwap(p13, p15);
-    cmpSwap(p13, p14);
-    cmpSwap(p8, p12);
-    cmpSwap(p9, p13);
-    cmpSwap(p9, p12);
-    cmpSwap(p10, p14);
-    cmpSwap(p11, p15);
-    cmpSwap(p11, p14);
-    cmpSwap(p10, p12);
-    cmpSwap(p11, p13);
-    cmpSwap(p11, p12);
-    cmpSwap(p0, p8);
-    cmpSwap(p1, p9);
-    cmpSwap(p1, p8);
-    cmpSwap(p2, p10);
-    cmpSwap(p3, p11);
-    cmpSwap(p3, p10);
-    cmpSwap(p2, p8);
-    cmpSwap(p3, p9);
-    cmpSwap(p3, p8);
-    cmpSwap(p4, p12);
-    cmpSwap(p5, p13);
-    cmpSwap(p5, p12);
-    cmpSwap(p6, p14);
-    cmpSwap(p7, p15);
-    cmpSwap(p7, p14);
-    cmpSwap(p6, p12);
-    cmpSwap(p7, p13);
-    cmpSwap(p7, p12);
-    cmpSwap(p4, p8);
-    cmpSwap(p5, p9);
-    cmpSwap(p5, p8);
-    cmpSwap(p6, p10);
-    cmpSwap(p7, p11);
+    cmpSwap(p6, p9);
     cmpSwap(p7, p10);
-    cmpSwap(p6, p8);
+    cmpSwap(p8, p11);
+    cmpSwap(p8, p10);
     cmpSwap(p7, p9);
-    cmpSwap(p7, p8);
+    cmpSwap(p8, p9);
+    cmpSwap(p0, p6);
+    cmpSwap(p1, p7);
+    cmpSwap(p2, p8);
+    cmpSwap(p2, p7);
+    cmpSwap(p1, p6);
+    cmpSwap(p2, p6);
+    cmpSwap(p3, p9);
+    cmpSwap(p4, p10);
+    cmpSwap(p5, p11);
+    cmpSwap(p5, p10);
+    cmpSwap(p4, p9);
+    cmpSwap(p5, p9);
+    cmpSwap(p3, p6);
+    cmpSwap(p4, p7);
+    cmpSwap(p5, p8);
+    cmpSwap(p5, p7);
+    cmpSwap(p4, p6);
+    cmpSwap(p5, p6);
 
-    output(v_x, v_y) = cast<int16_t>((cast<int32_t>(p7) + cast<int32_t>(p8)) / 2);
+    output(v_x, v_y) = cast<int16_t>((cast<int32_t>(p5) + cast<int32_t>(p6)) / 2);
 }
 
 void Demosaic::cmpSwap(Expr& a, Expr& b) {
@@ -482,7 +451,7 @@ void Demosaic::calculateGreen(Func& output, Func input) {
     
     Expr interp = (w0*g0 + w1*g1 + w2*g2 + w3*g3) / (w0 + w1 + w2 + w3);
     
-    greenIntermediate(v_x, v_y) = select(((v_x + v_y) & 1) == 1, cast<int16_t>(input(v_x, v_y) + 0.5f), cast<int16_t>(interp + 0.5f));
+    greenIntermediate(v_x, v_y) = select(((v_x + v_y) & 1) == 1, input(v_x, v_y), cast<int16_t>(interp + 0.5f));
 
     Func filtered{"greenFiltered"};
 
@@ -510,11 +479,11 @@ void Demosaic::calculateRed(Func& output, Func input, Func green) {
             ) / 4
     );
 
-    // Func filtered{"redFiltered"};
+    Func filtered{"redFiltered"};
 
-    // weightedMedianFilter(filtered, redIntermediate);
+    weightedMedianFilter(filtered, redIntermediate);
 
-    output(v_x, v_y) = green(v_x, v_y) + redIntermediate(v_x, v_y);
+    output(v_x, v_y) = green(v_x, v_y) + filtered(v_x, v_y);
 }
 
 void Demosaic::calculateBlue(Func& output, Func input, Func green) {
@@ -539,11 +508,11 @@ void Demosaic::calculateBlue(Func& output, Func input, Func green) {
             ) / 4
     );
 
-    // Func filtered{"blueFiltered"};
+    Func filtered{"blueFiltered"};
 
-    // weightedMedianFilter(filtered, blueIntermediate);
+    weightedMedianFilter(filtered, blueIntermediate);
 
-    output(v_x, v_y) = green(v_x, v_y) + blueIntermediate(v_x, v_y);
+    output(v_x, v_y) = green(v_x, v_y) + filtered(v_x, v_y);
 }
 
 void Demosaic::generate() {

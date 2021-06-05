@@ -68,10 +68,8 @@ import org.apache.commons.io.FileUtils;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -177,7 +175,7 @@ public class CameraActivity extends AppCompatActivity implements
                     .putBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, this.saveDng)
                     .putBoolean(SettingsViewModel.PREFS_KEY_UI_HDR, this.hdr)
                     .putString(SettingsViewModel.PREFS_KEY_UI_CAPTURE_MODE, this.captureMode.name())
-                    .commit();
+                    .apply();
         }
 
         @Override
@@ -247,6 +245,7 @@ public class CameraActivity extends AppCompatActivity implements
     private boolean mManualControlsSet;
     private CaptureMode mCaptureMode = CaptureMode.NIGHT;
     private PreviewControlMode mPreviewControlMode = PreviewControlMode.CONTRAST;
+    private boolean mUserCaptureModeOverride;
 
     private FocusState mFocusState = FocusState.AUTO;
     private PointF mAutoFocusPoint;
@@ -479,8 +478,8 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.saturation = mSettings.saturation;
         mPostProcessSettings.greenSaturation = 1.0f;
         mPostProcessSettings.blueSaturation = 1.0f;
-        mPostProcessSettings.sharpen0 = 5.0f;
-        mPostProcessSettings.sharpen1 = 4.0f;
+        mPostProcessSettings.sharpen0 = 3.0f;
+        mPostProcessSettings.sharpen1 = 2.5f;
         mPostProcessSettings.whitePoint = -1;
         mPostProcessSettings.blacks = -1;
         mPostProcessSettings.tonemapVariance = 0.25f;
@@ -524,6 +523,7 @@ public class CameraActivity extends AppCompatActivity implements
         mBinding.previewPager.registerOnPageChangeCallback(mCapturedPreviewPagerListener);
 
         mFocusState = FocusState.AUTO;
+        mUserCaptureModeOverride = false;
 
         // Start camera when we have all the permissions
         if (mHavePermissions) {
@@ -739,6 +739,8 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void onCaptureModeClicked(View v) {
+        mUserCaptureModeOverride = true;
+
         if(v == mBinding.nightModeBtn) {
             setCaptureMode(CaptureMode.NIGHT);
         }
@@ -824,12 +826,6 @@ public class CameraActivity extends AppCompatActivity implements
         else if(mode == CaptureMode.NIGHT || mode == CaptureMode.ZSL) {
             mBinding.captureBtn.setEnabled(false);
 
-            mBinding.cameraFrame
-                    .animate()
-                    .alpha(0.25f)
-                    .setDuration(250)
-                    .start();
-
             mBinding.captureProgressBar.setVisibility(View.VISIBLE);
             mBinding.captureProgressBar.setIndeterminateMode(false);
 
@@ -866,8 +862,12 @@ public class CameraActivity extends AppCompatActivity implements
             if(mCameraMetadata.cameraApertures.length > 0)
                 a = mCameraMetadata.cameraApertures[0];
 
-            DenoiseSettings denoiseSettings =
-                    new DenoiseSettings(a, baseExposure.iso.getIso(), baseExposure.shutterSpeed.getExposureTime(), settings.shadows);
+            DenoiseSettings denoiseSettings = new DenoiseSettings(
+                    estimatedSettings.noiseSigma,
+                    a,
+                    baseExposure.iso.getIso(),
+                    baseExposure.shutterSpeed.getExposureTime(),
+                    settings.shadows);
 
             settings.chromaEps = denoiseSettings.chromaEps;
             settings.spatialDenoiseAggressiveness = denoiseSettings.spatialWeight;
@@ -879,11 +879,23 @@ public class CameraActivity extends AppCompatActivity implements
             int iso = baseExposure.iso.getIso();
 
             if(mCaptureMode == CaptureMode.ZSL) {
-                // Don't bother with HDR if the scene is underexposed/few clipped pixels
-                boolean noHdr = !mSettings.hdr || estimatedSettings.exposure > 0.5f;
+                // Don't bother with HDR if the scene is underexposed/few clipped pixels or the noise of the
+                // underexposed image will be too high
+                boolean noHdr = !mSettings.hdr || estimatedSettings.exposure > 0.5f || mIso > 400;
 
                 if(noHdr) {
                     Log.i(TAG, "Requested ZSL capture (denoiseSettings=" + denoiseSettings.toString() + ")");
+
+                    mBinding.cameraFrame
+                            .animate()
+                            .alpha(0.25f)
+                            .setDuration(125)
+                            .withEndAction(() -> mBinding.cameraFrame
+                                    .animate()
+                                    .alpha(1.0f)
+                                    .setDuration(125)
+                                    .start())
+                            .start();
 
                     mAsyncNativeCameraOps.captureImage(
                             -1,
@@ -903,6 +915,12 @@ public class CameraActivity extends AppCompatActivity implements
 
             if(mImageCaptureInProgress.compareAndSet(false, true)) {
                 Log.i(TAG, "Requested HDR capture (denoiseSettings=" + denoiseSettings.toString() + ")");
+
+                mBinding.cameraFrame
+                        .animate()
+                        .alpha(0.25f)
+                        .setDuration(250)
+                        .start();
 
                 mNativeCamera.captureHdrImage(
                         denoiseSettings.numMergeImages,
@@ -1250,7 +1268,7 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void autoSwitchCaptureMode() {
-        if(!mSettings.autoNightMode || mCaptureMode == CaptureMode.BURST || mManualControlsSet)
+        if(!mSettings.autoNightMode || mCaptureMode == CaptureMode.BURST || mManualControlsSet || mUserCaptureModeOverride)
             return;
 
         // Switch to night mode if we high ISO/shutter speed
@@ -1423,12 +1441,6 @@ public class CameraActivity extends AppCompatActivity implements
 
         mBinding.captureBtn.setEnabled(true);
         mBinding.captureProgressBar.setVisibility(View.INVISIBLE);
-
-        mBinding.cameraFrame
-                .animate()
-                .alpha(1.0f)
-                .setDuration(250)
-                .start();
 
         startImageProcessor();
     }

@@ -29,7 +29,7 @@
 namespace motioncam {
     static const int COPY_THREADS = 1; // More than one copy thread breaks RAW preview
     static const int MINIMUM_BUFFERS = 16;
-    static const float SHADOW_BIAS = 14.0f;
+    static const float SHADOW_BIAS = 16.0f;
     static const int ESTIMATE_SHADOWS_FRAME_INTERVAL = 8;
 
 #ifdef GPU_CAMERA_PREVIEW
@@ -203,6 +203,14 @@ namespace motioncam {
             return false;
         }
 
+//        // Keep Noise profile
+//        if(ACameraMetadata_getConstEntry(src, ACAMERA_SENSOR_NOISE_PROFILE, &metadataEntry) == ACAMERA_OK) {
+//            dst.noiseProfile.resize(metadataEntry.count);
+//            for(int n = 0; n < metadataEntry.count; n++) {
+//                dst.noiseProfile[n] = metadataEntry.data.d[n];
+//            }
+//        }
+
         // If the color transform is not part of the request we won't attempt tp copy it
         if(mCopyCaptureColorTransform) {
             // ACAMERA_SENSOR_CALIBRATION_TRANSFORM1
@@ -260,6 +268,11 @@ namespace motioncam {
             // Update shadows to include user selected boost
             float userShadows = std::pow(2.0f, std::log(mEstimatedSettings.shadows) / std::log(2.0f) + mShadowBoost);
             mEstimatedSettings.shadows = std::max(1.0f, std::min(32.0f, userShadows));
+
+            // Store noise profile
+            if(!buffer->metadata.noiseProfile.empty()) {
+                mEstimatedSettings.noiseSigma = 1024 * sqrt(0.18 * buffer->metadata.noiseProfile[0] + buffer->metadata.noiseProfile[1]);
+            }
 
             mPreviewShadowStep = (1.0f / ESTIMATE_SHADOWS_FRAME_INTERVAL) * (mEstimatedSettings.shadows - mPreviewShadows);
             mFramesSinceEstimatedSettings = 0;

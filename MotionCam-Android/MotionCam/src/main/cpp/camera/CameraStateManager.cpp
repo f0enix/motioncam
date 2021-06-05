@@ -174,26 +174,33 @@ namespace motioncam {
     }
 
     void CameraStateManager::updateCaptureRequestExposure() {
-        uint8_t aeMode;
+        uint8_t aeMode = ACAMERA_CONTROL_AE_MODE_ON;
+        uint8_t controlMode = ACAMERA_CONTROL_MODE_USE_SCENE_MODE;
+        uint8_t sceneMode = ACAMERA_CONTROL_SCENE_MODE_FACE_PRIORITY;
+        uint8_t faceMode = ACAMERA_STATISTICS_FACE_DETECT_MODE_FULL;
 
         if(mCameraMode == CameraMode::AUTO) {
-            aeMode = ACAMERA_CONTROL_AE_MODE_ON;
-
             ACaptureRequest_setEntry_i32(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_SENSITIVITY, 0, nullptr);
             ACaptureRequest_setEntry_i64(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_EXPOSURE_TIME, 0, nullptr);
             ACaptureRequest_setEntry_i32(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_EXPOSURE_COMPENSATION, 1, &mExposureCompensation);
+            ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_SCENE_MODE, 1, &sceneMode);
+            ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_STATISTICS_FACE_DETECT_MODE, 1, &faceMode);
         }
         else if(mCameraMode == CameraMode::MANUAL) {
             aeMode = ACAMERA_CONTROL_AE_MODE_OFF;
+            controlMode = ACAMERA_CONTROL_MODE_OFF;
 
             ACaptureRequest_setEntry_i32(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_SENSITIVITY, 1, &mUserIso);
             ACaptureRequest_setEntry_i64(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_EXPOSURE_TIME, 1, &mUserExposureTime);
             ACaptureRequest_setEntry_i32(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_EXPOSURE_COMPENSATION, 0, nullptr);
+            ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_SCENE_MODE, 0, nullptr);
+            ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_STATISTICS_FACE_DETECT_MODE, 0, nullptr);
 
             LOGD("userIso=%d, userExposure=%.4f", mUserIso, mUserExposureTime/1.0e9f);
         }
 
         ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
+        ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_MODE, 1, &controlMode);
     }
 
     bool CameraStateManager::triggerUserAutoFocus() {
@@ -274,10 +281,7 @@ namespace motioncam {
 
         ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
         ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 1, &afTrigger);
-
-        int px = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.left + mCameraDescription.sensorSize.width) * 0.5f);
-        int py = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.top + mCameraDescription.sensorSize.height) * 0.5f);
-
+        
         int w = mCameraDescription.sensorSize.width;
         int h = mCameraDescription.sensorSize.height;
 

@@ -70,7 +70,8 @@ namespace motioncam {
             timestampNs(other.timestampNs),
             recvdTimestampMs(other.recvdTimestampMs),
             screenOrientation(other.screenOrientation),
-            rawType(other.rawType)
+            rawType(other.rawType),
+            noiseProfile(other.noiseProfile)
         {
         }
 
@@ -83,7 +84,8 @@ namespace motioncam {
             timestampNs(other.timestampNs),
             recvdTimestampMs(other.recvdTimestampMs),
             screenOrientation(other.screenOrientation),
-            rawType(other.rawType)
+            rawType(other.rawType),
+            noiseProfile(other.noiseProfile)
         {
         }
 
@@ -97,6 +99,7 @@ namespace motioncam {
             recvdTimestampMs = obj.recvdTimestampMs;
             screenOrientation = obj.screenOrientation;
             rawType = obj.rawType;
+            noiseProfile = obj.noiseProfile;
 
             return *this;
         }
@@ -120,6 +123,7 @@ namespace motioncam {
         int64_t recvdTimestampMs;
         ScreenOrientation screenOrientation;
         RawType rawType;
+        std::vector<double> noiseProfile;
     };
 
     class NativeBuffer {

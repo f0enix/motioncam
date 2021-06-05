@@ -372,7 +372,7 @@ namespace motioncam {
             hdrMask = ToHalideBuffer<uint8_t>(blankMask);
             hdrInput = Halide::Runtime::Buffer<uint16_t>((uint16_t*) blankInput.data, blankInput.cols, blankInput.rows, 3);
         }
-        
+                
         // Linearly adjust sharpen threshold based on exposure
         double ev = calcEv(cameraMetadata, metadata);
         double sharpenThreshold = std::max(4.0, 1.5*ev + 4);
@@ -432,7 +432,7 @@ namespace motioncam {
         
         avgLuminance = exp(avgLuminance / (totalPixels + 1e-5f));
         
-        return std::max(1.0f, std::min(keyValue / avgLuminance, 32.0f));
+        return std::max(1.0f, std::min(keyValue / avgLuminance, 16.0f));
     }
 
     float ImageProcessor::estimateExposureCompensation(const cv::Mat& histogram, float threshold) {
@@ -489,7 +489,7 @@ namespace motioncam {
                 
         // Estimate blacks
         const float maxDehazePercent = 0.03f;
-        const int maxEndBin = 12; // Max bin
+        const int maxEndBin = 10; // Max bin
 
         int endBin = 0;
         
@@ -535,18 +535,14 @@ namespace motioncam {
         cv::calcHist(inputImages, channels, cv::Mat(), histogram, histBins, histRange);
         
         histogram = histogram / (preview.rows * preview.cols);
-        
-        // Cumulative histogram
-        for(int i = 1; i < histogram.rows; i++) {
-            histogram.at<float>(i) += histogram.at<float>(i - 1);
-        }
-
+                
         // Estimate white point
         int endBin = 0;
+        float totalPx = 0;
         for(endBin = histogram.rows - 1; endBin >= 192; endBin--) {
-            float binPx = histogram.at<float>(endBin);
-
-            if(binPx < threshold)
+            totalPx += histogram.at<float>(endBin);
+            
+            if(totalPx > threshold)
                 break;
         }
 
@@ -573,7 +569,7 @@ namespace motioncam {
         outSettings.temperature    = static_cast<float>(temperature.temperature());
         outSettings.tint           = static_cast<float>(temperature.tint());
         outSettings.shadows        = estimateShadows(histogram, shadowsKeyValue);
-        outSettings.exposure       = estimateExposureCompensation(histogram, 1e-2f);
+        outSettings.exposure       = estimateExposureCompensation(histogram, 1e-3f);
     }
 
     void ImageProcessor::estimateWhiteBalance(const RawImageBuffer& rawBuffer,
@@ -615,7 +611,7 @@ namespace motioncam {
         estimateBlacks(rawBuffer, cameraMetadata, settings.shadows, settings.blacks);
 
         auto preview =
-            estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, settings.blacks, 0.995f, settings.whitePoint);
+            estimateWhitePoint(rawBuffer, cameraMetadata, settings.shadows, settings.blacks, 0.01f, settings.whitePoint);
         
         //
         // Scene luminance
@@ -1172,7 +1168,7 @@ namespace motioncam {
                                rawContainer.getCameraMetadata(),
                                settings.shadows,
                                settings.blacks,
-                               0.999f,
+                               0.01f,
                                settings.whitePoint);
         }
 
@@ -1224,7 +1220,7 @@ namespace motioncam {
 
             // Check if there's any point even using the underexposed image (less than 0.1% in the >95% bins)
             float p = sum * 100.0f;
-            if(p < 0.01f) {
+            if(p < 0.09f) {
                 logger::log("Skipping HDR processing (" + std::to_string(p) + ")");
             }
             // Try each underexposed image
@@ -1243,7 +1239,7 @@ namespace motioncam {
                         
                         // Reduce the shadows if applying HDR to avoid the image looking too flat due to
                         // extreme dynamic range compression
-                        settings.shadows = std::max(0.75f * settings.shadows, 4.0f);
+//                        settings.shadows = std::max(0.75f * settings.shadows, 4.0f);
                         underExposedImage = *underexposedFrameIt;
                         
                         // Update white point
@@ -1251,7 +1247,7 @@ namespace motioncam {
                                            rawContainer.getCameraMetadata(),
                                            settings.shadows * (1.0f/hdrMetadata->exposureScale),
                                            settings.blacks,
-                                           0.999f,
+                                           0.01f,
                                            settings.whitePoint);
 
                         break;
@@ -1399,21 +1395,33 @@ namespace motioncam {
     }
 
     float ImageProcessor::adjustShadowsForFaces(cv::Mat input, PreviewMetadata& metadata) {
-        if(metadata.faces.empty())
-            return 1.0f;
-
-        cv::Mat gray;
-        cv::cvtColor(input, gray, cv::COLOR_BGR2GRAY);
-
-        float L = 0;
-        
-        for(auto f : metadata.faces) {
-            auto m = cv::mean(gray(f & cv::Rect(0, 0, input.cols, input.rows)));
-            L += m[0];
-        }
-
-        L = L / (float) metadata.faces.size();
-        return std::min(4.0f, std::max(1.0f, 128.0f / L));
+        return 1.0f;
+                
+//        if(metadata.faces.empty())
+//            return 1.0f;
+//
+//        cv::Mat gray;
+//        cv::cvtColor(input, gray, cv::COLOR_BGR2GRAY);
+//
+//        float L = 0;
+//        float n = 0;
+//
+//        for(auto f : metadata.faces) {
+//            float p = f.area() / (input.cols*input.rows);
+//            // Ignore faces which are too small
+//            if(p >= 0.00083f) {
+//                auto m = cv::mean(gray(f & cv::Rect(0, 0, input.cols, input.rows)));
+//
+//                L += m[0];
+//                n += 1;
+//            }
+//        }
+//
+//        if(n <= 0)
+//            return 1;
+//
+//        L = L / n;
+//        return std::min(4.0f, std::max(1.0f, 128.0f / L));
     }
     
     void ImageProcessor::addExifMetadata(const RawImageMetadata& metadata,
@@ -1551,8 +1559,8 @@ namespace motioncam {
         
         // Linearly increase difference threshold based on the exposure value
         float ev = calcEv(rawContainer.getCameraMetadata(), reference->metadata);
-        float differenceWeight = std::max(1.0f, std::min(16.0f, -ev + 16.0f));
-        
+        float differenceWeight = std::max(1.0f, std::min(32.0f, -ev + 16.0f));
+                
         while(it != processFrames.end()) {
             if(rawContainer.getReferenceImage() == *it) {
                 ++it;
@@ -1569,15 +1577,14 @@ namespace motioncam {
                                      current->previewBuffer.data());
 
             cv::Ptr<cv::DISOpticalFlow> opticalFlow =
-                cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_ULTRAFAST);
+                cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_FAST);
             
             opticalFlow->setPatchSize(16);
             opticalFlow->setPatchStride(8);
             opticalFlow->calc(referenceFlowImage, currentFlowImage, flow);
-            
+                        
             Halide::Runtime::Buffer<float> flowBuffer =
                 Halide::Runtime::Buffer<float>::make_interleaved((float*) flow.data, flow.cols, flow.rows, 2);
-            
                         
             fuse_denoise(reference->rawBuffer,
                          current->rawBuffer,
