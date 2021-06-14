@@ -590,20 +590,18 @@ void TonemapGenerator::pyramidUp(Func& output, Func& intermediate, Func input) {
     expanded(v_x, v_y, v_c)  = select((v_y % 2)==0, expandedX(v_x, v_y/2, v_c), 0);
 
     blurX(v_x, v_y, v_c) = fast_integer_divide(
-         (1 * expanded(v_x - 2, v_y, v_c) +
-          4 * expanded(v_x - 1, v_y, v_c) +
-          6 * expanded(v_x,     v_y, v_c) +
-          4 * expanded(v_x + 1, v_y, v_c) +
-          1 * expanded(v_x + 2, v_y, v_c)
-          ), 16);
+         (
+          1 * expanded(v_x - 1, v_y, v_c) +
+          2 * expanded(v_x,     v_y, v_c) +
+          1 * expanded(v_x + 1, v_y, v_c)
+          ), 4);
 
     blurY(v_x, v_y, v_c) = fast_integer_divide(
-         (1 * blurX(v_x, v_y - 2, v_c) +
-          4 * blurX(v_x, v_y - 1, v_c) +
-          6 * blurX(v_x, v_y,     v_c) +
-          4 * blurX(v_x, v_y + 1, v_c) +
-          1 * blurX(v_x, v_y + 2, v_c)
-          ), 16);
+         (
+          1 * blurX(v_x, v_y - 1, v_c) +
+          2 * blurX(v_x, v_y,     v_c) +
+          1 * blurX(v_x, v_y + 1, v_c)
+          ), 4);
 
     intermediate = blurX;
     output(v_x, v_y, v_c) = 4 * blurY(v_x, v_y, v_c);
@@ -613,20 +611,18 @@ void TonemapGenerator::pyramidDown(Func& output, Func& intermediate, Func input)
     Func blurX, blurY;
 
     blurX(v_x, v_y, v_c) = fast_integer_divide(
-         (1 * input(v_x - 2, v_y, v_c) +
-          4 * input(v_x - 1, v_y, v_c) +
-          6 * input(v_x,     v_y, v_c) +
-          4 * input(v_x + 1, v_y, v_c) +
-          1 * input(v_x + 2, v_y, v_c)
-          ), 16);
+         (
+          1 * input(v_x - 1, v_y, v_c) +
+          2 * input(v_x,     v_y, v_c) +
+          1 * input(v_x + 1, v_y, v_c)
+          ), 4);
 
     blurY(v_x, v_y, v_c) = fast_integer_divide(
-         (1 * blurX(v_x, v_y - 2, v_c) +
-          4 * blurX(v_x, v_y - 1, v_c) +
-          6 * blurX(v_x, v_y,     v_c) +
-          4 * blurX(v_x, v_y + 1, v_c) +
-          1 * blurX(v_x, v_y + 2, v_c)
-          ), 16);
+         (
+          1 * blurX(v_x, v_y - 1, v_c) +
+          2 * blurX(v_x, v_y,     v_c) +
+          1 * blurX(v_x, v_y + 1, v_c)
+          ), 4);
 
     intermediate = blurX;
     output(v_x, v_y, v_c) = blurY(v_x * 2, v_y * 2, v_c);
@@ -983,7 +979,7 @@ protected:
     void hsvToBgr(Func& output, Func input);
 
     void shiftHues(
-        Func& output, Func hsvInput, Expr blueSaturation, Expr greenSaturation, Expr overallSaturation);
+        Func& output, Func hsvInput, Expr blues, Expr greens, Expr saturation);
 
     void linearScale(Func& result, Func image, Expr fromWidth, Expr fromHeight, Expr toWidth, Expr toHeight);
     
@@ -1409,29 +1405,18 @@ void PostProcessBase::linearScale(Func& result, Func image, Expr fromWidth, Expr
 }
 
 void PostProcessBase::shiftHues(
-    Func& output, Func hsvInput, Expr blueSaturation, Expr greenSaturation, Expr overallSaturation)
+    Func& output, Func hsvInput, Expr blues, Expr greens, Expr saturation)
 {
     Expr H = hsvInput(v_x, v_y, 0);
     Expr S = hsvInput(v_x, v_y, 1);
 
-    Expr sat = select(
-                        // Blues
-                        H >= 145 && H < 165,    S * (1.0f/20.0f * ( (blueSaturation - 1)*H - 145 * (blueSaturation - 1) ) + 1),
-                        H >= 165 && H <= 195,   S * blueSaturation,
-                        H  > 195 && H <= 215,   S * (-1.0f/20.0f * ( (blueSaturation - 1)*H - 215 * (blueSaturation - 1) ) + 1),
-
-                        // Greens
-                        H >= 70 && H < 90,      S * (1.0f/20.0f * ( (greenSaturation - 1)*H - 70 * (greenSaturation - 1) ) + 1),
-                        H >= 90 && H <= 135,    S * greenSaturation,
-                        H  > 135 && H <= 155,   S * (-1.0f/20.0f * ( (greenSaturation - 1)*H - 155 * (greenSaturation - 1) ) + 1),
-
-                        S
-                    );
+    Expr blueWeight   = exp(-(H - 210)*(H - 210) / 400);
+    Expr greenWeight  = exp(-(H - 90)*(H - 90) / 400);
 
     output(v_x, v_y, v_c) =
-        select(v_c == 0, hsvInput(v_x, v_y, 0),
-               v_c == 1, clamp(sat * overallSaturation, 0.0f, 1.0f),
-                         hsvInput(v_x, v_y, v_c));    
+        select(v_c == 0, H + blues*blueWeight + greens*greenWeight,
+               v_c == 1, clamp(S * saturation, 0.0f, 1.0f),
+                         hsvInput(v_x, v_y, v_c));
 }
 
 //
@@ -1466,9 +1451,9 @@ public:
     Input<float> exposure{"exposure"};
     Input<float> whitePoint{"whitePoint"};
     Input<float> contrast{"contrast"};
-    Input<float> blueSaturation{"blueSaturation"};
+    Input<float> blues{"blues"};
+    Input<float> greens{"greens"};
     Input<float> saturation{"saturation"};
-    Input<float> greenSaturation{"greenSaturation"};
     Input<float> sharpen0{"sharpen0"};
     Input<float> sharpen1{"sharpen1"};
     Input<float> sharpenThreshold{"sharpenThreshold"};    
@@ -1698,7 +1683,7 @@ void PostProcessGenerator::generate()
 
     rgbToHsv(hsvInput, tonemapOutputRgb);
 
-    shiftHues(saturationApplied, hsvInput, blueSaturation, greenSaturation, satParam);
+    shiftHues(saturationApplied, hsvInput, blues, greens, satParam);
 
     hsvToBgr(finalRgb, saturationApplied);
 
@@ -1750,9 +1735,9 @@ void PostProcessGenerator::generate()
     blacks.set_estimate(0.1f);
     exposure.set_estimate(0.05f);
     whitePoint.set_estimate(0.95f);
-    blueSaturation.set_estimate(1.0f);
+    blues.set_estimate(1.0f);
     saturation.set_estimate(1.0f);
-    greenSaturation.set_estimate(1.0f);
+    greens.set_estimate(1.0f);
     sharpen0.set_estimate(2.0f);
     sharpen1.set_estimate(2.0f);
     chromaFilterWeight.set_estimate(8.0f);
@@ -1954,9 +1939,9 @@ public:
     Input<float> blacks{"blacks"};
     Input<float> exposure{"exposure"};
     Input<float> contrast{"contrast"};
-    Input<float> blueSaturation{"blueSaturation"};
+    Input<float> blues{"blues"};
+    Input<float> greens{"greens"};
     Input<float> saturation{"saturation"};
-    Input<float> greenSaturation{"greenSaturation"};
     Input<float> sharpen0{"sharpen0"};
     Input<float> sharpen1{"sharpen1"};
 
@@ -2136,7 +2121,7 @@ void PreviewGenerator::generate() {
 
     rgbToHsv(hsvInput, gammaCorrected32);
 
-    shiftHues(saturationApplied, hsvInput, blueSaturation, greenSaturation, satParam);
+    shiftHues(saturationApplied, hsvInput, blues, greens, satParam);
 
     hsvToBgr(finalRgb, saturationApplied);
     

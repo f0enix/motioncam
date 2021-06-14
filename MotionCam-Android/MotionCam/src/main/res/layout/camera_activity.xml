@@ -129,26 +129,26 @@
 
             <FrameLayout
                 android:id="@+id/focusLockPointFrame"
-                android:layout_width="83dp"
-                android:layout_height="83dp"
-                android:padding="5dp"
+                android:layout_width="75dp"
+                android:layout_height="75dp"
                 android:visibility="invisible">
 
                 <View
-                    android:id="@+id/cancelFocusLockBtn"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:background="@drawable/baseline_cancel_24" />
-
-                <View
-                    android:layout_width="50dp"
-                    android:layout_height="50dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
                     android:layout_gravity="center"
+                    android:alpha="0.5"
                     android:background="@drawable/focus_circle" />
 
             </FrameLayout>
 
         </FrameLayout>
+
+        <com.motioncam.ui.CameraGridLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            app:layout_constraintTop_toTopOf="@+id/cameraFrame"
+            app:layout_constraintBottom_toBottomOf="@+id/cameraFrame"/>
 
         <LinearLayout
             android:id="@+id/manualControlsFrame"
@@ -165,7 +165,6 @@
                 android:layout_height="wrap_content"
                 android:layout_marginLeft="5dp"
                 android:layout_marginRight="5dp"
-                android:alpha="0.75"
                 android:baselineAligned="false">
 
                 <LinearLayout

@@ -33,8 +33,8 @@ namespace motioncam {
         float sceneLuminance;
         
         float saturation;
-        float blueSaturation;
-        float greenSaturation;
+        float blues;
+        float greens;
         
         int jpegQuality;
         bool flipped;
@@ -44,6 +44,8 @@ namespace motioncam {
         float gpsLongitude;
         float gpsAltitude;
         std::string gpsTime;
+
+        std::string captureMode;
 
         PostProcessSettings() :
             spatialDenoiseAggressiveness(1.0f),
@@ -62,8 +64,8 @@ namespace motioncam {
             blacks(0.0f),
             whitePoint(1.0f),
             saturation(1.0f),
-            blueSaturation(1.0f),
-            greenSaturation(1.0f),
+            blues(8.0f),
+            greens(8.0f),
             jpegQuality(95),
             flipped(false),
             dng(false),
@@ -95,8 +97,8 @@ namespace motioncam {
             sharpen1                        = getSetting(json, "sharpen1",          sharpen1);
 
             saturation                      = getSetting(json, "saturation",        saturation);
-            blueSaturation                  = getSetting(json, "blueSaturation",    blueSaturation);
-            greenSaturation                 = getSetting(json, "greenSaturation",   greenSaturation);
+            blues                           = getSetting(json, "blues",             blues);
+            greens                          = getSetting(json, "greens",            greens);
             
             jpegQuality                     = getSetting(json, "jpegQuality",       jpegQuality);
             flipped                         = getSetting(json, "flipped",       	flipped);
@@ -106,6 +108,8 @@ namespace motioncam {
             gpsLongitude                    = getSetting(json, "gpsLongitude",      gpsLongitude);
             gpsAltitude                     = getSetting(json, "gpsAltitude",       gpsAltitude);
             gpsTime                         = getSetting(json, "gpsTime",           gpsTime);
+
+            captureMode                     = getSetting(json, "captureMode",       captureMode);
         }
         
         json11::Json toJson() const {
@@ -129,8 +133,8 @@ namespace motioncam {
             json["sceneLuminance"]                  = sceneLuminance;
             
             json["saturation"]                      = saturation;
-            json["blueSaturation"]                  = blueSaturation;
-            json["greenSaturation"]                 = greenSaturation;
+            json["blues"]                           = blues;
+            json["greens"]                          = greens;
 
             json["jpegQuality"]                     = jpegQuality;
             json["flipped"]                         = flipped;
@@ -140,7 +144,9 @@ namespace motioncam {
             json["gpsLongitude"]                    = gpsLongitude;
             json["gpsAltitude"]                     = gpsAltitude;
             json["gpsTime"]                         = gpsTime;
-            
+
+            json["captureMode"]                     = captureMode;
+
             return json;
         }
     };

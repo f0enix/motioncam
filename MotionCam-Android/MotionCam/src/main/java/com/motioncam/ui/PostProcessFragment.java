@@ -127,13 +127,13 @@ public class PostProcessFragment extends Fragment implements
             setPreviewDirty();
         });
 
-        mViewModel.greenSaturation.observe(getViewLifecycleOwner(), (value) -> {
-            dataBinding.greensSaturationText.setText(String.format(Locale.US, "%d", value - 50));
+        mViewModel.greens.observe(getViewLifecycleOwner(), (value) -> {
+            dataBinding.greensText.setText(String.format(Locale.US, "%d", value - 50));
             setPreviewDirty();
         });
 
-        mViewModel.blueSaturation.observe(getViewLifecycleOwner(), (value) -> {
-            dataBinding.bluesSaturationText.setText(String.format(Locale.US, "%d", value - 50));
+        mViewModel.blues.observe(getViewLifecycleOwner(), (value) -> {
+            dataBinding.bluesText.setText(String.format(Locale.US, "%d", value - 50));
             setPreviewDirty();
         });
 
@@ -290,7 +290,7 @@ public class PostProcessFragment extends Fragment implements
                 R.id.contrastSeekBar,
                 R.id.blacksSeekBar,
                 R.id.saturationSeekBar,
-                R.id.greensSaturationSeekBar,
+                R.id.greensSeekBar,
                 R.id.bluesSeekBar,
                 R.id.sharpnessSeekBar,
                 R.id.detailSeekBar,

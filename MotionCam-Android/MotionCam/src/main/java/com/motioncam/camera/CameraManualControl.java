@@ -6,6 +6,7 @@ import java.util.List;
 public class CameraManualControl {
 
     public enum ISO {
+        ISO_50(50),
         ISO_100(100),
         ISO_125(125),
         ISO_160(160),
@@ -132,10 +133,8 @@ public class CameraManualControl {
         }
 
         public double getEv(double cameraAperture) {
-            double t = shutterSpeed.value / (1000.0*1000.0*1000.0);
-            double ev100 = log2(cameraAperture*cameraAperture / t);
-
-            return ev100 - log2(iso.value / 100.0);
+            final double s = cameraAperture*cameraAperture;
+            return log2(s / (shutterSpeed.value / 1.0e9)) - log2(iso.value / 100.0);
         }
 
         public final ISO iso;
@@ -199,11 +198,64 @@ public class CameraManualControl {
             Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_3,  ISO.ISO_3200)
     };
 
+    public static Exposure[] HDR_EXPOSURE_LINE = new Exposure[] {
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_8000, ISO.ISO_50),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_8000, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_6400, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_5000, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_4000, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_3200, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_2500, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_2000, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_1600, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_1250, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_1000, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_800, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_640, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_500, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_400, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_320, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_250, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_200, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_160, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_125, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_100, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_80, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_60, ISO.ISO_100),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_100),
+
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_125),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_160),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_200),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_250),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_320),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_400),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_500),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_640),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_800),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_1000),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_1000),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_1000),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_1000),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_1000),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_1000),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_1000),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_1250),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_1600),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_2000),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_2500),
+            Exposure.Create(SHUTTER_SPEED.EXPOSURE_1_30, ISO.ISO_3200)
+    };
+
     public static Exposure MapToExposureLine(double cameraAperture, Exposure exposure) {
+        return MapToExposureLine(cameraAperture, exposure, EXPOSURE_LINE);
+    }
+
+    public static Exposure MapToExposureLine(double cameraAperture, Exposure exposure, Exposure[] exposureLine) {
         double min = 1e10;
         Exposure result = exposure;
 
-        for(Exposure srcExposure : EXPOSURE_LINE) {
+        for(Exposure srcExposure : exposureLine) {
             double d = Math.abs(srcExposure.getEv(cameraAperture) - exposure.getEv(cameraAperture));
             if(d < min) {
                 result = srcExposure;

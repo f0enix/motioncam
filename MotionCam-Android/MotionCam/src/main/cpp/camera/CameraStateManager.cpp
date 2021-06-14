@@ -175,16 +175,12 @@ namespace motioncam {
 
     void CameraStateManager::updateCaptureRequestExposure() {
         uint8_t aeMode = ACAMERA_CONTROL_AE_MODE_ON;
-        uint8_t controlMode = ACAMERA_CONTROL_MODE_USE_SCENE_MODE;
-        uint8_t sceneMode = ACAMERA_CONTROL_SCENE_MODE_FACE_PRIORITY;
-        uint8_t faceMode = ACAMERA_STATISTICS_FACE_DETECT_MODE_FULL;
+        uint8_t controlMode = ACAMERA_CONTROL_MODE_AUTO;
 
         if(mCameraMode == CameraMode::AUTO) {
             ACaptureRequest_setEntry_i32(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_SENSITIVITY, 0, nullptr);
             ACaptureRequest_setEntry_i64(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_EXPOSURE_TIME, 0, nullptr);
             ACaptureRequest_setEntry_i32(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_EXPOSURE_COMPENSATION, 1, &mExposureCompensation);
-            ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_SCENE_MODE, 1, &sceneMode);
-            ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_STATISTICS_FACE_DETECT_MODE, 1, &faceMode);
         }
         else if(mCameraMode == CameraMode::MANUAL) {
             aeMode = ACAMERA_CONTROL_AE_MODE_OFF;
@@ -193,8 +189,6 @@ namespace motioncam {
             ACaptureRequest_setEntry_i32(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_SENSITIVITY, 1, &mUserIso);
             ACaptureRequest_setEntry_i64(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_SENSOR_EXPOSURE_TIME, 1, &mUserExposureTime);
             ACaptureRequest_setEntry_i32(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_EXPOSURE_COMPENSATION, 0, nullptr);
-            ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_SCENE_MODE, 0, nullptr);
-            ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_STATISTICS_FACE_DETECT_MODE, 0, nullptr);
 
             LOGD("userIso=%d, userExposure=%.4f", mUserIso, mUserExposureTime/1.0e9f);
         }
@@ -211,15 +205,15 @@ namespace motioncam {
         ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 1, &afTrigger);
 
         // Set the focus region
-        int w = static_cast<int>(mCameraDescription.sensorSize.width * 0.125f);
-        int h = static_cast<int>(mCameraDescription.sensorSize.height * 0.125f);
+        int w = static_cast<int>(mCameraDescription.sensorSize.width * 0.33f);
+        int h = static_cast<int>(mCameraDescription.sensorSize.height * 0.33f);
 
         int px = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.left + mCameraDescription.sensorSize.width) * mRequestedFocusX);
         int py = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.top + mCameraDescription.sensorSize.height) * mRequestedFocusY);
 
-        int32_t afRegion[5] = { px - w, py - h,
-                                px + w, py + h,
-                                1000 };
+        int32_t afRegion[5] = { px - w/2, py - h/2,
+                                px + w/2, py + h/2,
+                                500 };
 
         ACaptureRequest_setEntry_i32(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_REGIONS, 5, &afRegion[0]);
 
@@ -281,9 +275,10 @@ namespace motioncam {
 
         ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
         ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 1, &afTrigger);
-        
-        int w = mCameraDescription.sensorSize.width;
-        int h = mCameraDescription.sensorSize.height;
+
+        // Set the focus region
+        int w = static_cast<int>(mCameraDescription.sensorSize.width);
+        int h = static_cast<int>(mCameraDescription.sensorSize.height);
 
         int32_t afRegion[5] = { 0, 0,
                                 w, h,
@@ -298,7 +293,17 @@ namespace motioncam {
             aeTrigger = ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER_START;
 
             if(mCameraDescription.maxAeRegions > 0) {
-                ACaptureRequest_setEntry_i32(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_REGIONS, 5, &afRegion[0]);
+                w = static_cast<int>(mCameraDescription.sensorSize.width * 0.75f);
+                h = static_cast<int>(mCameraDescription.sensorSize.height * 0.75f);
+
+                int px = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.left + mCameraDescription.sensorSize.width) * 0.5f);
+                int py = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.top + mCameraDescription.sensorSize.height) * 0.5f);
+
+                int32_t aeRegion[10] = {px - w/2, py - h/2,
+                                        px + w/2, py + h/2,
+                                        500 };
+
+                ACaptureRequest_setEntry_i32(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AE_REGIONS, 10, &aeRegion[0]);
             }
         }
         else {

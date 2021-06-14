@@ -236,21 +236,21 @@
                 android:orientation="horizontal">
 
                 <TextView
-                    android:id="@+id/greensSaturationText"
+                    android:id="@+id/greensText"
                     android:layout_width="@dimen/preview_settings_value_width"
                     android:layout_height="match_parent"
                     android:gravity="end|center_vertical"
                     android:textAppearance="@style/MotionCam.TextAppearance.Small" />
 
                 <SeekBar
-                    android:id="@+id/greensSaturationSeekBar"
+                    android:id="@+id/greensSeekBar"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:max="100"
                     android:paddingTop="@dimen/seekBarPadding"
                     android:paddingBottom="@dimen/seekBarPadding"
-                    android:progress="@={viewModel.greenSaturation}" />
+                    android:progress="@={viewModel.greens}" />
             </LinearLayout>
 
             <TextView
@@ -265,7 +265,7 @@
                 android:orientation="horizontal">
 
                 <TextView
-                    android:id="@+id/bluesSaturationText"
+                    android:id="@+id/bluesText"
                     android:layout_width="@dimen/preview_settings_value_width"
                     android:layout_height="match_parent"
                     android:gravity="end|center_vertical"
@@ -279,7 +279,7 @@
                     android:max="100"
                     android:paddingTop="@dimen/seekBarPadding"
                     android:paddingBottom="@dimen/seekBarPadding"
-                    android:progress="@={viewModel.blueSaturation}" />
+                    android:progress="@={viewModel.blues}" />
             </LinearLayout>
 
         </LinearLayout>

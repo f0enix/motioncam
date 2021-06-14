@@ -1,7 +1,5 @@
 package com.motioncam;
 
-import android.util.Log;
-
 public class DenoiseSettings {
     public float spatialWeight;
     public float chromaEps;
@@ -20,13 +18,10 @@ public class DenoiseSettings {
                 '}';
     }
 
-    private void estimateFromExposure(float aperture, int iso, long exposure, float shadows) {
-        final double s = aperture*aperture;
-        final double ev = log2(s / (exposure / 1.0e9)) - log2(iso / 100.0);
-
+    private void estimateFromExposure(float ev, float shadows) {
         int mergeImages;
         float chromaEps;
-        float spatialDenoiseWeight = 0.0f;
+        float spatialDenoiseWeight;
 
         if(ev > 11.99) {
             spatialDenoiseWeight    = 0.0f;
@@ -34,9 +29,9 @@ public class DenoiseSettings {
             mergeImages             = 1;
         }
         else if(ev > 9.99) {
-            spatialDenoiseWeight    = 0.5f;
+            spatialDenoiseWeight    = 0.0f;
             chromaEps               = 8.0f;
-            mergeImages             = 1;
+            mergeImages             = 4;
         }
         else if(ev > 7.99) {
             spatialDenoiseWeight    = 0.5f;
@@ -45,7 +40,7 @@ public class DenoiseSettings {
         }
         else if(ev > 5.99) {
             spatialDenoiseWeight    = 1.0f;
-            chromaEps               = 12.0f;
+            chromaEps               = 16.0f;
             mergeImages             = 4;
         }
         else if(ev > 3.99) {
@@ -64,17 +59,23 @@ public class DenoiseSettings {
             mergeImages             = 12;
         }
 
-        // Limit capture to 5 seconds
-        if(mergeImages * (exposure / 1.0e9) > 5.0f) {
-            mergeImages = (int) Math.round(5.0f / (exposure / 1.0e9));
+        if(shadows > 7.99) {
+            mergeImages             += 4;
+            chromaEps               = Math.max(8.0f, chromaEps);
+            spatialDenoiseWeight    = Math.max(0.5f, spatialDenoiseWeight);
         }
+
+        // Limit capture to 5 seconds
+//        if(mergeImages * (exposure / 1.0e9) > 5.0f) {
+//            mergeImages = (int) Math.round(5.0f / (exposure / 1.0e9));
+//        }
 
         this.numMergeImages = mergeImages;
         this.chromaEps      = chromaEps;
         this.spatialWeight  = spatialDenoiseWeight;
     }
 
-    public DenoiseSettings(float noiseProfile, float aperture, int iso, long exposure, float shadows) {
-        estimateFromExposure(aperture, iso, exposure, shadows);
+    public DenoiseSettings(float noiseProfile, float ev, float shadows) {
+        estimateFromExposure(ev, shadows);
     }
 }

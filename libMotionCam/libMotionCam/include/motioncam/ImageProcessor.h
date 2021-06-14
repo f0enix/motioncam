@@ -54,14 +54,14 @@ namespace motioncam {
                                      const bool cumulative,
                                      const int downscale);
 
+        static float getShadowKeyValue(const RawImageBuffer& rawBuffer, const RawCameraMetadata& cameraMetadata, bool nightMode);
+        
         static void estimateBasicSettings(const RawImageBuffer& rawBuffer,
                                           const RawCameraMetadata& cameraMetadata,
-                                          const float shadowsKeyValue,
                                           PostProcessSettings& outSettings);
         
         static void estimateSettings(const RawImageBuffer& rawBuffer,
                                      const RawCameraMetadata& cameraMetadata,
-                                     const float shadowsKeyValue,
                                      PostProcessSettings& outSettings);
         
         static float estimateShadows(const cv::Mat& histogram, float keyValue=0.22f);
@@ -90,7 +90,10 @@ namespace motioncam {
         
         static cv::Mat registerImage(const Halide::Runtime::Buffer<uint8_t>& referenceBuffer,
                                      const Halide::Runtime::Buffer<uint8_t>& toAlignBuffer);
-        
+
+        static cv::Mat registerImage2(const Halide::Runtime::Buffer<uint8_t>& referenceBuffer,
+                                      const Halide::Runtime::Buffer<uint8_t>& toAlignBuffer);
+
         static void matchExposures(
             const RawCameraMetadata& cameraMetadata, const RawImageBuffer& reference, const RawImageBuffer& toMatch, float& outScale, float& outWhitePoint);
 

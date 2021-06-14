@@ -53,7 +53,7 @@ public class SettingsViewModel extends ViewModel {
         jpegQuality.setValue(prefs.getInt(PREFS_KEY_JPEG_QUALITY, CameraProfile.DEFAULT_JPEG_QUALITY));
         autoNightMode.setValue(prefs.getBoolean(PREFS_KEY_AUTO_NIGHT_MODE, true));
         dualExposureControls.setValue(prefs.getBoolean(PREFS_KEY_DUAL_EXPOSURE_CONTROLS, false));
-        hdrEv.setValue(prefs.getInt(PREFS_KEY_HDR_EV, 4));
+        hdrEv.setValue(prefs.getInt(PREFS_KEY_HDR_EV, 5));
 
         // Capture mode
         String rawModeStr = prefs.getString(PREFS_KEY_CAPTURE_MODE, RawMode.RAW10.name());
