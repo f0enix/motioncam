@@ -186,7 +186,7 @@ Func DenoiseGenerator::registeredInput() {
         .dim(2).set_stride(1);
 
     Func clamped = BoundaryConditions::repeat_edge(input1, { {0, width}, {0, height}, {0, 4} } );
-    // inputF32(v_x, v_y, v_c) = cast<float>(clamped(v_x, v_y, v_c));
+    inputF32(v_x, v_y, v_c) = cast<float>(clamped(v_x, v_y, v_c));
     
     Expr flowX = clamp(v_x, 0, flowMap.width() - 1);
     Expr flowY = clamp(v_y, 0, flowMap.height() - 1);
@@ -197,15 +197,15 @@ Func DenoiseGenerator::registeredInput() {
     Expr x = cast<int16_t>(fx + 0.5f);
     Expr y = cast<int16_t>(fy + 0.5f);
     
-    result(v_x, v_y, v_c) = clamped(x, y, v_c);
+    // result(v_x, v_y, v_c) = clamped(x, y, v_c);
 
-    // Expr a = fx - x;
-    // Expr b = fy - y;
+    Expr a = fx - x;
+    Expr b = fy - y;
     
-    // Expr p0 = lerp(inputF32(x, y, v_c), inputF32(x + 1, y, v_c), a);
-    // Expr p1 = lerp(inputF32(x, y + 1, v_c), inputF32(x + 1, y + 1, v_c), a);
+    Expr p0 = lerp(inputF32(x, y, v_c), inputF32(x + 1, y, v_c), a);
+    Expr p1 = lerp(inputF32(x, y + 1, v_c), inputF32(x + 1, y + 1, v_c), a);
     
-    // result(v_x, v_y, v_c) = saturating_cast<uint16_t>(lerp(p0, p1, b) + 0.5f);
+    result(v_x, v_y, v_c) = saturating_cast<uint16_t>(lerp(p0, p1, b) + 0.5f);
 
     return result;
 }

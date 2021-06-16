@@ -2,7 +2,8 @@ package com.motioncam;
 
 public class DenoiseSettings {
     public float spatialWeight;
-    public float chromaEps;
+    public float chromaFilterEps;
+    public float chromaBlendWeight;
     public int numMergeImages;
 
     double log2(double v) {
@@ -13,56 +14,65 @@ public class DenoiseSettings {
     public String toString() {
         return "DenoiseSettings{" +
                 "spatialWeight=" + spatialWeight +
-                ", chromaEps=" + chromaEps +
+                ", chromaFilterEps=" + chromaFilterEps +
+                ", chromaBlendWeight=" + chromaBlendWeight +
                 ", numMergeImages=" + numMergeImages +
                 '}';
     }
 
     private void estimateFromExposure(float ev, float shadows) {
         int mergeImages;
-        float chromaEps;
+        float chromaFilterEps;
+        float chromaBlendWeight;
         float spatialDenoiseWeight;
 
         if(ev > 11.99) {
             spatialDenoiseWeight    = 0.0f;
-            chromaEps               = 8.0f;
+            chromaFilterEps         = 0.01f;
+            chromaBlendWeight       = 4.0f;
             mergeImages             = 1;
         }
         else if(ev > 9.99) {
             spatialDenoiseWeight    = 0.0f;
-            chromaEps               = 8.0f;
+            chromaFilterEps         = 0.01f;
+            chromaBlendWeight       = 2.0f;
             mergeImages             = 4;
         }
         else if(ev > 7.99) {
             spatialDenoiseWeight    = 0.5f;
-            chromaEps               = 8.0f;
+            chromaFilterEps         = 0.02f;
+            chromaBlendWeight       = 2.0f;
             mergeImages             = 4;
         }
         else if(ev > 5.99) {
             spatialDenoiseWeight    = 1.0f;
-            chromaEps               = 16.0f;
+            chromaFilterEps         = 0.04f;
+            chromaBlendWeight       = 2.0f;
             mergeImages             = 4;
         }
         else if(ev > 3.99) {
             spatialDenoiseWeight    = 1.0f;
-            chromaEps               = 16.0f;
+            chromaFilterEps         = 0.04f;
+            chromaBlendWeight       = 2.0f;
             mergeImages             = 6;
         }
         else if(ev > 0) {
             spatialDenoiseWeight    = 1.0f;
-            chromaEps               = 16.0f;
+            chromaFilterEps         = 0.06f;
+            chromaBlendWeight       = 2.0f;
             mergeImages             = 9;
         }
         else {
-            spatialDenoiseWeight    = 1.5f;
-            chromaEps               = 16.0f;
+            spatialDenoiseWeight    = 1.0f;
+            chromaFilterEps         = 0.06f;
+            chromaBlendWeight       = 1.0f;
             mergeImages             = 12;
         }
 
         if(shadows > 7.99) {
             mergeImages             += 4;
-            chromaEps               = Math.max(8.0f, chromaEps);
-            spatialDenoiseWeight    = Math.max(0.5f, spatialDenoiseWeight);
+            chromaBlendWeight        = Math.min(2.0f, chromaBlendWeight);
+            chromaFilterEps          = Math.max(0.06f, chromaFilterEps);
         }
 
         // Limit capture to 5 seconds
@@ -70,9 +80,10 @@ public class DenoiseSettings {
 //            mergeImages = (int) Math.round(5.0f / (exposure / 1.0e9));
 //        }
 
-        this.numMergeImages = mergeImages;
-        this.chromaEps      = chromaEps;
-        this.spatialWeight  = spatialDenoiseWeight;
+        this.numMergeImages     = mergeImages;
+        this.chromaFilterEps    = chromaFilterEps;
+        this.chromaBlendWeight  = chromaBlendWeight;
+        this.spatialWeight      = spatialDenoiseWeight;
     }
 
     public DenoiseSettings(float noiseProfile, float ev, float shadows) {

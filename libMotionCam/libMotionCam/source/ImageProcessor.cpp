@@ -412,7 +412,8 @@ namespace motioncam {
                     settings.sharpen0,
                     settings.sharpen1,
                     sharpenThreshold,
-                    settings.chromaEps,
+                    settings.chromaFilterEps,
+                    settings.chromaBlendWeight,
                     outputBuffer);
         
         outputBuffer.device_sync();
@@ -466,7 +467,6 @@ namespace motioncam {
         settings.shadows = shadows;
         settings.blacks = 0;
         settings.contrast = 0.5f;
-        settings.chromaEps = 0;
         settings.sharpen0 = 0;
         settings.sharpen1 = 0;
         
@@ -520,7 +520,6 @@ namespace motioncam {
         settings.shadows = shadows;
         settings.blacks = blacks;
         settings.contrast = 0.5f;
-        settings.chromaEps = 0;
         settings.sharpen0 = 0;
         settings.sharpen1 = 0;
 
@@ -1159,6 +1158,17 @@ namespace motioncam {
             }
         }
         
+        outWhitePoint = 1.0f;
+        
+        for(int i = toMatchHistogram.cols - 1; i >= 0; i--) {
+            float a = toMatchHistogram.at<float>(i);
+            if(a < 1.0f) {
+                outWhitePoint = toMatchHistogram.cols / (float) (i + 1);
+                break;
+            }
+                
+        }
+        
         float scale = 0;
         
         int Imin = std::min((int) matches.size(), 4);
@@ -1172,8 +1182,6 @@ namespace motioncam {
             outScale = 1.0f;
         else
             outScale = scale / (float) (Imax - Imin);
-        
-        outWhitePoint = 1;
     }
 
     void ImageProcessor::process(RawContainer& rawContainer, const std::string& outputPath, const ImageProcessorProgress& progressListener)
@@ -1599,7 +1607,7 @@ namespace motioncam {
     }
 
     double ImageProcessor::measureSharpness(const RawImageBuffer& rawBuffer) {
-//        Measure measure("measureSharpness()");
+        //Measure measure("measureSharpness()");
         
         int halfWidth  = rawBuffer.width / 2;
         int halfHeight = rawBuffer.height / 2;
@@ -1618,11 +1626,11 @@ namespace motioncam {
         outputBuffer.copy_to_host();
         
         cv::Mat output(outputBuffer.height(), outputBuffer.width(), CV_16U, outputBuffer.data());
-
+        
         cv::Scalar m, stddev;
         cv::meanStdDev(output, m, stddev);
         
-        return stddev[0]*stddev[0];
+        return m[0];
     }
 
     std::vector<Halide::Runtime::Buffer<uint16_t>> ImageProcessor::denoise(RawContainer& rawContainer, ImageProgressHelper& progressHelper)
@@ -1750,7 +1758,7 @@ namespace motioncam {
                                   wavelet[3],
                                   wavelet[4],
                                   wavelet[5],
-                                  rawContainer.getPostProcessSettings().spatialDenoiseAggressiveness*noiseSigma,
+                                  noiseSigma,//rawContainer.getPostProcessSettings().spatialDenoiseAggressiveness*noiseSigma,
                                   false,
                                   1,
                                   1,
@@ -2044,7 +2052,7 @@ namespace motioncam {
         float exposureScale, whitePoint;
         
         matchExposures(cameraMetadata, reference, underexposed, exposureScale, whitePoint);
-                
+        
         //
         // Register images
         //
@@ -2066,7 +2074,6 @@ namespace motioncam {
             underexposedImage->previewBuffer.height(), underexposedImage->previewBuffer.width(), CV_8U, underexposedImage->previewBuffer.data());
         cv::Mat alignedExposure;
 
-//        cv::warpPerspective(underExposedExposure, alignedExposure, warpMatrix, underExposedExposure.size(), cv::INTER_LINEAR, cv::BORDER_REPLICATE);
         cv::warpAffine(underExposedExposure, alignedExposure, warpMatrix, underExposedExposure.size(), cv::INTER_LINEAR, cv::BORDER_REPLICATE);
         
         Halide::Runtime::Buffer<uint8_t> alignedBuffer = ToHalideBuffer<uint8_t>(alignedExposure);
@@ -2103,7 +2110,6 @@ namespace motioncam {
             int offset = c * underexposedImage->rawBuffer.stride(2);
             cv::Mat channel(underexposedImage->rawBuffer.height(), underexposedImage->rawBuffer.width(), CV_16U, underexposedImage->rawBuffer.data() + offset);
 
-//            cv::warpPerspective(channel, alignedChannels[c], warpMatrix, channel.size(), cv::INTER_LINEAR, cv::BORDER_REPLICATE);
             cv::warpAffine(channel, alignedChannels[c], warpMatrix, channel.size(), cv::INTER_CUBIC, cv::BORDER_REPLICATE);
             
             inputBuffers[c] = ToHalideBuffer<uint16_t>(alignedChannels[c]);
@@ -2155,14 +2161,14 @@ namespace motioncam {
                     cameraMetadata.whiteLevel,
                     whitePoint,
                     outputBuffer);
-                
+        
         //
         // Return HDR metadata
         //
         
         auto hdrMetadata = std::make_shared<HdrMetadata>();
         
-        hdrMetadata->exposureScale  = 1.0f / exposureScale;
+        hdrMetadata->exposureScale  = 1.0f / (exposureScale / whitePoint);
         hdrMetadata->hdrInput       = outputBuffer;
         hdrMetadata->mask           = ToHalideBuffer<uint8_t>(mask).copy();
         hdrMetadata->error          = error;

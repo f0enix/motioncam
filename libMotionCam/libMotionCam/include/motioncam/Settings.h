@@ -17,7 +17,8 @@ namespace motioncam {
         float temperature;
         float tint;
         
-        float chromaEps;
+        float chromaFilterEps;
+        float chromaBlendWeight;
 
         float gamma;
         float tonemapVariance;
@@ -51,7 +52,8 @@ namespace motioncam {
             spatialDenoiseAggressiveness(1.0f),
             temperature(-1),
             tint(-1),
-            chromaEps(0),
+            chromaFilterEps(0.02f),
+            chromaBlendWeight(0),
             gamma(2.2f),
             tonemapVariance(0.25f),
             shadows(1.0f),
@@ -78,7 +80,8 @@ namespace motioncam {
         PostProcessSettings(const json11::Json& json) : PostProcessSettings() {
             spatialDenoiseAggressiveness    = getSetting(json, "spatialDenoiseAggressiveness",  spatialDenoiseAggressiveness);
             
-            chromaEps                       = getSetting(json, "chromaEps",         chromaEps);
+            chromaFilterEps                 = getSetting(json, "chromaFilterEps",         chromaFilterEps);
+            chromaBlendWeight               = getSetting(json, "chromaBlendWeight", chromaBlendWeight);
             tonemapVariance                 = getSetting(json, "tonemapVariance",   tonemapVariance);
 
             gamma                           = getSetting(json, "gamma",             gamma);
@@ -116,7 +119,8 @@ namespace motioncam {
             json11::Json::object json;
             
             json["spatialDenoiseAggressiveness"]    = spatialDenoiseAggressiveness;
-            json["chromaEps"]                       = chromaEps;
+            json["chromaFilterEps"]                 = chromaFilterEps;
+            json["chromaBlendWeight"]               = chromaBlendWeight;
             json["gamma"]                           = gamma;
             json["tonemapVariance"]                 = tonemapVariance;
             json["shadows"]                         = shadows;

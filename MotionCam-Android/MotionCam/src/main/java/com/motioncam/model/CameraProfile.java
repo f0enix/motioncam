@@ -38,7 +38,7 @@ public class CameraProfile {
     public static final int DEFAULT_JPEG_QUALITY = 95;
 
     // Light
-    public static final int DEFAULT_CONTRAST = 30;
+    public static final int DEFAULT_CONTRAST = 50;
     public static final int DEFAULT_WHITE_POINT = 50;
 
     // Saturation
@@ -49,7 +49,4 @@ public class CameraProfile {
     // Detail
     public static final int DEFAULT_SHARPNESS = 40;
     public static final int DEFAULT_DETAIL = 25;
-
-    // Denoise
-    public static final float DEFAULT_CHROMA_EPS = 4;
 }

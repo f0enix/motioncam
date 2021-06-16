@@ -104,10 +104,12 @@ void GuidedFilter::generate() {
     
     output(v_x, v_y) = saturating_cast(output_type, (mean_a(v_x, v_y) * I(v_x, v_y)) + mean_b(v_x, v_y));
 
-    if(get_target().has_gpu_feature())
-        schedule_for_gpu();
-    else
-        schedule_for_cpu();
+    if(!auto_schedule) {
+        if(get_target().has_gpu_feature())
+            schedule_for_gpu();
+        else
+            schedule_for_cpu();
+    }
 }
 
 void GuidedFilter::schedule() {    
@@ -1383,20 +1385,20 @@ void PostProcessBase::linearScale(Func& result, Func image, Expr fromWidth, Expr
     Expr scaleX = toWidth * fast_inverse(cast<float>(fromWidth));
     Expr scaleY = toHeight * fast_inverse(cast<float>(fromHeight));
     
-    Expr fx = max(0, (v_x + 0.5f) * fast_inverse(scaleX) - 0.5f);
-    Expr fy = max(0, (v_y + 0.5f) * fast_inverse(scaleY) - 0.5f);
+    Expr fx = max(0.0f, (v_x + 0.5f) * fast_inverse(scaleX) - 0.5f);
+    Expr fy = max(0.0f, (v_y + 0.5f) * fast_inverse(scaleY) - 0.5f);
     
-    Expr x = cast<int>(fx);
-    Expr y = cast<int>(fy);
+    Expr x = cast<int16_t>(fx);
+    Expr y = cast<int16_t>(fy);
     
     Expr a = fx - x;
     Expr b = fy - y;
 
-    Expr x0 = clamp(x, 0, fromWidth - 1);
-    Expr y0 = clamp(y, 0, fromHeight - 1);
+    Expr x0 = clamp(x, 0, cast<int16_t>(fromWidth) - 1);
+    Expr y0 = clamp(y, 0, cast<int16_t>(fromHeight) - 1);
 
-    Expr x1 = clamp(x + 1, 0, fromWidth - 1);
-    Expr y1 = clamp(y + 1, 0, fromHeight - 1);
+    Expr x1 = clamp(x + 1, 0, cast<int16_t>(fromWidth) - 1);
+    Expr y1 = clamp(y + 1, 0, cast<int16_t>(fromHeight) - 1);
     
     Expr p0 = lerp(cast<float>(image(x0, y0)), cast<float>(image(x1, y0)), a);
     Expr p1 = lerp(cast<float>(image(x0, y1)), cast<float>(image(x1, y1)), a);
@@ -1457,8 +1459,9 @@ public:
     Input<float> sharpen0{"sharpen0"};
     Input<float> sharpen1{"sharpen1"};
     Input<float> sharpenThreshold{"sharpenThreshold"};    
-    Input<float> chromaFilterWeight{"chromaFilterWeight"};
-    
+    Input<float> chromaEps{"chromaEps"};
+    Input<float> chromaBlendWeight{"chromaBlendWeight"};
+
     Output<Buffer<uint8_t>> output{"output", 3};
     
     Func clamped0{"clamped0"};
@@ -1474,6 +1477,7 @@ public:
     Func hdrMerged{"hdrMerged"};
     Func colorCorrectedYuv{"colorCorrectedYuv"};
     Func Yfiltered{"Yfiltered"}, Udownsampled{"Udownsampled"}, Vdownsampled{"Vdownsampled"};
+    Func Ublended{"Ublended"}, Vblended{"Vblended"};
     Func uvDownsampled{"uvDownsampled"};
     Func tonemapIn{"tonemapIn"};
     Func tonemapOutputRgb{"tonemapOutputRgb"};
@@ -1636,18 +1640,13 @@ void PostProcessGenerator::generate()
     Udownsampled = downsample(x, Utemp);
     Vdownsampled = downsample(y, Vtemp);
 
-    uvDownsampled(v_x, v_y, v_c) = select(v_c == 0, Udownsampled(v_x, v_y), Vdownsampled(v_x, v_y));
+    auto gf0 = create<GuidedFilter>();
+    gf0->radius.set(31);
+    gf0->apply(Udownsampled, chromaEps*chromaEps*65535.0f*65535.0f);
 
-    Func Udenoise{"Udenoise"}, Vdenoise{"Vdenoise"};
-    Func UdenoiseTemp{"UdenoiseTemp"}, VdenoiseTemp{"VdenoiseTemp"};
-    
-    Udenoise.define_extern("extern_denoise", { uvDownsampled, in0.width(), in0.height(), 0, chromaFilterWeight}, UInt(16), 2);
-    if(!auto_schedule)
-        Udenoise.compute_root();
-
-    Vdenoise.define_extern("extern_denoise", { uvDownsampled, in0.width(), in0.height(), 1, chromaFilterWeight}, UInt(16), 2);
-    if(!auto_schedule)
-        Vdenoise.compute_root();
+    auto gf1 = create<GuidedFilter>();
+    gf1->radius.set(31);
+    gf1->apply(Vdownsampled, chromaEps*chromaEps*65535.0f*65535.0f);
 
     tonemap = create<TonemapGenerator>();
 
@@ -1661,8 +1660,24 @@ void PostProcessGenerator::generate()
 
     sharpen(tonemap->output);
 
-    finalTonemap(v_x, v_y, v_c) = select(v_c == 0, upsample(Udenoise, UdenoiseTemp)(v_x, v_y) / 65535.0f,
-                                         v_c == 1, upsample(Vdenoise, VdenoiseTemp)(v_x, v_y) / 65535.0f,
+    Func UdenoiseTemp{"UdenoiseTemp"}, VdenoiseTemp{"VdenoiseTemp"};
+
+    Expr U = upsample(gf0->output, UdenoiseTemp)(v_x, v_y) / 65535.0f;
+    Expr V = upsample(gf1->output, VdenoiseTemp)(v_x, v_y) / 65535.0f;
+
+    Func UVweight{"UVweight"};
+
+    UVweight(v_i) = cast<uint16_t>(clamp(1.0f - exp(-chromaBlendWeight * pow(v_i / 65535.0f, 1.0f/2.2f)), 0.0f, 1.0f) * 65535.0f);    
+    if(!auto_schedule)
+        UVweight.compute_root().vectorize(v_i, 8);
+
+    Expr UVblendWeight = UVweight(saturating_cast<uint16_t>(Y(v_x, v_y) * 1.0f/hdrScale)) / 65535.0f;
+
+    Ublended(v_x, v_y) = (UVblendWeight*x(v_x, v_y)/65535.0f) + (1.0f - UVblendWeight)*U;
+    Vblended(v_x, v_y) = (UVblendWeight*y(v_x, v_y)/65535.0f) + (1.0f - UVblendWeight)*V;
+
+    finalTonemap(v_x, v_y, v_c) = select(v_c == 0, Ublended(v_x, v_y),
+                                         v_c == 1, Vblended(v_x, v_y),
                                                    sharpened(v_x, v_y) / 65535.0f);
 
     Func tonemappedXYZ{"XYZ"};
@@ -1740,7 +1755,8 @@ void PostProcessGenerator::generate()
     greens.set_estimate(1.0f);
     sharpen0.set_estimate(2.0f);
     sharpen1.set_estimate(2.0f);
-    chromaFilterWeight.set_estimate(8.0f);
+    chromaBlendWeight.set_estimate(1.0f);
+    chromaEps.set_estimate(0.01f);
     sharpenThreshold.set_estimate(32.0f);
     
     cameraToPcs.set_estimates({{0, 3}, {0, 3}});
@@ -1848,14 +1864,15 @@ void PostProcessGenerator::schedule_for_cpu() {
         .parallel(tile_idx)
         .vectorize(v_xii, vector_size_u16);
 
-    uvDownsampled
+    Udownsampled
         .compute_root()
-        .bound(v_c, 0, 2)
-        .reorder(v_c, v_x, v_y)
-        .split(v_y, v_yo, v_yi, 32)
-        .vectorize(v_x, vector_size_u16)
-        .unroll(v_c)
-        .parallel(v_yo);
+        .parallel(v_y, 32)
+        .vectorize(v_x, vector_size_u16);
+
+    Vdownsampled
+        .compute_root()
+        .parallel(v_y, 32)
+        .vectorize(v_x, vector_size_u16);
 
     blurOutputTmp
         .compute_at(blurOutput, v_yi)
@@ -2460,20 +2477,14 @@ void DeinterleaveRawGenerator::generate() {
 
     output(v_x, v_y, v_c) = clamped(x, y, v_c);
 
-    Expr p =
-        select( sensorArrangement == static_cast<int>(SensorArrangement::RGGB),
-                    ((cast<float>(clamped(v_x, v_y, 1)) + cast<float>(clamped(v_x, v_y, 2))) / 2.0f - blackLevel[1]) / (whiteLevel - blackLevel[1]),
+    Expr P = 0.25f * (clamped(v_x, v_y, 0) +
+                      clamped(v_x, v_y, 1) +
+                      clamped(v_x, v_y, 2) +
+                      clamped(v_x, v_y, 3));
 
-                sensorArrangement == static_cast<int>(SensorArrangement::GRBG),
-                    ((cast<float>(clamped(v_x, v_y, 0)) + cast<float>(clamped(v_x, v_y, 3))) / 2.0f - blackLevel[0]) / (whiteLevel - blackLevel[0]),
+    Expr S = (P - blackLevel[0]) / (whiteLevel - blackLevel[0]);
 
-                sensorArrangement == static_cast<int>(SensorArrangement::GBRG),
-                    ((cast<float>(clamped(v_x, v_y, 0)) + cast<float>(clamped(v_x, v_y, 3))) / 2.0f - blackLevel[0]) / (whiteLevel - blackLevel[0]),
-
-                    // BGGR
-                    ((cast<float>(clamped(v_x, v_y, 1)) + cast<float>(clamped(v_x, v_y, 2))) / 2.0f - blackLevel[1]) / (whiteLevel - blackLevel[1]) );
-
-    preview(v_x, v_y) =  gammaLut(cast<uint8_t>(clamp(p * scale * 255.0f + 0.5f, 0, 255)));
+    preview(v_x, v_y) =  gammaLut(cast<uint8_t>(clamp(S * scale * 255.0f + 0.5f, 0, 255)));
 
     input.set_estimates({ {0, 18000000} });
     width.set_estimate(4000);
@@ -2630,11 +2641,18 @@ public:
 };
 
 void GenerateEdgesGenerator::generate() {
-    Func channel, channel32;
+    Func channel[4], channel32;
 
-    deinterleave(channel, input, 0, stride, pixelFormat);
+    deinterleave(channel[0], input, 0, stride, pixelFormat);
+    deinterleave(channel[1], input, 1, stride, pixelFormat);
+    deinterleave(channel[2], input, 2, stride, pixelFormat);
+    deinterleave(channel[3], input, 3, stride, pixelFormat);
     
-    channel32(v_x, v_y) = cast<int32_t>(channel(v_x, v_y));
+    channel32(v_x, v_y) =
+        cast<int32_t>(channel[0](v_x, v_y)) +
+        cast<int32_t>(channel[1](v_x, v_y)) +
+        cast<int32_t>(channel[2](v_x, v_y)) +
+        cast<int32_t>(channel[3](v_x, v_y));
 
     Func bounded = BoundaryConditions::repeat_edge(channel32, { { 0, width - 1}, {0, height - 1} });
 
