@@ -1412,8 +1412,8 @@ void PostProcessBase::shiftHues(
     Expr H = hsvInput(v_x, v_y, 0);
     Expr S = hsvInput(v_x, v_y, 1);
 
-    Expr blueWeight   = exp(-(H - 210)*(H - 210) / 400);
-    Expr greenWeight  = exp(-(H - 90)*(H - 90) / 400);
+    Expr blueWeight   = exp(-(H - 210)*(H - 210) / 800);
+    Expr greenWeight  = exp(-(H - 90)*(H - 90) / 800);
 
     output(v_x, v_y, v_c) =
         select(v_c == 0, H + blues*blueWeight + greens*greenWeight,
@@ -1490,7 +1490,7 @@ public:
     Func saturationValue{"saturationValue"}, saturationFiltered{"saturationFiltered"};
     Func saturationApplied{"saturationApplied"};
     Func finalRgb{"finalRgb"};
-    Func gammaContrastLut{"gammaContrastLut"};
+    Func gammaLut{"gammaLut"};
     Func blurOutput{"blurOutput"};
     Func blurOutputTmp{"blurOutputTmp"};
     Func blurOutput2{"blurOutput2"};
@@ -1635,18 +1635,28 @@ void PostProcessGenerator::generate()
     y(v_x, v_y) = colorCorrectedYuv(v_x, v_y, 1);
     Y(v_x, v_y) = colorCorrectedYuv(v_x, v_y, 2);
 
+    auto gf0 = create<GuidedFilter>();
+    auto gf1 = create<GuidedFilter>();
+
+    gf0->radius.set(7);
+    gf0->apply(x, 0.01f*0.01f*65535.0f*65535.0f);
+
+    gf1->radius.set(7);
+    gf1->apply(y, 0.01f*0.01f*65535.0f*65535.0f);
+
     Func Utemp{"Utemp"}, Vtemp{"Vtemp"};
 
-    Udownsampled = downsample(x, Utemp);
-    Vdownsampled = downsample(y, Vtemp);
+    Udownsampled = downsample(gf0->output, Utemp);
+    Vdownsampled = downsample(gf1->output, Vtemp);
 
-    auto gf0 = create<GuidedFilter>();
-    gf0->radius.set(31);
-    gf0->apply(Udownsampled, chromaEps*chromaEps*65535.0f*65535.0f);
+    auto gf2 = create<GuidedFilter>();
+    auto gf3 = create<GuidedFilter>();
 
-    auto gf1 = create<GuidedFilter>();
-    gf1->radius.set(31);
-    gf1->apply(Vdownsampled, chromaEps*chromaEps*65535.0f*65535.0f);
+    gf2->radius.set(21);
+    gf2->apply(Udownsampled, chromaEps*chromaEps*65535.0f*65535.0f);
+
+    gf3->radius.set(21);
+    gf3->apply(Vdownsampled, chromaEps*chromaEps*65535.0f*65535.0f);
 
     tonemap = create<TonemapGenerator>();
 
@@ -1658,12 +1668,36 @@ void PostProcessGenerator::generate()
     // Sharpen
     //
 
-    sharpen(tonemap->output);
+    // Apply contrast curve while still in XYZ space to avoid exaggerating colours
+    Func contrastCurve{"contrastCurve"};
+
+    {
+        Expr b = 2.0f - pow(2.0f, contrast);
+        Expr a = 2.0f - 2.0f * b;
+
+        // Apply a piecewise quadratic contrast curve
+        Expr g = pow(v_i / 65535.0f, 1.0f / gamma);
+
+        Expr h = select(g > 0.5f,
+                        1.0f - (a*(1.0f-g)*(1.0f-g) + b*(1.0f-g)),
+                        a*g*g + b*g);
+
+        Expr i = pow(h, gamma);
+
+        Func contrastLut{"contrastLut"};
+
+        contrastLut(v_i) = cast<uint16_t>(clamp(i*65535.0f+0.5f, 0.0f, 65535.0f));
+        contrastLut.compute_root().vectorize(v_i, 8);
+
+        contrastCurve(v_x, v_y) = contrastLut(cast<uint16_t>(tonemap->output(v_x, v_y)));
+    }
+
+    sharpen(contrastCurve);
 
     Func UdenoiseTemp{"UdenoiseTemp"}, VdenoiseTemp{"VdenoiseTemp"};
 
-    Expr U = upsample(gf0->output, UdenoiseTemp)(v_x, v_y) / 65535.0f;
-    Expr V = upsample(gf1->output, VdenoiseTemp)(v_x, v_y) / 65535.0f;
+    Expr U = upsample(gf2->output, UdenoiseTemp)(v_x, v_y) / 65535.0f;
+    Expr V = upsample(gf3->output, VdenoiseTemp)(v_x, v_y) / 65535.0f;
 
     Func UVweight{"UVweight"};
 
@@ -1673,8 +1707,8 @@ void PostProcessGenerator::generate()
 
     Expr UVblendWeight = UVweight(saturating_cast<uint16_t>(Y(v_x, v_y) * 1.0f/hdrScale)) / 65535.0f;
 
-    Ublended(v_x, v_y) = (UVblendWeight*x(v_x, v_y)/65535.0f) + (1.0f - UVblendWeight)*U;
-    Vblended(v_x, v_y) = (UVblendWeight*y(v_x, v_y)/65535.0f) + (1.0f - UVblendWeight)*V;
+    Ublended(v_x, v_y) = UVblendWeight*(gf0->output(v_x, v_y)/65535.0f) + (1.0f - UVblendWeight)*U;
+    Vblended(v_x, v_y) = UVblendWeight*(gf1->output(v_x, v_y)/65535.0f) + (1.0f - UVblendWeight)*V;
 
     finalTonemap(v_x, v_y, v_c) = select(v_c == 0, Ublended(v_x, v_y),
                                          v_c == 1, Vblended(v_x, v_y),
@@ -1702,32 +1736,23 @@ void PostProcessGenerator::generate()
 
     hsvToBgr(finalRgb, saturationApplied);
 
-    // Finalize
-    Expr b = 2.0f - pow(2.0f, contrast);
-    Expr a = 2.0f - 2.0f * b;
-
     // Gamma correct
     Expr g = pow(v_i / 65535.0f, 1.0f / gamma);
 
-    // Apply a piecewise quadratic contrast curve
-    Expr h0 = select(g > 0.5f,
-                     1.0f - (a*(1.0f-g)*(1.0f-g) + b*(1.0f-g)),
-                     a*g*g + b*g);
-
     // Apply blacks/white point
-    Expr h1 = (h0 - blacksParam) / whitePoint;
+    Expr h = (g - blacksParam) / whitePoint;
 
-    gammaContrastLut(v_i) = cast<uint16_t>(clamp(h1*65535.0f+0.5f, 0.0f, 65535.0f));
+    gammaLut(v_i) = cast<uint16_t>(clamp(h*65535.0f+0.5f, 0.0f, 65535.0f));
 
     if(!auto_schedule) {
         if(get_target().has_gpu_feature())
-            gammaContrastLut.compute_root().gpu_tile(v_i, v_xi, 16);
+            gammaLut.compute_root().gpu_tile(v_i, v_xi, 16);
         else
-            gammaContrastLut.compute_root().vectorize(v_i, 8);
+            gammaLut.compute_root().vectorize(v_i, 8);
     }
 
     // Gamma/contrast/black adjustment
-    gammaCorrected(v_x, v_y, v_c) = gammaContrastLut(cast<uint16_t>(clamp(finalRgb(v_x, v_y, v_c) * 65535, 0, 65535))) / 65535.0f;
+    gammaCorrected(v_x, v_y, v_c) = gammaLut(cast<uint16_t>(clamp(finalRgb(v_x, v_y, v_c) * 65535.0f + 0.5f, 0.0f, 65535.0f))) / 65535.0f;
         
     //
     // Finalize output
@@ -1925,7 +1950,6 @@ class PreviewGenerator : public Halide::Generator<PreviewGenerator>, public Post
 public:
     GeneratorParam<int> rotation{"rotation", 0};
     GeneratorParam<int> tonemap_levels{"tonemap_levels", 8};
-    GeneratorParam<int> detail_radius{"detail_radius", 15};
     GeneratorParam<int> downscaleFactor{"downscale_factor", 1};
 
     Input<Buffer<uint8_t>> input{"input", 1};
@@ -1996,7 +2020,7 @@ private:
     Func blurOutput2Tmp{"blurOutput2Tmp"};
 
     Func tonemapOutputRgb{"tonemapOutputRgb"};
-    Func gammaContrastLut{"gammaContrastLut"};
+    Func gammaLut{"gammaContrastLut"};
     Func gammaCorrected{"gammaCorrected"};
     Func hsvInput{"hsvInput"};
     Func saturationApplied{"saturationApplied"};
@@ -2030,9 +2054,6 @@ void PreviewGenerator::generate() {
     deinterleave(in[1], inputRepeated, 1, stride, pixelFormat);
     deinterleave(in[2], inputRepeated, 2, stride, pixelFormat);
     deinterleave(in[3], inputRepeated, 3, stride, pixelFormat);
-
-    Expr w = width;
-    Expr h = height;
     
     Func input("input");
 
@@ -2046,10 +2067,10 @@ void PreviewGenerator::generate() {
     downscaled = downscale(input, downscaledTemp, downscaleFactor);
 
     // Shading map
-    linearScale(shadingMap[0], inShadingMap0, inShadingMap0.width(), inShadingMap0.height(), w, h);
-    linearScale(shadingMap[1], inShadingMap1, inShadingMap1.width(), inShadingMap1.height(), w, h);
-    linearScale(shadingMap[2], inShadingMap2, inShadingMap2.width(), inShadingMap2.height(), w, h);
-    linearScale(shadingMap[3], inShadingMap3, inShadingMap3.width(), inShadingMap3.height(), w, h);
+    linearScale(shadingMap[0], inShadingMap0, inShadingMap0.width(), inShadingMap0.height(), width, height);
+    linearScale(shadingMap[1], inShadingMap1, inShadingMap1.width(), inShadingMap1.height(), width, height);
+    linearScale(shadingMap[2], inShadingMap2, inShadingMap2.width(), inShadingMap2.height(), width, height);
+    linearScale(shadingMap[3], inShadingMap3, inShadingMap3.width(), inShadingMap3.height(), width, height);
 
     rearrange(demosaicInput, downscaled, sensorArrangement);
 
@@ -2061,7 +2082,7 @@ void PreviewGenerator::generate() {
     downscaledInput(v_x, v_y, v_c) = select(v_c == 0,  clamp( c0,               0.0f, asShotVector[0] ),
                                             v_c == 1,  clamp( (c1 + c2) / 2,    0.0f, asShotVector[1] ),
                                                        clamp( c3,               0.0f, asShotVector[2] ));
-    // Transform to XYZ space
+
     Func XYZ{"XYZ"};
 
     transform(XYZ, downscaledInput, cameraToPcs);
@@ -2071,25 +2092,51 @@ void PreviewGenerator::generate() {
             v_c == 1, XYZ(v_x, v_y, 1) / max(1e-5f, XYZ(v_x, v_y, 0) + XYZ(v_x, v_y, 1) + XYZ(v_x, v_y, 2)),
                       XYZ(v_x, v_y, 1));
 
-    colorCorrectedYuv(v_x, v_y, v_c) = cast<uint16_t>(clamp(colorCorrected(v_x, v_y, v_c) * 65535 + 0.5f, 0, 65535));
+    colorCorrectedYuv(v_x, v_y, v_c) = cast<uint16_t>(clamp(exposureParam * colorCorrected(v_x, v_y, v_c) * 65535.0f + 0.5f, 0, 65535));
 
     Func x{"x"}, y{"y"}, Y{"Y"};
 
     x(v_x, v_y) = colorCorrectedYuv(v_x, v_y, 0);
     y(v_x, v_y) = colorCorrectedYuv(v_x, v_y, 1);
-    Y(v_x, v_y) = cast<uint16_t>(clamp(cast<float>(colorCorrectedYuv(v_x, v_y, 2)) * exposureParam + 0.5f, 0, 65535));
+    Y(v_x, v_y) = colorCorrectedYuv(v_x, v_y, 2);
 
-    // Tonemap
     tonemap = create<TonemapGenerator>();
 
     tonemap->output_type.set(UInt(16));
     tonemap->tonemap_levels.set(tonemap_levels);
-
     tonemap->apply(Y, width, height, tonemapVariance, gamma, shadowsParam);
 
-    finalTonemap(v_x, v_y, v_c) = select(v_c == 0, x(v_x, v_y) / 65535.0f,
-                                         v_c == 1, y(v_x, v_y) / 65535.0f,
-                                                   tonemap->output(v_x, v_y) / 65535.0f);
+    //
+    // Sharpen
+    //
+
+    // Apply contrast curve while still in XYZ space to avoid exaggerating colours
+    Func contrastCurve{"contrastCurve"};
+
+    {
+        Expr b = 2.0f - pow(2.0f, contrast);
+        Expr a = 2.0f - 2.0f * b;
+
+        // Apply a piecewise quadratic contrast curve
+        Expr g = pow(v_i / 65535.0f, 1.0f / gamma);
+
+        Expr h = select(g > 0.5f,
+                        1.0f - (a*(1.0f-g)*(1.0f-g) + b*(1.0f-g)),
+                        a*g*g + b*g);
+
+        Expr i = pow(h, gamma);
+
+        Func contrastLut{"contrastLut"};
+
+        contrastLut(v_i) = cast<uint16_t>(clamp(i*65535.0f+0.5f, 0.0f, 65535.0f));
+        contrastLut.compute_root().vectorize(v_i, 8);
+
+        contrastCurve(v_x, v_y) = contrastLut(cast<uint16_t>(tonemap->output(v_x, v_y)));
+    }
+
+    finalTonemap(v_x, v_y, v_c) = select(v_c == 0, x(v_x, v_y),
+                                         v_c == 1, y(v_x, v_y),
+                                                   contrastCurve(v_x, v_y)) / 65535.0f;
 
     Func tonemappedXYZ{"XYZ"};
 
@@ -2103,45 +2150,34 @@ void PreviewGenerator::generate() {
     // To sRGB
     transform(tonemapOutputRgb, tonemappedXYZ, pcsToSrgb);
     
-    // Finalize
-    Expr b = 2.0f - pow(2.0f, contrast);
-    Expr a = 2.0f - 2.0f * b;
-
-    // Gamma correct
-    Expr g = pow(v_i / 255.0f, 1.0f / gamma);
-
-    // Apply a piecewise quadratic contrast curve
-    Expr h0 = select(g > 0.5f,
-                     1.0f - (a*(1.0f-g)*(1.0f-g) + b*(1.0f-g)),
-                     a*g*g + b*g);
-
-    // Apply blacks/white point
-    Expr h1 = (h0 - blacksParam) / whitePoint;
-
-    gammaContrastLut(v_i) = cast<uint8_t>(clamp(h1*255.0f+0.5f, 0.0f, 255.0f));
-
-    if(get_target().has_gpu_feature())
-        gammaContrastLut.compute_root().gpu_tile(v_i, v_xi, 16);
-    else
-        gammaContrastLut.compute_root().vectorize(v_i, 8);
-
-    // Gamma/contrast/black adjustment
-    gammaCorrected(v_x, v_y, v_c) = gammaContrastLut(cast<uint8_t>(clamp(tonemapOutputRgb(v_x, v_y, v_c) * 255, 0, 255)));
-    
     //
-    // Adjust saturation
+    // Adjust hue & saturation
     //
 
-    Func gammaCorrected32;
-    
-    gammaCorrected32(v_x, v_y, v_c) = gammaCorrected(v_x, v_y, v_c) / 255.0f;
-
-    rgbToHsv(hsvInput, gammaCorrected32);
+    rgbToHsv(hsvInput, tonemapOutputRgb);
 
     shiftHues(saturationApplied, hsvInput, blues, greens, satParam);
 
     hsvToBgr(finalRgb, saturationApplied);
-    
+
+    // Gamma correct
+    Expr g = pow(v_i / 65535.0f, 1.0f / gamma);
+
+    // Apply blacks/white point
+    Expr h = (g - blacksParam) / whitePoint;
+
+    gammaLut(v_i) = cast<uint16_t>(clamp(h*65535.0f+0.5f, 0.0f, 65535.0f));
+
+    if(!auto_schedule) {
+        if(get_target().has_gpu_feature())
+            gammaLut.compute_root().gpu_tile(v_i, v_xi, 16);
+        else
+            gammaLut.compute_root().vectorize(v_i, 8);
+    }
+
+    // Gamma/contrast/black adjustment
+    gammaCorrected(v_x, v_y, v_c) = gammaLut(cast<uint16_t>(clamp(finalRgb(v_x, v_y, v_c) * 65535.0f + 0.5f, 0.0f, 65535.0f))) / 65535.0f;
+        
     //
     // Finalize output
     //
@@ -2172,9 +2208,9 @@ void PreviewGenerator::generate() {
     }
 
     output(v_x, v_y, v_c) = cast<uint8_t>(clamp(
-        select( v_c == 0, finalRgb(M, N, 2) * 255 + 0.5f,
-                v_c == 1, finalRgb(M, N, 1) * 255 + 0.5f,
-                v_c == 2, finalRgb(M, N, 0) * 255 + 0.5f,
+        select( v_c == 0, gammaCorrected(M, N, 2) * 255 + 0.5f,
+                v_c == 1, gammaCorrected(M, N, 1) * 255 + 0.5f,
+                v_c == 2, gammaCorrected(M, N, 0) * 255 + 0.5f,
                           255), 0, 255));
 
     // Output interleaved
@@ -2477,10 +2513,10 @@ void DeinterleaveRawGenerator::generate() {
 
     output(v_x, v_y, v_c) = clamped(x, y, v_c);
 
-    Expr P = 0.25f * (clamped(v_x, v_y, 0) +
-                      clamped(v_x, v_y, 1) +
-                      clamped(v_x, v_y, 2) +
-                      clamped(v_x, v_y, 3));
+    Expr P = 0.25f * (clamped(x, y, 0) +
+                      clamped(x, y, 1) +
+                      clamped(x, y, 2) +
+                      clamped(x, y, 3));
 
     Expr S = (P - blackLevel[0]) / (whiteLevel - blackLevel[0]);
 
@@ -2723,7 +2759,7 @@ void HdrMaskGenerator::generate() {
     outputGhost(v_x, v_y) = cast<uint8_t>(1);
     outputGhost(v_x, v_y) = outputGhost(v_x, v_y) & ghostMap(v_x + r.x, v_y + r.y);
     
-    outputMask(v_x, v_y) = cast<uint8_t>(clamp(map0(v_x, v_y) * 255.0f + 0.5f, 0, 255));
+    outputMask(v_x, v_y) = cast<uint8_t>(clamp(mask0(v_x, v_y) * 255.0f + 0.5f, 0, 255));
 
     c.set_estimate(4.0f);
 

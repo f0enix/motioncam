@@ -138,7 +138,7 @@ public class CameraActivity extends AppCompatActivity implements
             this.saveDng = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, false);
             this.autoNightMode = prefs.getBoolean(SettingsViewModel.PREFS_KEY_AUTO_NIGHT_MODE, true);
             this.hdr = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_HDR, true);
-            this.hdrEv = (float) Math.pow(2.0f, prefs.getInt(SettingsViewModel.PREFS_KEY_HDR_EV, 5) / 2.0f);
+            this.hdrEv = (float) Math.pow(2.0f, prefs.getInt(SettingsViewModel.PREFS_KEY_HDR_EV, 4) / 2.0f);
 
             long nativeCameraMemoryUseMb = prefs.getInt(SettingsViewModel.PREFS_KEY_MEMORY_USE_MBYTES, SettingsViewModel.MINIMUM_MEMORY_USE_MB);
             nativeCameraMemoryUseMb = Math.min(nativeCameraMemoryUseMb, SettingsViewModel.MAXIMUM_MEMORY_USE_MB);
@@ -476,8 +476,8 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.shadows = 1.0f;
         mPostProcessSettings.contrast = mSettings.contrast;
         mPostProcessSettings.saturation = mSettings.saturation;
-        mPostProcessSettings.greens = 8.0f;
-        mPostProcessSettings.blues = 8.0f;
+        mPostProcessSettings.greens = 3.0f;
+        mPostProcessSettings.blues = 6.0f;
         mPostProcessSettings.sharpen0 = 3.0f;
         mPostProcessSettings.sharpen1 = 2.5f;
         mPostProcessSettings.whitePoint = -1;

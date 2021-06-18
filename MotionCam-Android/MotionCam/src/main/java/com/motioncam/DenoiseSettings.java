@@ -22,57 +22,52 @@ public class DenoiseSettings {
 
     private void estimateFromExposure(float ev, float shadows) {
         int mergeImages;
-        float chromaFilterEps;
         float chromaBlendWeight;
         float spatialDenoiseWeight;
 
         if(ev > 11.99) {
             spatialDenoiseWeight    = 0.0f;
-            chromaFilterEps         = 0.01f;
-            chromaBlendWeight       = 4.0f;
+            chromaBlendWeight       = 8.0f;
             mergeImages             = 1;
         }
         else if(ev > 9.99) {
             spatialDenoiseWeight    = 0.0f;
-            chromaFilterEps         = 0.01f;
-            chromaBlendWeight       = 2.0f;
+            chromaBlendWeight       = 4.0f;
             mergeImages             = 4;
         }
         else if(ev > 7.99) {
             spatialDenoiseWeight    = 0.5f;
-            chromaFilterEps         = 0.02f;
-            chromaBlendWeight       = 2.0f;
+            chromaBlendWeight       = 4.0f;
             mergeImages             = 4;
         }
         else if(ev > 5.99) {
             spatialDenoiseWeight    = 1.0f;
-            chromaFilterEps         = 0.04f;
             chromaBlendWeight       = 2.0f;
             mergeImages             = 4;
         }
         else if(ev > 3.99) {
             spatialDenoiseWeight    = 1.0f;
-            chromaFilterEps         = 0.04f;
-            chromaBlendWeight       = 2.0f;
+            chromaBlendWeight       = 1.0f;
             mergeImages             = 6;
         }
         else if(ev > 0) {
             spatialDenoiseWeight    = 1.0f;
-            chromaFilterEps         = 0.06f;
-            chromaBlendWeight       = 2.0f;
+            chromaBlendWeight       = 0.0f;
             mergeImages             = 9;
         }
         else {
             spatialDenoiseWeight    = 1.0f;
-            chromaFilterEps         = 0.06f;
-            chromaBlendWeight       = 1.0f;
+            chromaBlendWeight       = 0.0f;
             mergeImages             = 12;
         }
 
-        if(shadows > 7.99) {
-            mergeImages             += 4;
+        if(shadows > 3.99) {
+            mergeImages             += 2;
             chromaBlendWeight        = Math.min(2.0f, chromaBlendWeight);
-            chromaFilterEps          = Math.max(0.06f, chromaFilterEps);
+        }
+
+        if(shadows > 7.99) {
+            mergeImages             += 2;
         }
 
         // Limit capture to 5 seconds
@@ -81,7 +76,7 @@ public class DenoiseSettings {
 //        }
 
         this.numMergeImages     = mergeImages;
-        this.chromaFilterEps    = chromaFilterEps;
+        this.chromaFilterEps    = 0.02f;
         this.chromaBlendWeight  = chromaBlendWeight;
         this.spatialWeight      = spatialDenoiseWeight;
     }
