@@ -154,8 +154,8 @@ namespace motioncam {
     const int DENOISE_LEVELS            = 6;
     const int EXPANDED_RANGE            = 16384;
     const float MAX_HDR_ERROR           = 0.03f;
-    const float WHITEPOINT_THRESHOLD    = 0.999f;
-    const float SHADOW_BIAS             = 16.0f;
+    const float WHITEPOINT_THRESHOLD    = 0.9995f;
+    const float SHADOW_BIAS             = 14.0f;
 
     typedef Halide::Runtime::Buffer<float> WaveletBuffer;
 
@@ -304,6 +304,7 @@ namespace motioncam {
                                         const shared_ptr<HdrMetadata>& hdrMetadata,
                                         int offsetX,
                                         int offsetY,
+                                        const float chromaEps,
                                         const RawImageMetadata& metadata,
                                         const RawCameraMetadata& cameraMetadata,
                                         const PostProcessSettings& settings)
@@ -405,8 +406,7 @@ namespace motioncam {
                     settings.sharpen0,
                     settings.sharpen1,
                     sharpenThreshold,
-                    settings.chromaFilterEps,
-                    settings.chromaBlendWeight,
+                    chromaEps,
                     outputBuffer);
 
         outputBuffer.device_sync();
@@ -450,6 +450,29 @@ namespace motioncam {
         return std::log2(m);
     }
 
+    float ImageProcessor::estimateChromaEps(const RawImageBuffer& rawBuffer,
+                                            const RawCameraMetadata& cameraMetadata)
+    {
+        PostProcessSettings settings;
+        
+        settings.shadows = 1.0f;
+        settings.blacks = 0;
+        settings.contrast = 0.0f;
+        settings.sharpen0 = 0;
+        settings.sharpen1 = 0;
+        
+        auto previewBuffer = createPreview(rawBuffer, 4, cameraMetadata, settings);
+        cv::Mat preview(previewBuffer.height(), previewBuffer.width(), CV_8UC4, previewBuffer.data());
+        
+        cv::cvtColor(preview, preview, cv::COLOR_BGRA2GRAY);
+        auto mean = cv::mean(preview) / 255.0f;
+        
+        auto ev = calcEv(cameraMetadata, rawBuffer.metadata);
+        float w = -ev / 16 + 2;
+        
+        return std::fminf(0.2f, w * (0.01f + std::exp(-24.0f*mean[0])));
+    }
+
     cv::Mat ImageProcessor::estimateBlacks(const RawImageBuffer& rawBuffer,
                                            const RawCameraMetadata& cameraMetadata,
                                            float shadows,
@@ -463,7 +486,7 @@ namespace motioncam {
         settings.sharpen0 = 0;
         settings.sharpen1 = 0;
         
-        auto previewBuffer = createPreview(rawBuffer, 2, cameraMetadata, settings);
+        auto previewBuffer = createPreview(rawBuffer, 4, cameraMetadata, settings);
         
         cv::Mat preview(previewBuffer.height(), previewBuffer.width(), CV_8UC4, previewBuffer.data());
         cv::Mat histogram;
@@ -486,7 +509,7 @@ namespace motioncam {
                 
         // Estimate blacks
         const float maxDehazePercent = 0.03f;
-        const int maxEndBin = 18; // Max bin
+        const int maxEndBin = 16; // Max bin
 
         int endBin = 0;
                 
@@ -512,7 +535,7 @@ namespace motioncam {
         
         settings.shadows = shadows;
         settings.blacks = blacks;
-        settings.contrast = 0.0;
+        settings.contrast = 0.5f;
         settings.sharpen0 = 0;
         settings.sharpen1 = 0;
 
@@ -522,7 +545,7 @@ namespace motioncam {
         cv::Mat histogram;
         
         cv::cvtColor(preview, preview, cv::COLOR_BGRA2GRAY);
-        
+                
         vector<cv::Mat> inputImages     = { preview };
         const vector<int> channels      = { 0 };
         const vector<int> histBins      = { 255 };
@@ -728,7 +751,7 @@ namespace motioncam {
                                                                    const RawCameraMetadata& cameraMetadata,
                                                                    const PostProcessSettings& settings)
     {
-        Measure measure("createPreview()");
+        //Measure measure("createPreview()");
         
         if(downscaleFactor != 2 && downscaleFactor != 4 && downscaleFactor != 8) {
             throw InvalidState("Invalid downscale factor");
@@ -1155,7 +1178,7 @@ namespace motioncam {
         
         for(int i = toMatchHistogram.cols - 1; i >= 0; i--) {
             float a = toMatchHistogram.at<float>(i);
-            if(a < 0.9995f) {
+            if(a < WHITEPOINT_THRESHOLD) {
                 outWhitePoint = toMatchHistogram.cols / (float) (i + 1);
                 break;
             }
@@ -1419,12 +1442,17 @@ namespace motioncam {
             writeDng(rawImage, rawContainer.getCameraMetadata(), referenceRawBuffer->metadata, rawOutputPath + ".dng");
         }
 #endif
-
+                           
+        float chromaEps = estimateChromaEps(*referenceRawBuffer, rawContainer.getCameraMetadata());
+        
+        logger::log("Estimated chroma eps " + std::to_string(chromaEps));
+        
         cv::Mat outputImage = postProcess(
             denoiseOutput,
             hdrMetadata,
             offsetX,
             offsetY,
+            chromaEps,
             referenceRawBuffer->metadata,
             rawContainer.getCameraMetadata(),
             settings);
@@ -2056,8 +2084,8 @@ namespace motioncam {
         cv::Ptr<cv::DISOpticalFlow> opticalFlow =
             cv::DISOpticalFlow::create(cv::DISOpticalFlow::PRESET_FAST);
         
-        opticalFlow->setPatchSize(64);
-        opticalFlow->setPatchStride(16);
+        opticalFlow->setPatchSize(32);
+        opticalFlow->setPatchStride(8);
         
         cv::Mat referenceImage(refImage->previewBuffer.height(), refImage->previewBuffer.width(), CV_8U, (void*) refImage->previewBuffer.data());
         cv::Mat toAlignImage(underexposedImage->previewBuffer.height(), underexposedImage->previewBuffer.width(), CV_8U, (void*) underexposedImage->previewBuffer.data());
@@ -2094,7 +2122,7 @@ namespace motioncam {
         // Calculate error
         cv::Mat ghostMap(ghostMapBuffer.height(), ghostMapBuffer.width(), CV_8U, ghostMapBuffer.data());
         auto trimmedGhostMap = ghostMap(cv::Rect(32, 32, ghostMap.cols - 32, ghostMap.rows - 32));
-        
+                
         float error = cv::mean(trimmedGhostMap)[0] * 100;
         logger::log("HDR error " + std::to_string(error));
         if(error > MAX_HDR_ERROR)

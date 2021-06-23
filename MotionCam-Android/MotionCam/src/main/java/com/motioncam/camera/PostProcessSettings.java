@@ -5,8 +5,6 @@ public class PostProcessSettings implements Cloneable {
     public float spatialDenoiseAggressiveness   = 1.0f;
 
     // Post processing
-    public float chromaFilterEps                = 0.02f;
-    public float chromaBlendWeight              = 4;
     public float tonemapVariance                = 0.25f;
 
     public float gamma                          = 2.2f;

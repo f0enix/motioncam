@@ -885,8 +885,6 @@ public class CameraActivity extends AppCompatActivity implements
                 hdrExposure = baseExposure;
             }
 
-            settings.chromaFilterEps = denoiseSettings.chromaFilterEps;
-            settings.chromaBlendWeight = denoiseSettings.chromaBlendWeight;
             settings.spatialDenoiseAggressiveness = denoiseSettings.spatialWeight;
             settings.exposure = 0.0f;
             settings.temperature = estimatedSettings.temperature + mTemperatureOffset;

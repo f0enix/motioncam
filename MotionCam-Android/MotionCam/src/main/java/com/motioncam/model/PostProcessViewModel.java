@@ -72,8 +72,6 @@ public class PostProcessViewModel extends ViewModel {
     final public MutableLiveData<Integer> detail = new MutableLiveData<>();
     final public MutableLiveData<Integer> numMergeImages = new MutableLiveData<>();
     final public MutableLiveData<Integer> spatialDenoiseAggressiveness = new MutableLiveData<>();
-    final public MutableLiveData<Float> chromaFilterEps = new MutableLiveData<>();
-    final public MutableLiveData<Float> chromaBlendWeight = new MutableLiveData<>();
     final public MutableLiveData<Boolean> saveDng = new MutableLiveData<>();
     final public MutableLiveData<Boolean> isFlipped = new MutableLiveData<>();
 
@@ -166,14 +164,6 @@ public class PostProcessViewModel extends ViewModel {
 
     public SpatialDenoiseAggressiveness getSpatialDenoiseAggressivenessSetting() {
         return PostProcessViewModel.SpatialDenoiseAggressiveness.GetFromOption(getSetting(spatialDenoiseAggressiveness, 0));
-    }
-
-    public float getChromaFilterEps() {
-        return getSetting(chromaFilterEps, 0.02f);
-    }
-
-    public float getChromaBlendWeight() {
-        return getSetting(chromaBlendWeight, 4.0f);
     }
 
     public void load(Context context) {
@@ -276,8 +266,6 @@ public class PostProcessViewModel extends ViewModel {
         PostProcessViewModel.SpatialDenoiseAggressiveness spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
 
         numMergeImages.setValue(denoiseSettings.numMergeImages);
-        chromaFilterEps.setValue(denoiseSettings.chromaFilterEps);
-        chromaBlendWeight.setValue(denoiseSettings.chromaBlendWeight);
         spatialDenoiseAggressiveness.setValue(spatialNoise.getOptionValue());
         saveDng.setValue(settings.dng);
     }
@@ -312,8 +300,6 @@ public class PostProcessViewModel extends ViewModel {
 
         // Noise reduction
         settings.spatialDenoiseAggressiveness = getSpatialDenoiseAggressivenessSetting().getWeight();
-        settings.chromaFilterEps = getChromaFilterEps();
-        settings.chromaBlendWeight = getChromaBlendWeight();
 
         // Apply JPEG quality
         settings.jpegQuality = getSetting(jpegQuality, CameraProfile.DEFAULT_JPEG_QUALITY);

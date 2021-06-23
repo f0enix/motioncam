@@ -1460,7 +1460,6 @@ public:
     Input<float> sharpen1{"sharpen1"};
     Input<float> sharpenThreshold{"sharpenThreshold"};    
     Input<float> chromaEps{"chromaEps"};
-    Input<float> chromaBlendWeight{"chromaBlendWeight"};
 
     Output<Buffer<uint8_t>> output{"output", 3};
     
@@ -1638,25 +1637,11 @@ void PostProcessGenerator::generate()
     auto gf0 = create<GuidedFilter>();
     auto gf1 = create<GuidedFilter>();
 
-    gf0->radius.set(7);
-    gf0->apply(x, 0.01f*0.01f*65535.0f*65535.0f);
+    gf0->radius.set(31);
+    gf0->apply(x, chromaEps*chromaEps*65535.0f*65535.0f);
 
-    gf1->radius.set(7);
-    gf1->apply(y, 0.01f*0.01f*65535.0f*65535.0f);
-
-    Func Utemp{"Utemp"}, Vtemp{"Vtemp"};
-
-    Udownsampled = downsample(gf0->output, Utemp);
-    Vdownsampled = downsample(gf1->output, Vtemp);
-
-    auto gf2 = create<GuidedFilter>();
-    auto gf3 = create<GuidedFilter>();
-
-    gf2->radius.set(21);
-    gf2->apply(Udownsampled, chromaEps*chromaEps*65535.0f*65535.0f);
-
-    gf3->radius.set(21);
-    gf3->apply(Vdownsampled, chromaEps*chromaEps*65535.0f*65535.0f);
+    gf1->radius.set(31);
+    gf1->apply(y, chromaEps*chromaEps*65535.0f*65535.0f);
 
     tonemap = create<TonemapGenerator>();
 
@@ -1694,24 +1679,8 @@ void PostProcessGenerator::generate()
 
     sharpen(contrastCurve);
 
-    Func UdenoiseTemp{"UdenoiseTemp"}, VdenoiseTemp{"VdenoiseTemp"};
-
-    Expr U = upsample(gf2->output, UdenoiseTemp)(v_x, v_y) / 65535.0f;
-    Expr V = upsample(gf3->output, VdenoiseTemp)(v_x, v_y) / 65535.0f;
-
-    Func UVweight{"UVweight"};
-
-    UVweight(v_i) = cast<uint16_t>(clamp(1.0f - exp(-chromaBlendWeight * pow(v_i / 65535.0f, 1.0f/2.2f)), 0.0f, 1.0f) * 65535.0f);    
-    if(!auto_schedule)
-        UVweight.compute_root().vectorize(v_i, 8);
-
-    Expr UVblendWeight = UVweight(saturating_cast<uint16_t>(Y(v_x, v_y) * 1.0f/hdrScale)) / 65535.0f;
-
-    Ublended(v_x, v_y) = UVblendWeight*(gf0->output(v_x, v_y)/65535.0f) + (1.0f - UVblendWeight)*U;
-    Vblended(v_x, v_y) = UVblendWeight*(gf1->output(v_x, v_y)/65535.0f) + (1.0f - UVblendWeight)*V;
-
-    finalTonemap(v_x, v_y, v_c) = select(v_c == 0, Ublended(v_x, v_y),
-                                         v_c == 1, Vblended(v_x, v_y),
+    finalTonemap(v_x, v_y, v_c) = select(v_c == 0, gf0->output(v_x, v_y) / 65535.0f,
+                                         v_c == 1, gf1->output(v_x, v_y) / 65535.0f,
                                                    sharpened(v_x, v_y) / 65535.0f);
 
     Func tonemappedXYZ{"XYZ"};
@@ -1780,7 +1749,6 @@ void PostProcessGenerator::generate()
     greens.set_estimate(1.0f);
     sharpen0.set_estimate(2.0f);
     sharpen1.set_estimate(2.0f);
-    chromaBlendWeight.set_estimate(1.0f);
     chromaEps.set_estimate(0.01f);
     sharpenThreshold.set_estimate(32.0f);
     
@@ -1889,15 +1857,15 @@ void PostProcessGenerator::schedule_for_cpu() {
         .parallel(tile_idx)
         .vectorize(v_xii, vector_size_u16);
 
-    Udownsampled
-        .compute_root()
-        .parallel(v_y, 32)
-        .vectorize(v_x, vector_size_u16);
+    // Udownsampled
+    //     .compute_root()
+    //     .parallel(v_y, 32)
+    //     .vectorize(v_x, vector_size_u16);
 
-    Vdownsampled
-        .compute_root()
-        .parallel(v_y, 32)
-        .vectorize(v_x, vector_size_u16);
+    // Vdownsampled
+    //     .compute_root()
+    //     .parallel(v_y, 32)
+    //     .vectorize(v_x, vector_size_u16);
 
     blurOutputTmp
         .compute_at(blurOutput, v_yi)

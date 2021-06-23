@@ -72,6 +72,8 @@ namespace motioncam {
                                          float& outG,
                                          float& outB);
 
+        static float estimateChromaEps(const RawImageBuffer& rawBuffer, const RawCameraMetadata& cameraMetadata);
+
         static cv::Mat estimateBlacks(const RawImageBuffer& rawBuffer,
                                       const RawCameraMetadata& cameraMetadata,
                                       float shadows,
@@ -128,6 +130,7 @@ namespace motioncam {
                                    const std::shared_ptr<HdrMetadata>& hdrMetadata,
                                    int offsetX,
                                    int offsetY,
+                                   const float chromaEps,
                                    const RawImageMetadata& metadata,
                                    const RawCameraMetadata& cameraMetadata,
                                    const PostProcessSettings& settings);

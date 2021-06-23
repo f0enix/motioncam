@@ -556,6 +556,7 @@ namespace motioncam {
         mEnableRawPreview = true;
         mRawPreviewQuality = previewQuality;
         mPreprocessThread = std::make_shared<std::thread>(&RawImageConsumer::doPreprocess, this);
+        mEstimatedSettings = PostProcessSettings();
     }
 
     void RawImageConsumer::updateRawPreviewSettings(
