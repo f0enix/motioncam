@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euxo pipefail
-
+export ANDROID_NDK="$(brew --prefix)/share/android-ndk"
+export LLVM_DIR=/usr/local/Cellar/llvm/12.0.0/lib/cmake
 if [[ -z "${ANDROID_NDK-}" ]]; then
 	echo -e "Please set ANDROID_NDK to point to the NDK installation path"
 	exit 1
@@ -168,28 +169,14 @@ build_zstd() {
 }
 
 build_halide() {
-	if [ ! -d "halide-src" ]; then
-		git clone ${HALIDE_BRANCH} halide-src
+	if [ ! -f "Halide-12.0.1-x86-64-osx-5dabcaa9effca1067f907f6c8ea212f3d2b1d99a.tar.gz" ]; then
+		wget https://github.com/halide/Halide/releases/download/v12.0.1/Halide-12.0.1-x86-64-osx-5dabcaa9effca1067f907f6c8ea212f3d2b1d99a.tar.gz
 	fi
-
-	pushd halide-src
-	git pull
-
-	mkdir -p build
-	pushd build
-
-	INSTALL_DIR="../../../libMotionCam/thirdparty/halide"
-
-	mkdir -p ${INSTALL_DIR}
-
-	cmake -DTARGET_WEBASSEMBLY=OFF -DWITH_TUTORIALS=OFF -DWITH_TESTS=OFF -DWITH_PYTHON_BINDINGS=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} ..
-
-	make -j${NUM_CORES}
-
-	make install
-
-	popd # build
-	popd # halide-src
+	tar -xf Halide-12.0.1-x86-64-osx-5dabcaa9effca1067f907f6c8ea212f3d2b1d99a.tar.gz
+	
+	mv Halide-12.0.1-x86-64-osx halide
+	cp -r halide ../libMotionCam/thirdparty/halide
+	rm -rf halide
 
 	touch ".halide"
 }
@@ -203,21 +190,21 @@ halide_generate() {
 }
 
 # Build dependencies
-if [ ! -f ".opencv-${OPENCV_VERSION}" ]; then
-    build_opencv
-fi
+# if [ ! -f ".opencv-${OPENCV_VERSION}" ]; then
+#     build_opencv
+# fi
 
-if [ ! -f ".expat-${LIBEXPAT_VERSION}" ]; then
-	build_expat
-fi
+# if [ ! -f ".expat-${LIBEXPAT_VERSION}" ]; then
+# 	build_expat
+# fi
 
-if [ ! -f ".exiv2-${LIBEXIV2_VERSION}" ]; then
-	build_exiv2
-fi
+# if [ ! -f ".exiv2-${LIBEXIV2_VERSION}" ]; then
+# 	build_exiv2
+# fi
 
-if [ ! -f ".zstd-${ZSTD_VERSION}" ]; then
-	build_zstd
-fi
+# if [ ! -f ".zstd-${ZSTD_VERSION}" ]; then
+# 	build_zstd
+# fi
 
 if [ ! -f ".halide" ]; then
 	build_halide
