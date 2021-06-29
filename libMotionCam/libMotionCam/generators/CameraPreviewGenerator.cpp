@@ -19,7 +19,7 @@ const Expr HALF_YUV_B = cast<float16_t>(0.114f);
 
 class CameraPreviewGenerator : public Halide::Generator<CameraPreviewGenerator> {
 public:
-    GeneratorParam<int> tonemap_levels{"tonemap_levels", 5};
+    GeneratorParam<int> tonemap_levels{"tonemap_levels", 7};
     GeneratorParam<int> downscale_factor{"downscale_factor", 2};
     GeneratorParam<int> pixel_format{"pixel_format", 0};
 

@@ -2,7 +2,9 @@
 #include "motioncam/Util.h"
 #include "motioncam/Exceptions.h"
 #include "motioncam/Math.h"
+#include "motioncam/Measure.h"
 
+#include <zstd.h>
 #include <utility>
 #include <vector>
 
@@ -12,6 +14,7 @@ using json11::Json;
 
 namespace motioncam {
     static const char* METATDATA_FILENAME = "metadata";
+    static const bool USE_COMPRESSION = false;
     
     json11::Json::array RawContainer::toJsonArray(cv::Mat m) {
         assert(m.type() == CV_32F);
@@ -63,6 +66,17 @@ namespace motioncam {
         data[8] = array[8].number_value();
 
         return mat;
+    }
+
+    string RawContainer::toString(RawType rawType) {
+        switch (rawType) {
+            case RawType::HDR:
+                return "HDR";
+
+            default:
+            case RawType::ZSL:
+                return "ZSL";
+        }
     }
     
     string RawContainer::toString(PixelFormat format) {
@@ -157,37 +171,41 @@ namespace motioncam {
     RawContainer::RawContainer(const string& inputPath) :
         mZipReader(new util::ZipReader(inputPath)),
         mReferenceTimestamp(-1),
-        mWriteDNG(false),
-        mIsHdr(false)
+        mIsHdr(false),
+        mIsInMemory(false)
     {
         initialise();
     }
 
-    RawContainer::RawContainer(RawCameraMetadata& cameraMetadata,
+    RawContainer::RawContainer(const RawCameraMetadata& cameraMetadata,
                                const PostProcessSettings& postProcessSettings,
                                const int64_t referenceTimestamp,
                                const bool isHdr,
-                               const bool writeDNG,
-                               const std::map<string, std::shared_ptr<RawImageBuffer>>& frameBuffers) :
+                               const std::vector<std::shared_ptr<RawImageBuffer>>& buffers) :
         mCameraMetadata(cameraMetadata),
         mPostProcessSettings(postProcessSettings),
         mReferenceTimestamp(referenceTimestamp),
         mIsHdr(isHdr),
-        mWriteDNG(writeDNG),
         mIsInMemory(true)
     {
-        if(frameBuffers.empty()) {
-            throw InvalidState("No frames");
+        if(buffers.empty()) {
+            throw InvalidState("No buffers");
         }
 
         // Clone buffers
-        for(const auto& p : frameBuffers) {
-            mFrameBuffers[p.first] = std::make_shared<RawImageBuffer>(*p.second);
-            mFrames.push_back(p.first);
+        int filenameIdx = 0;
+
+        for(const auto& buffer : buffers) {
+            std::string filename = "frame" + std::to_string(filenameIdx) + ".raw";
+
+            mFrameBuffers[filename] = std::make_shared<RawImageBuffer>(*buffer);
+            mFrames.push_back(filename);
             
-            if(p.second->metadata.timestampNs == referenceTimestamp) {
-                mReferenceImage = p.first;
+            if(buffer->metadata.timestampNs == referenceTimestamp) {
+                mReferenceImage = filename;
             }
+
+            ++filenameIdx;
         }
         
         if(mReferenceImage.empty()) {
@@ -196,52 +214,15 @@ namespace motioncam {
         }
     }
 
-    RawContainer::RawContainer(RawCameraMetadata& cameraMetadata,
-                               const PostProcessSettings& postProcessSettings,
-                               const int64_t referenceTimestamp,
-                               const bool isHdr,
-                               const bool writeDNG,
-                               std::map<string, std::shared_ptr<RawImageBuffer>>&& frameBuffers,
-                               std::unique_ptr<RawBufferManager::LockedBuffers>&& lockedBuffers) :
-        mCameraMetadata(cameraMetadata),
-        mPostProcessSettings(postProcessSettings),
-        mReferenceTimestamp(referenceTimestamp),
-        mIsHdr(isHdr),
-        mWriteDNG(writeDNG),
-        mIsInMemory(false),
-        mFrameBuffers(std::move(frameBuffers)),
-        mLockedBuffers(std::move(lockedBuffers))
-    {
-        if(mFrameBuffers.empty()) {
-            throw InvalidState("No frames");
-        }
+    void RawContainer::save(const std::string& outputPath) {
+        Measure m("RawContainer::save()");
         
-        // Associate reference
-        auto it = mFrameBuffers.begin();
-        while(it != mFrameBuffers.end()) {
-            if(it->second->metadata.timestampNs == referenceTimestamp) {
-                mReferenceImage = it->first;
-            }
-            
-            mFrames.push_back(it->first);
-
-            ++it;
-        }
-        
-        if(mReferenceImage.empty()) {
-            mReferenceImage = mFrameBuffers.begin()->first;
-            mReferenceTimestamp = mFrameBuffers.begin()->second->metadata.timestampNs;
-        }
-    }
-
-    void RawContainer::saveContainer(const std::string& outputPath) {
         auto it = mFrames.begin();
         
         json11::Json::object metadataJson;
 
         // Save misc stuff
         metadataJson["referenceTimestamp"]  = std::to_string(mReferenceTimestamp);
-        metadataJson["writeDNG"]            = mWriteDNG;
         metadataJson["isHdr"]               = mIsHdr;
         
         // Global camera metadata
@@ -263,6 +244,8 @@ namespace motioncam {
         json11::Json::array rawImages;
         util::ZipWriter zip(outputPath);
         
+        std::vector<uint8_t> tmpBuffer;
+        
         // Write frames first
         while(it != mFrames.end()) {
             auto filename = *it;
@@ -283,6 +266,7 @@ namespace motioncam {
             imageMetadata["height"]      = frame->height;
             imageMetadata["rowStride"]   = frame->rowStride;
             imageMetadata["pixelFormat"] = toString(frame->pixelFormat);
+            imageMetadata["type"]        = toString(frame->metadata.rawType);
 
             vector<float> asShot = {
                 frame->metadata.asShot[0],
@@ -346,7 +330,24 @@ namespace motioncam {
                 imageMetadata["lensShadingMapHeight"] = 0;
             }
             
-            zip.addFile(filename, frame->data->hostData());
+            // We'll compress the data
+            if(USE_COMPRESSION) {
+                imageMetadata["isCompressed"] = true;
+                
+                // Compress before writing to ZIP
+                auto dstBound = ZSTD_compressBound(frame->data->hostData().size());
+                tmpBuffer.resize(dstBound);
+                
+                auto writtenBytes =
+                    ZSTD_compress(&tmpBuffer[0], tmpBuffer.size(), &frame->data->hostData()[0], frame->data->hostData().size(), 1);
+                
+                zip.addFile(filename, tmpBuffer, writtenBytes);
+            }
+            else {
+                imageMetadata["isCompressed"] = false;
+                
+                zip.addFile(filename, frame->data->hostData(), frame->data->len());
+            }
 
             rawImages.push_back(imageMetadata);
 
@@ -379,7 +380,6 @@ namespace motioncam {
         }
         
         mReferenceTimestamp = std::stol(getOptionalStringSetting(json, "referenceTimestamp", "0"));
-        mWriteDNG = getOptionalSetting(json, "writeDNG", false);
         mIsHdr = getOptionalSetting(json, "isHdr", false);
 
         // Black/white levels
@@ -463,6 +463,7 @@ namespace motioncam {
             buffer->width        = getRequiredSettingAsInt(*it, "width");
             buffer->height       = getRequiredSettingAsInt(*it, "height");
             buffer->rowStride    = getRequiredSettingAsInt(*it, "rowStride");
+            buffer->isCompressed = getOptionalSetting(*it, "isCompressed", false);
 
             string pixelFormat = getOptionalStringSetting(*it, "pixelFormat", "raw10");
 
@@ -514,7 +515,7 @@ namespace motioncam {
             if(it->object_items().find("forwardMatrix2") != it->object_items().end()) {
                 buffer->metadata.calibrationMatrix1 = toMat3x3((*it)["forwardMatrix2"].array_items());
             }
-
+            
             // Lens shading maps
             int lenShadingMapWidth  = getOptionalSetting(*it, "lensShadingMapWidth", 0);
             int lenShadingMapHeight = getOptionalSetting(*it, "lensShadingMapHeight", 0);
@@ -586,10 +587,6 @@ namespace motioncam {
         return mPostProcessSettings;
     }
 
-    bool RawContainer::getWriteDNG() const {
-        return mWriteDNG;
-    }
-
     bool RawContainer::isHdr() const {
         return mIsHdr;
     }
@@ -619,11 +616,26 @@ namespace motioncam {
         
         // Load the data into the buffer
         std::vector<uint8_t> data;
-        
+
         mZipReader->read(frame, data);
         
-        buffer->second->data->copyHostData(data);
-        
+        if(buffer->second->isCompressed) {
+            std::vector<uint8_t> tmp;
+            
+            size_t outputSize = ZSTD_getFrameContentSize(static_cast<void*>(&data[0]), data.size());
+            tmp.resize(outputSize);
+            
+            long readBytes =
+                ZSTD_decompress(static_cast<void*>(&tmp[0]), tmp.size(), &data[0], data.size());
+            
+            tmp.resize(readBytes);
+            
+            buffer->second->data->copyHostData(tmp);
+        }
+        else {
+            buffer->second->data->copyHostData(data);
+        }
+                
         return buffer->second;
     }
 

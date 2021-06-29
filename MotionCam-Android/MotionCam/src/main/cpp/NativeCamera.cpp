@@ -115,7 +115,8 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_StartCaptur
         jlong sessionHandle,
         jstring jcameraId,
         jobject previewSurface,
-        jboolean setupForRawPreview)
+        jboolean setupForRawPreview,
+        jboolean preferRaw16)
 {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(sessionHandle);
     if(!sessionManager) {
@@ -134,7 +135,7 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_StartCaptur
     try {
         std::shared_ptr<ANativeWindow> window(ANativeWindow_fromSurface(env, previewSurface), ANativeWindow_release);
 
-        sessionManager->startCamera(cameraId, gCameraSessionListener, window, setupForRawPreview);
+        sessionManager->startCamera(cameraId, gCameraSessionListener, window, setupForRawPreview, preferRaw16);
     }
     catch(const CameraSessionException& e) {
         gLastError = e.what();
@@ -185,7 +186,7 @@ jobject JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_GetRawOutput
         motioncam::OutputConfiguration rawOutputConfig;
         auto cameraDesc = sessionManager->getCameraDescription(cameraId);
 
-        if(sessionManager->getRawConfiguration(*cameraDesc, rawOutputConfig)) {
+        if(sessionManager->getRawConfiguration(*cameraDesc, false, rawOutputConfig)) {
             jclass cls = env->FindClass("android/util/Size");
 
             jobject captureSize =
@@ -273,7 +274,6 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_CaptureImag
         jlong sessionHandle,
         jlong bufferHandle,
         jint saveNumImages,
-        jboolean writeDNG,
         jstring postProcessSettings_,
         jstring outputPath_)
 {
@@ -317,7 +317,7 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_CaptureImag
 
     motioncam::PostProcessSettings settings(json);
 
-    RawBufferManager::get().save(metadata, bufferHandle, saveNumImages, writeDNG, settings, std::string(outputPath));
+    RawBufferManager::get().save(metadata, bufferHandle, saveNumImages, settings, std::string(outputPath));
 
     return JNI_TRUE;
 }
@@ -711,7 +711,8 @@ JNIEXPORT jstring JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_Es
         JNIEnv *env,
         jobject thiz,
         jlong handle,
-        jboolean basicSettings)
+        jboolean basicSettings,
+        jfloat shadowsBias)
 {
     std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
     if(!sessionManager) {
@@ -729,9 +730,9 @@ JNIEXPORT jstring JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_Es
     auto metadata = sessionManager->getCameraDescription(cameraId)->metadata;
 
     if (basicSettings)
-        gImageProcessor->estimateBasicSettings(*imageBuffer, metadata, settings);
+        ImageProcessor::estimateBasicSettings(*imageBuffer, metadata, settings);
     else
-        gImageProcessor->estimateSettings(*imageBuffer, metadata, settings);
+        ImageProcessor::estimateSettings(*imageBuffer, metadata, settings);
 
     auto settingsJson = settings.toJson();
     return env->NewStringUTF(settingsJson.dump().c_str());
@@ -820,15 +821,10 @@ jfloat JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_EstimateShado
     auto metadata = sessionManager->getCameraDescription(cameraId)->metadata;
     auto imageBuffer = lockedBuffer->getBuffers().front();
 
-    cv::Mat histogram = motioncam::ImageProcessor::calcHistogram(metadata, *imageBuffer, false, 8);
+    cv::Mat histogram = motioncam::ImageProcessor::calcHistogram(metadata, *imageBuffer, false, 4);
 
-    double a = 1.8;
-    if(!metadata.apertures.empty())
-        a = metadata.apertures[0];
-
-    double s = a*a;
-    double ev = std::log2(s / (imageBuffer->metadata.exposureTime / (1.0e9))) - std::log2(imageBuffer->metadata.iso / 100.0);
-    double keyValue = 1.03 - bias / (bias + std::log10(std::pow(10.0, ev) + 1));
+    float ev = motioncam::ImageProcessor::calcEv(metadata, imageBuffer->metadata);
+    float keyValue = 1.03f - bias / (bias + std::log10(std::pow(10.0f, ev) + 1));
 
     return motioncam::ImageProcessor::estimateShadows(histogram, keyValue);
 }
@@ -909,4 +905,23 @@ jboolean JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_CaptureHdrI
     sessionManager->captureHdrImage(numImages, baseIso, baseExposure, hdrIso, hdrExposure, settings, outputPath);
 
     return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT
+jstring JNICALL Java_com_motioncam_camera_NativeCameraSessionBridge_GetRawPreviewEstimatedSettings(
+        JNIEnv* env,
+        jobject thiz,
+        jlong handle)
+{
+    std::shared_ptr<CaptureSessionManager> sessionManager = getCameraSessionManager(handle);
+    if(!sessionManager) {
+        return JNI_FALSE;
+    }
+
+    PostProcessSettings settings;
+
+    sessionManager->getEstimatedPostProcessSettings(settings);
+
+    auto settingsJson = settings.toJson();
+    return env->NewStringUTF(settingsJson.dump().c_str());
 }

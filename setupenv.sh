@@ -14,9 +14,10 @@ fi
 NUM_CORES="$(python3 -c 'import multiprocessing as mp; print(mp.cpu_count())')"
 
 ANDROID_ABI="arm64-v8a"
-OPENCV_VERSION="4.5.0"
+OPENCV_VERSION="4.5.2"
 LIBEXPAT_VERSION="2.2.10"
 LIBEXIV2_VERSION="0.27.3"
+ZSTD_VERSION="v1.4.9"
 HALIDE_BRANCH=https://github.com/mirsadm/Halide
 
 mkdir -p tmp
@@ -133,6 +134,39 @@ build_exiv2() {
 	touch ".exiv2-${LIBEXIV2_VERSION}"
 }
 
+build_zstd() {
+	if [ ! -d "zstd-src" ]; then
+		git clone https://github.com/facebook/zstd zstd-src
+	fi
+
+	pushd zstd-src
+
+	git checkout ${ZSTD_VERSION}
+
+	pushd build/cmake
+
+	cmake  -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=../output/${ANDROID_ABI} -DCMAKE_SYSTEM_NAME=Android 												\
+		-DANDROID_NATIVE_API_LEVEL=21 -DCMAKE_SYSTEM_VERSION=21 -DANDROID_ABI=${ANDROID_ABI} -DCMAKE_ANDROID_ARCH_ABI=${ANDROID_ABI} -DANDROID_STL=c++_shared 	\
+		-DZSTD_BUILD_STATIC=ON -DZSTD_BUILD_TESTS=OFF -DCMAKE_ANDROID_NDK_TOOLCHAIN_VERSION=clang -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake .
+
+	make -j${NUM_CORES}
+
+	make install
+
+	INSTALL_DIR="../../../../libMotionCam/thirdparty/zstd"
+
+	mkdir -p ${INSTALL_DIR}/lib
+	mkdir -p ${INSTALL_DIR}/include
+
+	cp -a ../output/${ANDROID_ABI}/include/. ${INSTALL_DIR}/include/.
+	cp -a ../output/${ANDROID_ABI}/lib/*.a ${INSTALL_DIR}/lib/.
+
+	popd # /build/cmake
+	popd # zstd-src
+
+	touch ".zstd-${ZSTD_VERSION}"
+}
+
 build_halide() {
 	if [ ! -d "halide-src" ]; then
 		git clone ${HALIDE_BRANCH} halide-src
@@ -179,6 +213,10 @@ fi
 
 if [ ! -f ".exiv2-${LIBEXIV2_VERSION}" ]; then
 	build_exiv2
+fi
+
+if [ ! -f ".zstd-${ZSTD_VERSION}" ]; then
+	build_zstd
 fi
 
 if [ ! -f ".halide" ]; then

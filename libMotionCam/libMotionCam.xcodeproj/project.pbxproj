@@ -12,6 +12,7 @@
 		450FF38320E6BBE900550031 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 450FF38220E6BBE900550031 /* CoreFoundation.framework */; };
 		450FF38520E6BBFE00550031 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 450FF38420E6BBFE00550031 /* AppKit.framework */; };
 		4511F7B6225BEA8E001F0A37 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4511F7B5225BEA8D001F0A37 /* Metal.framework */; };
+		4513AFA426332A7B002C3BED /* libzstd.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4513AFA326332A7B002C3BED /* libzstd.a */; };
 		452B9F3124C4D45B00EA9063 /* libopencv_xfeatures2d.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 45FC3CB621F4F3B2007415B2 /* libopencv_xfeatures2d.dylib */; };
 		453ACCA220E431320083620E /* OpenCL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 453ACCA120E431320083620E /* OpenCL.framework */; };
 		453ACCA620E431CB0083620E /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 45A241082023AA2B007A436E /* Accelerate.framework */; };
@@ -188,6 +189,7 @@
 		450FF39520EE9DB000550031 /* libblitz.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libblitz.a; path = ../../../../../usr/local/Cellar/blitz/0.10/lib/libblitz.a; sourceTree = "<group>"; };
 		4511F7B5225BEA8D001F0A37 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		4511F7BA225FCCEA001F0A37 /* libHalide.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libHalide.a; path = ../../halide/lib/libHalide.a; sourceTree = "<group>"; };
+		4513AFA326332A7B002C3BED /* libzstd.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libzstd.a; path = ../../../../../usr/local/lib/libzstd.a; sourceTree = "<group>"; };
 		45242CC41FFD7BE50064A6AE /* libtbb.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libtbb.dylib; path = ../../../../usr/local/Cellar/tbb/2018_U2/lib/libtbb.dylib; sourceTree = "<group>"; };
 		453868642076ADEE004BFF65 /* libopencv_xphoto.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libopencv_xphoto.dylib; path = ../../../../../usr/local/Cellar/opencv/3.4.1_2/lib/libopencv_xphoto.dylib; sourceTree = "<group>"; };
 		453ACC2720E42F250083620E /* libopencv_ximgproc.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libopencv_ximgproc.a; path = "../../opencv-x86/lib/libopencv_ximgproc.a"; sourceTree = "<group>"; };
@@ -250,6 +252,7 @@
 		453ACC9620E431030083620E /* liblibjasper.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = liblibjasper.a; path = "../../opencv-x86/3rdparty/lib/liblibjasper.a"; sourceTree = "<group>"; };
 		453ACCA120E431320083620E /* OpenCL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenCL.framework; path = System/Library/Frameworks/OpenCL.framework; sourceTree = SDKROOT; };
 		453ACCA320E431680083620E /* libippicv.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libippicv.a; path = "../../opencv-x86/3rdparty/lib/libippicv.a"; sourceTree = "<group>"; };
+		454F24C126306E1C00D1FD31 /* libzstd.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libzstd.a; path = ../../../../../usr/local/Cellar/zstd/1.4.9/lib/libzstd.a; sourceTree = "<group>"; };
 		45565E2E246592590021A442 /* RawContainer.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = RawContainer.cpp; sourceTree = "<group>"; };
 		45565E2F246592590021A442 /* RawContainer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RawContainer.h; sourceTree = "<group>"; };
 		45565E312465F94D0021A442 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = System/Library/Frameworks/OpenGL.framework; sourceTree = SDKROOT; };
@@ -796,6 +799,7 @@
 				45FDF4BC21F508F40075887C /* libopencv_highgui.dylib in Frameworks */,
 				45E058AB2471BFB300C05AE7 /* generate_edges.a in Frameworks */,
 				45952458251F7A40004C549E /* preview_landscape4.a in Frameworks */,
+				4513AFA426332A7B002C3BED /* libzstd.a in Frameworks */,
 				4597316025C9A78900B75610 /* camera_preview3_raw10.a in Frameworks */,
 				45FC3E0C21F4FDE0007415B2 /* libopencv_videoio.dylib in Frameworks */,
 				4597315E25C9A78900B75610 /* camera_preview4_raw16.a in Frameworks */,
@@ -1196,6 +1200,8 @@
 		45FA2E661FF7F05500BE34C3 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				454F24C126306E1C00D1FD31 /* libzstd.a */,
+				4513AFA326332A7B002C3BED /* libzstd.a */,
 				4594FE0424D02125006FED24 /* libopencv_dnn_superres.dylib */,
 				45565E312465F94D0021A442 /* OpenGL.framework */,
 				4575F7CB242BAD820065032A /* libzstd.a */,

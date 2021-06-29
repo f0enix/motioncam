@@ -16,7 +16,7 @@
 #include "Logger.h"
 
 namespace motioncam {
-    const int MAX_PREVIEW_PIXELS = 1280*720;
+    const int MAX_PREVIEW_PIXELS = 1920*1080;
 
     namespace {
         color::Illuminant getIlluminant(acamera_metadata_enum_android_sensor_reference_illuminant1_t illuminant) {
@@ -125,7 +125,7 @@ namespace motioncam {
 
         // Check for RAW outputs
         OutputConfiguration outputConfig;
-        bool hasRawOutput = getRawConfiguration(cameraDescription, outputConfig);
+        bool hasRawOutput = getRawConfiguration(cameraDescription, false, outputConfig);
 
         return ( cameraDescription.hardwareLevel == ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED ||
                  cameraDescription.hardwareLevel == ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL_FULL ||
@@ -319,9 +319,7 @@ namespace motioncam {
 
         // ACAMERA_SENSOR_INFO_ACTIVE_ARRAY_SIZE
         if(ACameraMetadata_getConstEntry(cameraChars.get(), ACAMERA_SENSOR_INFO_ACTIVE_ARRAY_SIZE, &entry) == ACAMERA_OK) {
-            for (int n = 0; n < 4; n++) {
-                cameraDescription.sensorSize[n] = entry.data.i32[n];
-            }
+            cameraDescription.sensorSize = { entry.data.i32[0], entry.data.i32[1], entry.data.i32[2], entry.data.i32[3] };
         }
 
         // ACAMERA_CONTROL_MAX_REGIONS
@@ -375,12 +373,20 @@ namespace motioncam {
         }
     }
 
-    bool CaptureSessionManager::getRawConfiguration(const CameraDescription& cameraDesc, OutputConfiguration& rawConfiguration) {
+    bool CaptureSessionManager::getRawConfiguration(const CameraDescription& cameraDesc, bool preferRaw16, OutputConfiguration& rawConfiguration) {
         auto outputConfigs = cameraDesc.outputConfigs;
-        auto rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW10);
 
-        if (rawIt == outputConfigs.end()) {
+        std::map<int32_t, std::vector<OutputConfiguration>>::iterator rawIt;
+
+        if(preferRaw16) {
             rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW16);
+            if (rawIt == outputConfigs.end())
+                rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW10);
+        }
+        else {
+            rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW10);
+            if (rawIt == outputConfigs.end())
+                rawIt = outputConfigs.find(AIMAGE_FORMAT_RAW16);
         }
 
         if (rawIt != outputConfigs.end()) {
@@ -403,11 +409,11 @@ namespace motioncam {
     {
         auto outputConfigs = cameraDesc.outputConfigs;
 
-        OutputConfiguration closestConfig = { AIMAGE_FORMAT_YUV_420_888, DisplayDimension() };
+        OutputConfiguration closestConfig = { AIMAGE_FORMAT_PRIVATE, DisplayDimension() };
         bool foundConfig = false;
 
         // Find the closest preview configuration to our display resolution
-        auto yuvIt = outputConfigs.find(AIMAGE_FORMAT_YUV_420_888);
+        auto yuvIt = outputConfigs.find(AIMAGE_FORMAT_PRIVATE);
 
         if (yuvIt != outputConfigs.end()) {
             auto configurations = (*yuvIt).second;
@@ -462,7 +468,8 @@ namespace motioncam {
             const std::string& cameraId,
             std::shared_ptr<CameraSessionListener> listener,
             std::shared_ptr<ANativeWindow> previewOutputWindow,
-            bool setupForRawPreview)
+            bool setupForRawPreview,
+            bool preferRaw16)
     {
         OutputConfiguration outputConfig;
 
@@ -474,7 +481,7 @@ namespace motioncam {
         if(!cameraDesc)
             throw CameraSessionException("Invalid camera");
 
-        if(!getRawConfiguration(*cameraDesc, outputConfig)) {
+        if(!getRawConfiguration(*cameraDesc, preferRaw16, outputConfig)) {
             throw CameraSessionException("Failed to get output configuration");
         }
 
@@ -546,6 +553,11 @@ namespace motioncam {
     {
         if(mImageConsumer)
             mImageConsumer->updateRawPreviewSettings(shadows, contrast, saturation, blacks, whitePoint, tempOffset, tintOffset);
+    }
+
+    void CaptureSessionManager::getEstimatedPostProcessSettings(PostProcessSettings& outSettings) {
+        if(mImageConsumer)
+            mImageConsumer->getEstimatedSettings(outSettings);
     }
 
     void CaptureSessionManager::disableRawPreview() {

@@ -17,7 +17,7 @@ namespace motioncam {
             ~ZipWriter();
             
             void addFile(const std::string& filename, const std::string& data);
-            void addFile(const std::string& filename, const std::vector<uint8_t>& data);
+            void addFile(const std::string& filename, const std::vector<uint8_t>& data, const size_t numBytes);
             
             void commit();
             
@@ -44,10 +44,10 @@ namespace motioncam {
         void WriteCompressedFile(const std::vector<uint8_t>& data, const std::string& outputPath);
 #endif
 
-        __unused void ReadFile(const std::string& inputPath, std::vector<uint8_t>& output);
-        __unused void WriteFile(const uint8_t* data, size_t size, const std::string& outputPath);
-        __unused json11::Json ReadJsonFromFile(const std::string& path);
-        __unused std::string GetBasePath(const std::string& path);
+        void ReadFile(const std::string& inputPath, std::vector<uint8_t>& output);
+        void WriteFile(const uint8_t* data, size_t size, const std::string& outputPath);
+        json11::Json ReadJsonFromFile(const std::string& path);
+        void GetBasePath(const std::string& path, std::string& basePath, std::string& filename);
     }
 }
 

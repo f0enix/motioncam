@@ -6,7 +6,6 @@
     android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:alpha="0.75"
     android:padding="5dp">
 
     <RelativeLayout
@@ -23,7 +22,7 @@
 
             <TextView
                 android:id="@+id/infoShutterSpeedText"
-                android:layout_width="wrap_content"
+                android:layout_width="80dp"
                 android:layout_height="24dp"
                 android:drawableStart="@drawable/round_shutter_speed_24"
                 android:drawablePadding="5dp"
@@ -32,7 +31,7 @@
 
             <TextView
                 android:id="@+id/infoIsoText"
-                android:layout_width="wrap_content"
+                android:layout_width="80dp"
                 android:layout_height="24dp"
                 android:gravity="center"
                 android:drawableStart="@drawable/round_iso_24"

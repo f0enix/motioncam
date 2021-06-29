@@ -1,270 +1,326 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
+<androidx.constraintlayout.motion.widget.MotionLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/main"
+    app:layoutDescription="@xml/camera_activity_scene"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <include
-        android:id="@+id/preview_frame"
-        layout="@layout/preview_controls"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_marginStart="10dp"
-        android:layout_marginEnd="10dp"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toTopOf="@+id/cameraFrame"/>
-
-    <FrameLayout
-        android:id="@+id/cameraFrame"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        app:layout_constraintDimensionRatio="H,3:4"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
-
-        <com.motioncam.ui.BitmapDrawView
-            android:id="@+id/rawCameraPreview"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            tools:viewBindingIgnore="true" />
-
-        <FrameLayout
-            android:id="@+id/focusLockPointFrame"
-            android:layout_width="83dp"
-            android:layout_height="83dp"
-            android:padding="5dp"
-            android:visibility="invisible">
-
-            <View
-                android:id="@+id/cancelFocusLockBtn"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:background="@drawable/baseline_cancel_24" />
-
-            <View
-                android:layout_width="50dp"
-                android:layout_height="50dp"
-                android:layout_gravity="center"
-                android:background="@drawable/focus_circle" />
-
-        </FrameLayout>
-
-        <FrameLayout
-            android:id="@+id/exposureLockPointFrame"
-            android:layout_width="80dp"
-            android:layout_height="80dp"
-            android:padding="5dp"
-            android:visibility="invisible">
-
-            <View
-                android:id="@+id/cancelExposureLockBtn"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:background="@drawable/baseline_cancel_24" />
-
-            <View
-                android:layout_width="50dp"
-                android:layout_height="50dp"
-                android:layout_gravity="center"
-                android:background="@drawable/exposure_square" />
-
-            <View
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:layout_gravity="center"
-                android:alpha="0.75"
-                android:background="@drawable/baseline_add_24" />
-
-        </FrameLayout>
-
-    </FrameLayout>
-
-    <LinearLayout
-        android:id="@+id/manualControlsFrame"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:rotation="0"
-        android:orientation="vertical"
-        app:layout_constraintStart_toStartOf="@+id/cameraFrame"
-        app:layout_constraintTop_toTopOf="@+id/cameraFrame">
-
-        <TextView
-            android:id="@+id/hintText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:padding="5dp"
-            android:drawableStart="@drawable/baseline_cancel_24"
-            android:drawablePadding="5dp"
-            android:gravity="center_vertical"
-            android:text="@string/hint_text"
-            android:textAppearance="@style/MotionCam.TextAppearance.Small"
-            android:textColor="@color/white"/>
-
-        <LinearLayout
-            android:id="@+id/exposureCompFrame"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="5dp"
-            android:layout_marginRight="5dp"
-            android:alpha="0.75">
-
-            <LinearLayout
-                android:id="@+id/shadowsLayout"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_weight="1">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="match_parent"
-                    android:layout_marginLeft="5dp"
-                    android:drawableStart="@drawable/baseline_tonality_white_24"
-                    android:gravity="center_vertical"/>
-
-                <SeekBar
-                    android:id="@+id/shadowsSeekBar"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:progress="0"
-                    android:progressBackgroundTint="@color/white"
-                    android:thumbTint="@color/white"
-                    android:progressTint="@color/white"
-                    android:padding="10dp"/>
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/exposureLayout"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_weight="1">
-
-                <SeekBar
-                    android:id="@+id/exposureSeekBar"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:progress="5"
-                    android:max="10"
-                    android:layout_weight="1"
-                    android:progressBackgroundTint="@color/white"
-                    android:thumbTint="@color/white"
-                    android:progressTint="@color/white"
-                    android:padding="10dp"/>
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="match_parent"
-                    android:drawablePadding="5dp"
-                    android:drawableStart="@drawable/baseline_wb_sunny_white_24"
-                    android:gravity="center_vertical"/>
-
-            </LinearLayout>
-        </LinearLayout>
-
-        <include layout="@layout/manual_controls" />
-
-    </LinearLayout>
-
     <androidx.constraintlayout.widget.ConstraintLayout
-        android:id="@+id/captureSection"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/cameraFrame">
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:id="@+id/preview">
+
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/previewPager"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"/>
 
         <FrameLayout
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/captureModeSelection">
-
-            <ImageButton
-                android:id="@+id/switchCameraBtn"
-                android:layout_width="50dp"
-                android:layout_height="50dp"
-                android:layout_gravity="start|center_vertical"
-                android:layout_marginStart="10dp"
-                android:background="@drawable/outline_autorenew_24" />
-
-            <ImageView
-                android:id="@+id/captureBtn"
-                android:layout_width="65dp"
-                android:layout_height="65dp"
-                android:layout_gravity="center"
-                android:src="@drawable/capture_btn" />
-
-            <ProgressBar
-                android:id="@+id/hdrProgressBar"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="85dp"
-                android:layout_height="85dp"
-                android:layout_gravity="center"
-                android:indeterminate="false"
-                android:progress="50"
-                android:progressDrawable="@drawable/progress_circular"
-                android:visibility="invisible" />
-
-            <ImageView
-                android:id="@+id/settingsBtn"
-                android:layout_width="50dp"
-                android:layout_height="50dp"
-                android:layout_gravity="end|center_vertical"
-                android:layout_marginEnd="10dp"
-                android:background="@drawable/round_settings_24" />
-
-        </FrameLayout>
-
-        <LinearLayout
-            android:id="@+id/captureModeSelection"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
+            android:background="#55000000"
             app:layout_constraintLeft_toLeftOf="parent"
             app:layout_constraintTop_toTopOf="parent">
 
-            <TextView
-                android:id="@+id/hdrModeBtn"
-                android:layout_width="match_parent"
+            <ImageView
+                android:id="@+id/onBackFromPreviewBtn"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="center_horizontal"
-                android:padding="5dp"
-                android:text="HDR/NIGHT"
+                android:background="@drawable/outline_arrow_back_24"
+                android:layout_margin="20dp">
+            </ImageView>
+
+            <LinearLayout
+                android:id="@+id/previewProcessingFrame"
+                android:layout_width="wrap_content"
+                android:layout_height="30dp"
+                android:layout_gravity="center_vertical|end"
+                android:orientation="horizontal"
+                android:layout_marginEnd="20dp">
+
+                <com.mikhaellopez.circularprogressbar.CircularProgressBar
+                    android:layout_width="30dp"
+                    android:layout_height="match_parent"
+                    app:cpb_indeterminate_mode="true"
+                    app:cpb_progressbar_color="#ffffff"
+                    app:cpb_progressbar_width="5dp"
+                    app:cpb_round_border="false"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:layout_marginLeft="10dp"
+                    android:gravity="center_vertical"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
+                    android:text="@string/processing">
+                </TextView>
+            </LinearLayout>
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="100dp"
+            android:background="#55000000"
+            android:orientation="horizontal"
+            android:gravity="center"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <TextView
+                android:id="@+id/shareBtn"
+                android:layout_width="70dp"
+                android:layout_height="50dp"
+                android:gravity="center"
+                android:drawableTop="@drawable/baseline_share_24"
                 android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                android:textColor="@color/colorAccent" />
+                android:text="Share">
+            </TextView>
 
             <TextView
-                android:id="@+id/zslModeBtn"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="center_horizontal"
-                android:padding="5dp"
-                android:text="NORMAL"
-                android:textAppearance="@style/MotionCam.TextAppearance.Small" />
-
-            <TextView
-                android:id="@+id/burstModeBtn"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="center_horizontal"
-                android:padding="5dp"
-                android:text="BURST"
-                android:textAppearance="@style/MotionCam.TextAppearance.Small" />
+                android:id="@+id/openBtn"
+                android:layout_width="70dp"
+                android:layout_height="50dp"
+                android:gravity="center"
+                android:layout_marginLeft="20dp"
+                android:drawableTop="@drawable/baseline_open_in_new_24"
+                android:textAppearance="@style/MotionCam.TextAppearance.Small"
+                android:text="Open">
+            </TextView>
 
         </LinearLayout>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/camera"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <include
+            android:id="@+id/preview_frame"
+            layout="@layout/preview_controls"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginStart="10dp"
+            android:layout_marginEnd="10dp"
+            app:layout_constraintBottom_toTopOf="@+id/cameraFrame"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <FrameLayout
+            android:id="@+id/cameraFrame"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintDimensionRatio="H,3:4"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <com.motioncam.ui.BitmapDrawView
+                android:id="@+id/rawCameraPreview"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                tools:viewBindingIgnore="true" />
+
+            <FrameLayout
+                android:id="@+id/focusLockPointFrame"
+                android:layout_width="75dp"
+                android:layout_height="75dp"
+                android:visibility="invisible">
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_gravity="center"
+                    android:alpha="0.5"
+                    android:background="@drawable/focus_circle" />
+
+            </FrameLayout>
+
+        </FrameLayout>
+
+        <com.motioncam.ui.CameraGridLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            app:layout_constraintTop_toTopOf="@+id/cameraFrame"
+            app:layout_constraintBottom_toBottomOf="@+id/cameraFrame"/>
+
+        <LinearLayout
+            android:id="@+id/manualControlsFrame"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:rotation="0"
+            app:layout_constraintStart_toStartOf="@+id/cameraFrame"
+            app:layout_constraintTop_toTopOf="@+id/cameraFrame">
+
+            <LinearLayout
+                android:id="@+id/exposureCompFrame"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="5dp"
+                android:layout_marginRight="5dp"
+                android:baselineAligned="false">
+
+                <LinearLayout
+                    android:id="@+id/shadowsLayout"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="5dp"
+                        android:gravity="center_vertical"
+                        app:drawableStartCompat="@drawable/baseline_tonality_24" />
+
+                    <SeekBar
+                        android:id="@+id/shadowsSeekBar"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="10dp"
+                        android:progress="0"
+                        android:progressBackgroundTint="@color/white"
+                        android:progressTint="@color/white"
+                        android:thumbTint="@color/white" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/exposureLayout"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1">
+
+                    <SeekBar
+                        android:id="@+id/exposureSeekBar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="10"
+                        android:padding="10dp"
+                        android:progress="5"
+                        android:progressBackgroundTint="@color/white"
+                        android:progressTint="@color/white"
+                        android:thumbTint="@color/white" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:drawableStart="@drawable/baseline_wb_sunny_24"
+                        android:drawablePadding="5dp"
+                        android:gravity="center_vertical" />
+
+                </LinearLayout>
+            </LinearLayout>
+
+            <include layout="@layout/manual_controls" />
+
+        </LinearLayout>
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/captureSection"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/cameraFrame">
+
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/captureModeSelection">
+
+                <ImageButton
+                    android:id="@+id/switchCameraBtn"
+                    android:layout_width="50dp"
+                    android:layout_height="50dp"
+                    android:layout_gravity="start|center_vertical"
+                    android:layout_marginStart="20dp"
+                    android:background="@drawable/outline_autorenew_24" />
+
+                <ImageView
+                    android:id="@+id/captureBtn"
+                    android:layout_width="65dp"
+                    android:layout_height="65dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/capture_btn" />
+
+                <com.mikhaellopez.circularprogressbar.CircularProgressBar
+                    android:id="@+id/captureProgressBar"
+                    android:layout_width="65dp"
+                    android:layout_height="65dp"
+                    android:layout_gravity="center"
+                    android:indeterminate="false"
+                    android:visibility="gone"
+                    app:cpb_background_progressbar_color="@android:color/transparent"
+                    app:cpb_background_progressbar_width="5dp"
+                    app:cpb_progress="50"
+                    app:cpb_progressbar_color="#ffffff"
+                    app:cpb_progressbar_width="5dp"
+                    app:cpb_round_border="false" />
+
+                <de.hdodenhof.circleimageview.CircleImageView
+                    android:id="@+id/capturePreview"
+                    android:layout_gravity="end|center_vertical"
+                    android:layout_marginEnd="20dp"
+                    app:civ_border_width="2dp"
+                    app:civ_border_color="@color/white"
+                    android:layout_width="50dp"
+                    android:layout_height="50dp"/>
+
+            </FrameLayout>
+
+            <LinearLayout
+                android:id="@+id/captureModeSelection"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:orientation="horizontal"
+                app:layout_constraintLeft_toLeftOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
+
+                <TextView
+                    android:id="@+id/nightModeBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:padding="5dp"
+                    android:text="@string/night_mode"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
+                    android:textColor="@color/colorAccent" />
+
+                <TextView
+                    android:id="@+id/zslModeBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:padding="5dp"
+                    android:text="@string/photo_mode"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small" />
+
+                <TextView
+                    android:id="@+id/burstModeBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:padding="5dp"
+                    android:text="@string/burst_mode"
+                    android:textAppearance="@style/MotionCam.TextAppearance.Small" />
+            </LinearLayout>
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</androidx.constraintlayout.motion.widget.MotionLayout>

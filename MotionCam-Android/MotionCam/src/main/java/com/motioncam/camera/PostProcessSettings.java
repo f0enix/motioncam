@@ -5,7 +5,6 @@ public class PostProcessSettings implements Cloneable {
     public float spatialDenoiseAggressiveness   = 1.0f;
 
     // Post processing
-    public float chromaEps                      = 4;
     public float tonemapVariance                = 0.25f;
 
     public float gamma                          = 2.2f;
@@ -17,8 +16,8 @@ public class PostProcessSettings implements Cloneable {
     public float noiseSigma                     = 0.0f;
     public float sceneLuminance                 = 0.0f;
     public float saturation                     = 1.0f;
-    public float blueSaturation                 = 1.0f;
-    public float greenSaturation                = 1.0f;
+    public float blues                          = 10.0f;
+    public float greens                         = 10.0f;
     public float temperature                    = -1.0f;
     public float tint                           = -1.0f;
 
@@ -27,7 +26,14 @@ public class PostProcessSettings implements Cloneable {
 
     public int jpegQuality                      = 95;
     public boolean flipped                      = false;
-    public boolean overrideWhiteBalance         = false;
+    public boolean dng                          = false;
+
+    public double gpsLatitude                   = 0;
+    public double gpsLongitude                  = 0;
+    public double gpsAltitude                   = 0;
+    public String gpsTime                       = "";
+
+    public String captureMode                   = "ZSL";
 
     @Override
     public PostProcessSettings clone() {

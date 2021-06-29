@@ -21,9 +21,18 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
 
+import com.google.android.gms.tasks.Task;
+import com.google.android.gms.tasks.Tasks;
+import com.google.mlkit.vision.common.InputImage;
+import com.google.mlkit.vision.face.Face;
+import com.google.mlkit.vision.face.FaceDetection;
+import com.google.mlkit.vision.face.FaceDetector;
+import com.google.mlkit.vision.face.FaceDetectorOptions;
 import com.motioncam.BuildConfig;
 import com.motioncam.R;
 import com.motioncam.model.CameraProfile;
+import com.squareup.moshi.JsonAdapter;
+import com.squareup.moshi.Moshi;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtil;
@@ -32,6 +41,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Callable;
 
 public class ProcessorService extends IntentService {
@@ -39,9 +50,29 @@ public class ProcessorService extends IntentService {
 
     public static final String METADATA_PATH_KEY                = "metadataPath";
     public static final String RECEIVER_KEY                     = "receiver";
+    public static final String PREVIEW_PATH                     = "preview";
 
     public static final int NOTIFICATION_ID                     = 1;
     public static final String NOTIFICATION_CHANNEL_ID          = "MotionCamNotification";
+
+    static class Rect {
+        public final int left;
+        public final int top;
+        public final int right;
+        public final int bottom;
+
+        Rect(int left, int top, int right, int bottom) {
+            this.left = left;
+            this.top = top;
+            this.right = right;
+            this.bottom = bottom;
+        }
+    }
+    static class Metadata {
+        List<Rect> faces;
+        Double longitude;
+        Double latitude;
+    }
 
     static class ProcessFile implements Callable<Boolean>, NativeProcessorProgressListener {
         private final Context mContext;
@@ -66,7 +97,12 @@ public class ProcessorService extends IntentService {
             return filename;
         }
 
-        ProcessFile(Context context, File rawContainerPath, File tempPath, boolean processInMemory, ResultReceiver receiver) {
+        ProcessFile(Context context,
+                    File rawContainerPath,
+                    File previewDirectory,
+                    boolean processInMemory,
+                    ResultReceiver receiver)
+        {
             mContext = context;
             mNativeProcessor = new NativeProcessor();
             mReceiver = receiver;
@@ -77,15 +113,17 @@ public class ProcessorService extends IntentService {
             mOutputFileNameJpeg = fileNoExtension(rawContainerPath.getName()) + ".jpg";
             mOutputFileNameDng = fileNoExtension(rawContainerPath.getName()) + ".dng";
 
-            mTempFileJpeg = new File(tempPath, mOutputFileNameJpeg);
-            mTempFileDng = new File(tempPath, mOutputFileNameDng);
+            mTempFileJpeg = new File(previewDirectory, mOutputFileNameJpeg);
+            mTempFileDng = new File(previewDirectory, mOutputFileNameDng);
         }
 
         @Override
         public Boolean call() throws IOException {
             if(mProcessInMemory) {
-                if (!mNativeProcessor.processInMemory(mTempFileJpeg.getPath(), this))
+                if (!mNativeProcessor.processInMemory(mTempFileJpeg.getPath(), this)) {
+                    Log.d(TAG, "No in-memory container found");
                     return false;
+                }
             }
             else {
                 mNativeProcessor.processFile(mRawContainerPath.getPath(), mTempFileJpeg.getPath(), this);
@@ -100,19 +138,20 @@ public class ProcessorService extends IntentService {
                 mReceiver.send(ProcessorReceiver.PROCESS_CODE_STARTED, Bundle.EMPTY);
             }
 
+            Uri contentUri = null;
+
             // Copy to media store
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 if(BuildConfig.DEBUG && !mProcessInMemory)
                     saveToFiles(mRawContainerPath, "application/zip", Environment.DIRECTORY_DOCUMENTS);
 
                 if (mTempFileDng.exists()) {
-                    saveToMediaStore(mTempFileDng, "image/x-adobe-dng", Environment.DIRECTORY_DCIM);
+                    saveToMediaStore(mTempFileDng, "image/x-adobe-dng", Environment.DIRECTORY_DCIM + File.separator + "Camera");
                     mTempFileDng.delete();
                 }
 
                 if (mTempFileJpeg.exists()) {
-                    saveToMediaStore(mTempFileJpeg, "image/jpeg", Environment.DIRECTORY_DCIM);
-                    mTempFileJpeg.delete();
+                    contentUri = saveToMediaStore(mTempFileJpeg, "image/jpeg", Environment.DIRECTORY_DCIM + File.separator + "Camera");
                 }
             }
             // Legacy copy file
@@ -131,6 +170,8 @@ public class ProcessorService extends IntentService {
                 if(mTempFileDng.exists()) {
                     File outputFileDng = new File(outputDirectory, mOutputFileNameDng);
 
+                    Log.d(TAG, "Writing to " + outputFileDng.getPath());
+
                     FileUtils.copyFile(mTempFileDng, outputFileDng);
                     mTempFileDng.delete();
                 }
@@ -138,13 +179,26 @@ public class ProcessorService extends IntentService {
                 if(mTempFileJpeg.exists()) {
                     File outputFileJpeg = new File(outputDirectory, mOutputFileNameJpeg);
 
-                    FileUtils.copyFile(mTempFileJpeg, outputFileJpeg);
-                    mTempFileJpeg.delete();
+                    Log.d(TAG, "Writing to " + outputFileJpeg.getPath());
 
-                    Uri uri = Uri.fromFile(outputFileJpeg);
-                    mContext.sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, uri));
+                    FileUtils.copyFile(mTempFileJpeg, outputFileJpeg);
+
+                    contentUri = Uri.fromFile(outputFileJpeg);
+                    mContext.sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, contentUri));
                 }
             }
+
+            if(mReceiver != null) {
+                Bundle bundle = new Bundle();
+
+                bundle.putString(ProcessorReceiver.PROCESS_CODE_CONTENT_URI_KEY, contentUri.toString());
+                bundle.putString(ProcessorReceiver.PROCESS_CODE_OUTPUT_FILE_PATH_KEY, mTempFileJpeg.getPath());
+                bundle.putInt(ProcessorReceiver.PROCESS_CODE_PROGRESS_VALUE_KEY, 100);
+
+                mReceiver.send(ProcessorReceiver.PROCESS_CODE_COMPLETED, bundle);
+            }
+
+            mNotifyManager.cancel(NOTIFICATION_ID);
 
             if(!mProcessInMemory)
                 mRawContainerPath.delete();
@@ -168,6 +222,8 @@ public class ProcessorService extends IntentService {
 
             Uri imageContentUri = resolver.insert(collection, details);
 
+            Log.d(TAG, "Writing to " + inputFile.getPath());
+
             try (ParcelFileDescriptor pfd = resolver.openFileDescriptor(imageContentUri, "w", null)) {
                 FileOutputStream outStream = new FileOutputStream(pfd.getFileDescriptor());
 
@@ -181,7 +237,7 @@ public class ProcessorService extends IntentService {
         }
 
         @RequiresApi(api = Build.VERSION_CODES.Q)
-        private void saveToMediaStore(File inputFile, String mimeType, String relativePath) throws IOException {
+        private Uri saveToMediaStore(File inputFile, String mimeType, String relativePath) throws IOException {
             ContentResolver resolver = mContext.getApplicationContext().getContentResolver();
 
             Uri imageCollection;
@@ -203,6 +259,8 @@ public class ProcessorService extends IntentService {
 
             Uri imageContentUri = resolver.insert(imageCollection, imageDetails);
 
+            Log.d(TAG, "Writing to " + inputFile.getPath());
+
             try (ParcelFileDescriptor pfd = resolver.openFileDescriptor(imageContentUri, "w", null)) {
                 FileOutputStream outStream = new FileOutputStream(pfd.getFileDescriptor());
 
@@ -213,6 +271,8 @@ public class ProcessorService extends IntentService {
             imageDetails.put(MediaStore.Images.Media.IS_PENDING, 0);
 
             resolver.update(imageContentUri, imageDetails, null, null);
+
+            return imageContentUri;
         }
 
         @Override
@@ -254,15 +314,57 @@ public class ProcessorService extends IntentService {
         }
 
         @Override
+        public String onPreviewSaved(String outputPath) {
+            Metadata metadata = new Metadata();
+            metadata.faces = new ArrayList<>();
+
+//            // We'll run the Android built in face detection and return it as metadata
+//            FaceDetectorOptions options =
+//                    new FaceDetectorOptions.Builder()
+//                            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
+//                            .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
+//                            .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
+//                            .build();
+//
+//            FaceDetector detector = FaceDetection.getClient(options);
+//
+//
+//            try {
+//                Task<List<Face>> task = detector.process(InputImage.fromFilePath(mContext, Uri.fromFile(new File(outputPath))));
+//                List<Face> faces = Tasks.await(task);
+//
+//                Log.i(TAG, "Detected " + faces.size() + " faces");
+//
+//                for(Face f : faces) {
+//                    metadata.faces.add(
+//                            new Rect(f.getBoundingBox().left,
+//                                    f.getBoundingBox().top,
+//                                    f.getBoundingBox().right,
+//                                    f.getBoundingBox().bottom));
+//                }
+//            }
+//            catch (Exception e) {
+//                e.printStackTrace();
+//            }
+
+            // Get users location and add to metadata
+            Bundle bundle = new Bundle();
+            bundle.putString(ProcessorReceiver.PROCESS_CODE_OUTPUT_FILE_PATH_KEY, outputPath);
+
+            mReceiver.send(ProcessorReceiver.PROCESS_CODE_PREVIEW_READY, bundle);
+
+            // Return metadata about the image
+            Moshi moshi = new Moshi.Builder().build();
+            JsonAdapter<Metadata> jsonAdapter = moshi.adapter(Metadata.class);
+
+            String result = jsonAdapter.toJson(metadata);
+            Log.d(TAG, "Returning metadata " + result);
+
+            return result;
+        }
+
+        @Override
         public void onCompleted() {
-            if(mReceiver != null) {
-                Bundle bundle = new Bundle();
-
-                bundle.putInt(ProcessorReceiver.PROCESS_CODE_PROGRESS_VALUE_KEY, 100);
-                mReceiver.send(ProcessorReceiver.PROCESS_CODE_COMPLETED, bundle);
-            }
-
-            mNotifyManager.cancel(NOTIFICATION_ID);
         }
 
         @Override
@@ -290,13 +392,12 @@ public class ProcessorService extends IntentService {
 
         // Set receiver if we get one
         ResultReceiver receiver = intent.getParcelableExtra(RECEIVER_KEY);
+        File previewDirectory = new File(getFilesDir(), PREVIEW_PATH);
 
-        File tmpDirectory = new File(getFilesDir(), "tmp");
-
-        // Create temporary directory
-        if(!tmpDirectory.exists()) {
-            if(!tmpDirectory.mkdirs()) {
-                Log.e(TAG, "Failed to create " + tmpDirectory);
+        // Create directory to store output for the capture preview
+        if(!previewDirectory.exists()) {
+            if(!previewDirectory.mkdirs()) {
+                Log.e(TAG, "Failed to create " + previewDirectory);
                 return;
             }
         }
@@ -308,13 +409,15 @@ public class ProcessorService extends IntentService {
 
         while(moreToProcess) {
             File inMemoryTmp = CameraProfile.generateCaptureFile(getApplicationContext());
-            ProcessFile inMemoryProcess = new ProcessFile(getApplicationContext(), inMemoryTmp, tmpDirectory, true, receiver);
+            ProcessFile inMemoryProcess = new ProcessFile(
+                    getApplicationContext(), inMemoryTmp, previewDirectory, true, receiver);
 
             try {
+                Log.d(TAG, "Processing in-memory container");
                 moreToProcess = inMemoryProcess.call();
             }
             catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "Failed to process in-memory container", e);
                 moreToProcess = false;
             }
         }
@@ -324,19 +427,24 @@ public class ProcessorService extends IntentService {
         if(pendingFiles == null)
             return;
 
-        Log.i(TAG, "Found " + pendingFiles.length + " images to process");
-
         // Process all files
         for(File file : pendingFiles) {
-            ProcessFile processFile = new ProcessFile(getApplicationContext(), file, tmpDirectory, false, receiver);
+            ProcessFile processFile = new ProcessFile(
+                    getApplicationContext(), file, previewDirectory, false, receiver);
 
             try {
+                Log.d(TAG, "Processing " + file.getPath());
                 processFile.call();
             }
             catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "Failed to process " + file.getPath(), e);
                 file.delete();
             }
         }
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
     }
 }

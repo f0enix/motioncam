@@ -10,8 +10,6 @@
 
 using namespace motioncam;
 
-static const jlong INVALID_NATIVE_OBJ  = -1;
-
 class ImageProcessListener : public ImageProcessorProgress {
 public:
     ImageProcessListener(JNIEnv* env, jobject progressListener) :
@@ -20,6 +18,23 @@ public:
 
     ~ImageProcessListener() {
         mEnv->DeleteGlobalRef(mProgressListenerRef);
+    }
+
+    std::string onPreviewSaved(const std::string& outputPath) const override {
+        jmethodID onCompletedMethod = mEnv->GetMethodID(
+                mEnv->GetObjectClass(mProgressListenerRef),
+                "onPreviewSaved",
+                "(Ljava/lang/String;)Ljava/lang/String;");
+
+        auto result = (jstring)
+                mEnv->CallObjectMethod(mProgressListenerRef, onCompletedMethod, mEnv->NewStringUTF(outputPath.c_str()));
+
+        const char *resultStr = mEnv->GetStringUTFChars(result, nullptr);
+        std::string metadata(resultStr);
+
+        mEnv->ReleaseStringUTFChars(result, resultStr);
+
+        return metadata;
     }
 
     bool onProgressUpdate(int progress) const override {
@@ -56,57 +71,37 @@ private:
     jobject mProgressListenerRef;
 };
 
-static std::shared_ptr<ImageProcessor> gProcessorObj    = nullptr;
-static std::shared_ptr<ImageProcessListener> gListener  = nullptr;
-
 static std::string gLastError;
-
-extern "C" JNIEXPORT
-jlong JNICALL Java_com_motioncam_processor_NativeProcessor_CreateProcessor(__unused JNIEnv *env, __unused jobject instance) {
-    if(gProcessorObj != nullptr) {
-        gLastError = "Image processor already exists";
-        return INVALID_NATIVE_OBJ;
-    }
-
-    try {
-        gProcessorObj = std::make_shared<ImageProcessor>();
-    }
-    catch(const MotionCamException& e) {
-        gLastError = e.what();
-        return INVALID_NATIVE_OBJ;
-    }
-
-    return reinterpret_cast<long> (gProcessorObj.get());
-}
 
 extern "C" JNIEXPORT
 jboolean JNICALL Java_com_motioncam_processor_NativeProcessor_ProcessInMemory(
         JNIEnv *env,
-        __unused jobject instance,
-        jlong processorObj,
+        jobject instance,
         jstring outputPath_,
         jobject progressListener)
 {
-    auto* imageProcessor = reinterpret_cast<ImageProcessor*>(processorObj);
-    if(imageProcessor != gProcessorObj.get()) {
-        logger::log("Trying to use mismatched image processor pointer!");
-        return JNI_TRUE;
-    }
-
-    gListener = std::make_shared<ImageProcessListener>(env, progressListener);
-
     const char *javaOutputPath = env->GetStringUTFChars(outputPath_, nullptr);
     std::string outputPath(javaOutputPath);
 
     env->ReleaseStringUTFChars(outputPath_, javaOutputPath);
 
-    auto container = RawBufferManager::get().peekPendingContainer();
+    auto container = RawBufferManager::get().popPendingContainer();
     if(!container)
         return JNI_FALSE;
 
-    motioncam::ImageProcessor::process(*container, outputPath, *gListener);
+    try {
+        ImageProcessListener listener(env, progressListener);
 
-    RawBufferManager::get().clearPendingContainer();
+        motioncam::ImageProcessor::process(*container, outputPath, listener);
+    }
+    catch(std::runtime_error& e) {
+        jclass exClass = env->FindClass("java/lang/RuntimeException");
+        if (exClass == nullptr) {
+            return JNI_FALSE;
+        }
+
+        env->ThrowNew(exClass, e.what());
+    }
 
     return JNI_TRUE;
 }
@@ -114,18 +109,10 @@ jboolean JNICALL Java_com_motioncam_processor_NativeProcessor_ProcessInMemory(
 extern "C" JNIEXPORT
 jboolean JNICALL Java_com_motioncam_processor_NativeProcessor_ProcessFile(
     JNIEnv *env,
-    __unused jobject instance,
-    jlong processorObj,
+    jobject instance,
     jstring inputPath_,
     jstring outputPath_,
     jobject progressListener) {
-
-    auto* imageProcessor = reinterpret_cast<ImageProcessor*>(processorObj);
-    if(imageProcessor != gProcessorObj.get()) {
-        logger::log("Trying to use mismatched image processor pointer!");
-        gLastError = "Invalid image processor";
-        return JNI_FALSE;
-    }
 
     const char* javaInputPath = env->GetStringUTFChars(inputPath_, nullptr);
     std::string inputPath(javaInputPath);
@@ -140,24 +127,21 @@ jboolean JNICALL Java_com_motioncam_processor_NativeProcessor_ProcessFile(
     // Process the image
     //
 
-    gListener = std::make_shared<ImageProcessListener>(env, progressListener);
+    try {
+        ImageProcessListener listener(env, progressListener);
 
-    motioncam::ImageProcessor::process(inputPath, outputPath, *gListener);
+        motioncam::ImageProcessor::process(inputPath, outputPath, listener);
+    }
+    catch(std::runtime_error& e) {
+        jclass exClass = env->FindClass("java/lang/RuntimeException");
+        if (exClass == nullptr) {
+            return JNI_FALSE;
+        }
 
-    return JNI_TRUE;
-}
-
-extern "C" JNIEXPORT
-void JNICALL Java_com_motioncam_processor_NativeProcessor_DestroyProcessor(__unused JNIEnv *env, __unused jobject instance, jlong processorObj) {
-
-    auto* imageProcessor = reinterpret_cast<ImageProcessor*>(processorObj);
-
-    if(imageProcessor != gProcessorObj.get()) {
-        logger::log("Trying to destroy mismatched image processor pointer!");
+        env->ThrowNew(exClass, e.what());
     }
 
-    gProcessorObj   = nullptr;
-    gListener       = nullptr;
+    return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT

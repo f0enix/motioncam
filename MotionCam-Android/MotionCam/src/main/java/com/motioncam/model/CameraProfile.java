@@ -35,7 +35,7 @@ public class CameraProfile {
         return  new File(getRootOutputPath(context), CameraProfile.generateFilename());
     }
 
-    public static final int DEFAULT_JPEG_QUALITY = 98;
+    public static final int DEFAULT_JPEG_QUALITY = 95;
 
     // Light
     public static final int DEFAULT_CONTRAST = 50;
@@ -43,13 +43,10 @@ public class CameraProfile {
 
     // Saturation
     public static final int DEFAULT_SATURATION = 50;
-    public static final int DEFAULT_GREEN_SATURATION = 50;
-    public static final int DEFAULT_BLUE_SATURATION = 50;
+    public static final int DEFAULT_GREENS = 50;
+    public static final int DEFAULT_BLUES = 50;
 
     // Detail
-    public static final int DEFAULT_SHARPNESS = 50;
-    public static final int DEFAULT_DETAIL = 35;
-
-    // Denoise
-    public static final float DEFAULT_CHROMA_EPS = 4;
+    public static final int DEFAULT_SHARPNESS = 40;
+    public static final int DEFAULT_DETAIL = 25;
 }

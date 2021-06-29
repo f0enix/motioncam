@@ -26,15 +26,15 @@ namespace motioncam {
         }
     
         void ZipWriter::addFile(const std::string& filename, const std::string& data) {
-            addFile(filename, vector<uint8_t>(data.begin(), data.end()));
+            addFile(filename, vector<uint8_t>(data.begin(), data.end()), data.size());
         }
 
-        void ZipWriter::addFile(const std::string& filename, const std::vector<uint8_t>& data) {
+        void ZipWriter::addFile(const std::string& filename, const std::vector<uint8_t>& data, const size_t numBytes) {
             if(m_commited) {
                 throw IOException("Can't add " + filename + " because archive has been commited");
             }
             
-            if(!mz_zip_writer_add_mem(&m_zip, filename.c_str(), data.data(), data.size(), MZ_NO_COMPRESSION)) {
+            if(!mz_zip_writer_add_mem(&m_zip, filename.c_str(), data.data(), numBytes, MZ_NO_COMPRESSION)) {
                 throw IOException("Can't add " + filename);
             }
         }
@@ -209,7 +209,7 @@ namespace motioncam {
         }
 #endif // ZSTD_AVAILABLE
 
-        __unused void ReadFile(const string& inputPath, vector<uint8_t>& output) {
+        void ReadFile(const string& inputPath, vector<uint8_t>& output) {
             std::ifstream file(inputPath, std::ios::binary);
             
             if (file.eof() || file.fail())
@@ -228,7 +228,7 @@ namespace motioncam {
             file.close();
         }
 
-        __unused void WriteFile(const uint8_t* data, size_t size, const std::string& outputPath) {
+        void WriteFile(const uint8_t* data, size_t size, const std::string& outputPath) {
             std::ofstream file(outputPath, std::ios::binary);
             
             // If we have a problem
@@ -248,7 +248,7 @@ namespace motioncam {
             file.close();
         }
 
-        __unused json11::Json ReadJsonFromFile(const string& path) {
+        json11::Json ReadJsonFromFile(const string& path) {
             // Read file to string
             std::ifstream file(path);
             string str, err;
@@ -275,13 +275,16 @@ namespace motioncam {
             return metadata;
         }
 
-        __unused std::string GetBasePath(const std::string& path) {
+        void GetBasePath(const std::string& path, std::string& basePath, std::string& filename) {
             size_t index = path.find_last_of('/');
             if(index == std::string::npos) {
-                return path;
+                basePath = "";
+                filename = path;
+                return;
             }
             
-            return path.substr(0, index);
+            basePath = path.substr(0, index);
+            filename = path.substr(index + 1, path.size());
         }
     }
 }

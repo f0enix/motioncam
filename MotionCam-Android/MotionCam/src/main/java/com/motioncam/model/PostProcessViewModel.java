@@ -7,9 +7,9 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 
-import com.motioncam.CameraActivity;
 import com.motioncam.DenoiseSettings;
 import com.motioncam.camera.AsyncNativeCameraOps;
+import com.motioncam.camera.CameraManualControl;
 import com.motioncam.camera.NativeCameraBuffer;
 import com.motioncam.camera.NativeCameraInfo;
 import com.motioncam.camera.NativeCameraMetadata;
@@ -24,8 +24,8 @@ import java.util.List;
 public class PostProcessViewModel extends ViewModel {
     public enum SpatialDenoiseAggressiveness {
         OFF(0.0f, 0),
-        NORMAL(1.0f, 1),
-        HIGH(3.0f, 2);
+        NORMAL(0.5f, 1),
+        HIGH(1.0f, 2);
 
         SpatialDenoiseAggressiveness(float weight, int optionValue) {
             mWeight = weight;
@@ -64,15 +64,14 @@ public class PostProcessViewModel extends ViewModel {
     final public MutableLiveData<Integer> contrast = new MutableLiveData<>();
     final public MutableLiveData<Integer> blacks = new MutableLiveData<>();
     final public MutableLiveData<Integer> saturation = new MutableLiveData<>();
-    final public MutableLiveData<Integer> greenSaturation = new MutableLiveData<>();
-    final public MutableLiveData<Integer> blueSaturation = new MutableLiveData<>();
+    final public MutableLiveData<Integer> greens = new MutableLiveData<>();
+    final public MutableLiveData<Integer> blues = new MutableLiveData<>();
     final public MutableLiveData<Integer> temperature = new MutableLiveData<>();
     final public MutableLiveData<Integer> tint = new MutableLiveData<>();
     final public MutableLiveData<Integer> sharpness = new MutableLiveData<>();
     final public MutableLiveData<Integer> detail = new MutableLiveData<>();
     final public MutableLiveData<Integer> numMergeImages = new MutableLiveData<>();
     final public MutableLiveData<Integer> spatialDenoiseAggressiveness = new MutableLiveData<>();
-    final public MutableLiveData<Float> chromaEps = new MutableLiveData<>();
     final public MutableLiveData<Boolean> saveDng = new MutableLiveData<>();
     final public MutableLiveData<Boolean> isFlipped = new MutableLiveData<>();
 
@@ -131,12 +130,12 @@ public class PostProcessViewModel extends ViewModel {
         return getSetting(saturation, CameraProfile.DEFAULT_SATURATION) / 100.0f * 2.0f;
     }
 
-    public float getGreenSaturationSetting() {
-        return getSetting(greenSaturation, CameraProfile.DEFAULT_GREEN_SATURATION) / 100.0f * 2.0f;
+    public float getGreensSetting() {
+        return (getSetting(greens, CameraProfile.DEFAULT_GREENS) - 50) / 100.0f * 40.0f;
     }
 
-    private float getBlueSaturationSetting() {
-        return getSetting(blueSaturation, CameraProfile.DEFAULT_BLUE_SATURATION) / 100.0f * 2.0f;
+    private float getBluesSetting() {
+        return (getSetting(blues, CameraProfile.DEFAULT_BLUES) - 50) / 100.0f * 40.0f;
     }
 
     public int getTemperatureSetting() {
@@ -156,19 +155,15 @@ public class PostProcessViewModel extends ViewModel {
     }
 
     public float getSharpnessSetting() {
-        return 1.0f + getSetting(sharpness, CameraProfile.DEFAULT_SHARPNESS) / 25.0f;
+        return 1.0f + getSetting(sharpness, CameraProfile.DEFAULT_SHARPNESS) / 20.0f;
     }
 
     public float getDetailSetting() {
-        return 1.0f + getSetting(detail, CameraProfile.DEFAULT_DETAIL) / 25.0f;
+        return 1.0f + getSetting(detail, CameraProfile.DEFAULT_DETAIL) / 20.0f;
     }
 
     public SpatialDenoiseAggressiveness getSpatialDenoiseAggressivenessSetting() {
         return PostProcessViewModel.SpatialDenoiseAggressiveness.GetFromOption(getSetting(spatialDenoiseAggressiveness, 0));
-    }
-
-    public float getChromaEps() {
-        return getSetting(chromaEps, CameraProfile.DEFAULT_CHROMA_EPS);
     }
 
     public void load(Context context) {
@@ -205,7 +200,7 @@ public class PostProcessViewModel extends ViewModel {
         final int iso = images.get(0).iso;
         final long shutterSpeed = images.get(0).exposureTime;
 
-        asyncNativeCameraOps.estimateSettings(false, (settings) -> {
+        asyncNativeCameraOps.estimateSettings(false, 12.0f, (settings) -> {
             // Load user settings
             load(context);
 
@@ -221,8 +216,8 @@ public class PostProcessViewModel extends ViewModel {
             postProcessSettings.contrast = getContrastSetting();
 
             postProcessSettings.saturation = getSaturationSetting();
-            postProcessSettings.blueSaturation = getBlueSaturationSetting();
-            postProcessSettings.greenSaturation = getGreenSaturationSetting();
+            postProcessSettings.blues = getBluesSetting();
+            postProcessSettings.greens = getGreensSetting();
 
             postProcessSettings.sharpen0 = getSharpnessSetting();
             postProcessSettings.sharpen1 = getDetailSetting();
@@ -241,29 +236,38 @@ public class PostProcessViewModel extends ViewModel {
         whitePoint.setValue(Math.round(-200.0f * settings.whitePoint + 250.0f));
         contrast.setValue(Math.round(settings.contrast * 100));
         blacks.setValue(Math.round(settings.blacks * 400));
-        exposure.setValue(Math.round(settings.exposure * 4 + 16)); // Ignore this for now
-        exposure.setValue(16);
+        exposure.setValue(Math.round(settings.exposure * 4 + 16));
 
         // Saturation
+
+
         saturation.setValue(Math.round(settings.saturation * 100) / 2);
-        greenSaturation.setValue(Math.round(settings.greenSaturation * 100) / 2);
-        blueSaturation.setValue(Math.round(settings.blueSaturation * 100) / 2);
+        greens.setValue(Math.round(((-settings.greens/40) * 100) + 50));
+        blues.setValue(Math.round(((-settings.blues/40) * 100) + 50));
 
         // White balance
         temperature.setValue(Math.round(settings.temperature - 2000));
         tint.setValue(Math.round(settings.tint + 150));
 
         // Detail
-        sharpness.setValue(Math.round((settings.sharpen0 - 1.0f) * 25.0f));
-        detail.setValue(Math.round((settings.sharpen1 - 1.0f) * 25.0f));
+        sharpness.setValue(Math.round((settings.sharpen0 - 1.0f) * 20.0f));
+        detail.setValue(Math.round((settings.sharpen1 - 1.0f) * 20.0f));
 
         // Denoise settings
-        DenoiseSettings denoiseSettings = new DenoiseSettings(iso, shutterSpeed, settings.shadows);
+        CameraManualControl.Exposure exposure = CameraManualControl.Exposure.Create(
+                CameraManualControl.GetClosestShutterSpeed(shutterSpeed),
+                CameraManualControl.GetClosestIso(CameraManualControl.GetIsoValuesInRange(100, 6400), iso));
+
+        float a = 1.6f;
+        if(cameraApertures == null || cameraApertures.length == 0)
+            a = cameraApertures[0];
+
+        DenoiseSettings denoiseSettings = new DenoiseSettings(0, (float) exposure.getEv(a), settings.shadows);
         PostProcessViewModel.SpatialDenoiseAggressiveness spatialNoise = SpatialDenoiseAggressiveness.NORMAL;
 
         numMergeImages.setValue(denoiseSettings.numMergeImages);
-        chromaEps.setValue(denoiseSettings.chromaEps);
         spatialDenoiseAggressiveness.setValue(spatialNoise.getOptionValue());
+        saveDng.setValue(settings.dng);
     }
 
     public PostProcessSettings getPostProcessSettings() {
@@ -283,8 +287,8 @@ public class PostProcessViewModel extends ViewModel {
 
         // Color
         settings.saturation = getSaturationSetting();
-        settings.greenSaturation = getGreenSaturationSetting();
-        settings.blueSaturation = getBlueSaturationSetting();
+        settings.greens = getGreensSetting();
+        settings.blues = getBluesSetting();
 
         // White balance
         settings.temperature = getTemperatureSetting();
@@ -296,11 +300,11 @@ public class PostProcessViewModel extends ViewModel {
 
         // Noise reduction
         settings.spatialDenoiseAggressiveness = getSpatialDenoiseAggressivenessSetting().getWeight();
-        settings.chromaEps = getChromaEps();
 
         // Apply JPEG quality
         settings.jpegQuality = getSetting(jpegQuality, CameraProfile.DEFAULT_JPEG_QUALITY);
         settings.flipped = getSetting(isFlipped, false);
+        settings.dng = getWriteDng();
 
         return settings;
     }

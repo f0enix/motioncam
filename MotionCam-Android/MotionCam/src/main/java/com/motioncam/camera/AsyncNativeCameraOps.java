@@ -67,17 +67,17 @@ public class AsyncNativeCameraOps implements Closeable {
         }
     }
 
-    public void captureImage(long bufferHandle, int numSaveImages, boolean writeDNG, PostProcessSettings settings, String outputPath, CaptureImageListener listener) {
+    public void captureImage(long bufferHandle, int numSaveImages, PostProcessSettings settings, String outputPath, CaptureImageListener listener) {
         mBackgroundProcessor.submit(() -> {
-            mCameraSessionBridge.captureImage(bufferHandle, numSaveImages, writeDNG, settings, outputPath);
+            mCameraSessionBridge.captureImage(bufferHandle, numSaveImages, settings, outputPath);
             mMainHandler.post(() -> listener.onCaptured(bufferHandle));
         });
     }
 
-    public void estimateSettings(boolean basicSettings, PostProcessSettingsListener listener) {
+    public void estimateSettings(boolean basicSettings, float shadowsBias, PostProcessSettingsListener listener) {
         mBackgroundProcessor.submit(() -> {
             try {
-                PostProcessSettings result = mCameraSessionBridge.estimatePostProcessSettings(basicSettings);
+                PostProcessSettings result = mCameraSessionBridge.estimatePostProcessSettings(basicSettings, shadowsBias);
                 mMainHandler.post(() -> listener.onSettingsEstimated(result));
 
             }

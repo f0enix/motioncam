@@ -28,11 +28,18 @@ namespace motioncam {
 
         //
 
-        cv::Mat colorMatrix1 =
-            normalizeColorMatrix(imageMetadata.colorMatrix1.empty() ? cameraMetadata.colorMatrix1 : imageMetadata.colorMatrix1);
+        cv::Mat colorMatrix1 = imageMetadata.colorMatrix1.empty() ? cameraMetadata.colorMatrix1 : imageMetadata.colorMatrix1;
+        cv::Mat colorMatrix2 = imageMetadata.colorMatrix2.empty() ? cameraMetadata.colorMatrix2 : imageMetadata.colorMatrix2;
 
-        cv::Mat colorMatrix2 =
-            normalizeColorMatrix(imageMetadata.colorMatrix2.empty() ? cameraMetadata.colorMatrix2 : imageMetadata.colorMatrix2);
+        if(colorMatrix1.empty())
+            colorMatrix1 = cv::Mat::eye(3, 3, CV_32F);
+        else
+            colorMatrix1 = normalizeColorMatrix(colorMatrix1);
+
+        if(colorMatrix2.empty())
+            colorMatrix2 = cv::Mat::eye(3, 3, CV_32F);
+        else
+            colorMatrix2 = normalizeColorMatrix(colorMatrix2);
 
         //
 

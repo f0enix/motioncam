@@ -49,22 +49,24 @@ namespace motioncam {
         void returnBuffers(const std::vector<std::shared_ptr<RawImageBuffer>>& buffers);
 
         int numHdrBuffers();
+        int64_t latestTimeStamp();
         
-        std::shared_ptr<RawContainer> peekPendingContainer();
-        void clearPendingContainer();
+        std::shared_ptr<RawContainer> popPendingContainer();
         
         std::unique_ptr<LockedBuffers> consumeLatestBuffer();
         std::unique_ptr<LockedBuffers> consumeAllBuffers();
         std::unique_ptr<LockedBuffers> consumeBuffer(int64_t timestampNs);
         
-        void saveHdr(RawCameraMetadata& metadata,
-                     const PostProcessSettings& settings,
-                     const std::string& outputPath);
+        void save(RawType type,
+                  int numSaveBuffers,
+                  int64_t referenceTimestampNs,
+                  const RawCameraMetadata& metadata,
+                  const PostProcessSettings& settings,
+                  const std::string& outputPath);
 
         void save(RawCameraMetadata& metadata,
-                  int64_t referenceTimestamp,
+                  int64_t referenceTimestampNs,
                   int numSaveBuffers,
-                  const bool writeDNG,
                   const PostProcessSettings& settings,
                   const std::string& outputPath);
         
@@ -79,7 +81,7 @@ namespace motioncam {
         std::vector<std::shared_ptr<RawImageBuffer>> mReadyBuffers;
 
         moodycamel::ConcurrentQueue<std::shared_ptr<RawImageBuffer>> mUnusedBuffers;
-        std::shared_ptr<RawContainer> mPendingContainer;
+        moodycamel::ConcurrentQueue<std::shared_ptr<RawContainer>> mPendingContainers;
     };
 
 } // namespace motioncam

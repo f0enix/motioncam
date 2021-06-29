@@ -17,28 +17,18 @@ namespace motioncam {
     public:
         RawContainer(const std::string& inputPath);
 
-        RawContainer(RawCameraMetadata& cameraMetadata,
+        RawContainer(const RawCameraMetadata& cameraMetadata,
                      const PostProcessSettings& postProcessSettings,
                      const int64_t referenceTimestamp,
                      const bool isHdr,
-                     const bool writeDNG,
-                     const std::map<std::string, std::shared_ptr<RawImageBuffer>>& frameBuffers);
+                     const std::vector<std::shared_ptr<RawImageBuffer>>& buffers);
 
-        RawContainer(RawCameraMetadata& cameraMetadata,
-                     const PostProcessSettings& postProcessSettings,
-                     const int64_t referenceTimestamp,
-                     const bool isHdr,
-                     const bool writeDNG,
-                     std::map<std::string, std::shared_ptr<RawImageBuffer>>&& frameBuffers,
-                     std::unique_ptr<RawBufferManager::LockedBuffers>&& lockedBuffers);
-        
         const RawCameraMetadata& getCameraMetadata() const;
         const PostProcessSettings& getPostProcessSettings() const;
 
         std::string getReferenceImage() const;
         void updateReferenceImage(const std::string& referenceName);
         
-        bool getWriteDNG() const;
         bool isHdr() const;
         std::vector<std::string> getFrames() const;
         
@@ -46,7 +36,7 @@ namespace motioncam {
         std::shared_ptr<RawImageBuffer> loadFrame(const std::string& frame) const;
         void removeFrame(const std::string& frame);
         
-        void saveContainer(const std::string& outputPath);
+        void save(const std::string& outputPath);
         
         bool isInMemory() const { return mIsInMemory; };
         
@@ -61,7 +51,8 @@ namespace motioncam {
     
         static std::string toString(ColorFilterArrangment sensorArrangment);
         static std::string toString(PixelFormat format);
-
+        static std::string toString(RawType rawType);
+        
         static cv::Mat toMat3x3(const std::vector<json11::Json>& array);
         static cv::Vec3f toVec3f(const std::vector<json11::Json>& array);
         static json11::Json::array toJsonArray(cv::Mat m);
@@ -72,12 +63,11 @@ namespace motioncam {
         PostProcessSettings mPostProcessSettings;
         int64_t mReferenceTimestamp;
         std::string mReferenceImage;
-        bool mWriteDNG;
         bool mIsHdr;
         bool mIsInMemory;
         std::vector<std::string> mFrames;
         std::map<std::string, std::shared_ptr<RawImageBuffer>> mFrameBuffers;
-        std::unique_ptr<RawBufferManager::LockedBuffers> mLockedBuffers;
+        std::unique_ptr<RawBufferManager::LockedBuffers> mLockedBuffers;        
     };
 }
 

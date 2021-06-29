@@ -110,11 +110,10 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         }
     }
 
+    private final Moshi mJson = new Moshi.Builder().build();
     private long mNativeCameraHandle;
-    private Moshi mJson = new Moshi.Builder().build();
     private CameraSessionListener mListener;
     private CameraRawPreviewListener mRawPreviewListener;
-    private NativeCameraMetadata mNativeCameraMetadata;
 
     public NativeCameraSessionBridge(long nativeHandle) {
         mNativeCameraHandle = nativeHandle;
@@ -158,10 +157,10 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         return GetSupportedCameras(mNativeCameraHandle);
     }
 
-    public void startCapture(NativeCameraInfo cameraInfo, Surface previewOutput, boolean setupForRawPreview) {
+    public void startCapture(NativeCameraInfo cameraInfo, Surface previewOutput, boolean setupForRawPreview, boolean preferRaw16) {
         ensureValidHandle();
 
-        if(!StartCapture(mNativeCameraHandle, cameraInfo.cameraId, previewOutput, setupForRawPreview)) {
+        if(!StartCapture(mNativeCameraHandle, cameraInfo.cameraId, previewOutput, setupForRawPreview, preferRaw16)) {
             throw new CameraException(GetLastError());
         }
     }
@@ -215,6 +214,19 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         return rawOutput;
     }
 
+    public PostProcessSettings getRawPreviewEstimatedPostProcessSettings() throws IOException {
+        ensureValidHandle();
+
+        String settingsJson = GetRawPreviewEstimatedSettings(mNativeCameraHandle);
+
+        if(settingsJson == null) {
+            return null;
+        }
+
+        JsonAdapter<PostProcessSettings> jsonAdapter = mJson.adapter(PostProcessSettings.class);
+        return jsonAdapter.fromJson(settingsJson);
+    }
+
     public Size getPreviewConfigurationOutput(NativeCameraInfo cameraInfo, Size captureSize, Size displaySize) {
         ensureValidHandle();
 
@@ -226,14 +238,14 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         return previewOutput;
     }
 
-    public void captureImage(long bufferHandle, int numSaveImages, boolean writeDNG, PostProcessSettings settings, String outputPath) {
+    public void captureImage(long bufferHandle, int numSaveImages, PostProcessSettings settings, String outputPath) {
         ensureValidHandle();
 
         // Serialize settings to json and pass to native code
         JsonAdapter<PostProcessSettings> jsonAdapter = mJson.adapter(PostProcessSettings.class);
         String json = jsonAdapter.toJson(settings);
 
-        CaptureImage(mNativeCameraHandle, bufferHandle, numSaveImages, writeDNG, json, outputPath);
+        CaptureImage(mNativeCameraHandle, bufferHandle, numSaveImages, json, outputPath);
     }
 
     public void captureHdrImage(int numSaveImages, int baseIso, long baseExposure, int hdrIso, long hdrExposure, PostProcessSettings settings, String outputPath) {
@@ -270,10 +282,10 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
         return GetAvailableImages(mNativeCameraHandle);
     }
 
-    public PostProcessSettings estimatePostProcessSettings(boolean basicSettings) throws IOException {
+    public PostProcessSettings estimatePostProcessSettings(boolean basicSettings, float shadowsBias) throws IOException {
         ensureValidHandle();
 
-        String settingsJson = EstimatePostProcessSettings(mNativeCameraHandle, basicSettings);
+        String settingsJson = EstimatePostProcessSettings(mNativeCameraHandle, basicSettings, shadowsBias);
         if(settingsJson == null) {
             return null;
         }
@@ -416,7 +428,7 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
 
     private native NativeCameraInfo[] GetSupportedCameras(long handle);
 
-    private native boolean StartCapture(long handle, String cameraId, Surface previewSurface, boolean setupForRawPreview);
+    private native boolean StartCapture(long handle, String cameraId, Surface previewSurface, boolean setupForRawPreview, boolean preferRaw16);
     private native boolean StopCapture(long handle);
 
     private native boolean PauseCapture(long handle);
@@ -429,6 +441,7 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
     private native boolean EnableRawPreview(long handle, NativeCameraRawPreviewListener listener, int previewQuality, boolean overrideWb);
     private native boolean SetRawPreviewSettings(long handle, float shadows, float contrast, float saturation, float blacks, float whitePoint, float tempOffset, float tintOfset);
     private native boolean DisableRawPreview(long handle);
+    private native String GetRawPreviewEstimatedSettings(long handle);
 
     private native boolean SetFocusPoint(long handle, float focusX, float focusY, float exposureX, float exposureY);
     private native boolean SetAutoFocus(long handle);
@@ -440,7 +453,7 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
     private native NativeCameraMetadata GetMetadata(long handle, String cameraId);
     private native Size GetRawOutputSize(long handle, String cameraId);
     private native Size GetPreviewOutputSize(long handle, String cameraId, Size captureSize, Size displaySize);
-    private native boolean CaptureImage(long handle, long bufferHandle, int numSaveImages, boolean writeDNG, String settings, String outputPath);
+    private native boolean CaptureImage(long handle, long bufferHandle, int numSaveImages, String settings, String outputPath);
     private native boolean CaptureHdrImage(long handle, int numImages, int baseIso, long baseExposure, int hdrIso, long hdrExposure, String settings, String outputPath);
 
     private native NativeCameraBuffer[] GetAvailableImages(long handle);
@@ -450,5 +463,5 @@ public class NativeCameraSessionBridge implements NativeCameraSessionListener, N
     private native double MeasureSharpness(long handle, long bufferHandle);
 
     private native float EstimateShadows(long handle, float bias);
-    private native String EstimatePostProcessSettings(long bufferHandle, boolean basicSettings);
+    private native String EstimatePostProcessSettings(long bufferHandle, boolean basicSettings, float shadowsBias);
 }

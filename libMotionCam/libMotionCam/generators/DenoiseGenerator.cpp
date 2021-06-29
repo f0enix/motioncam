@@ -64,6 +64,7 @@ private:
     void cmpSwap(Expr& a, Expr& b);
     Expr median(Expr A, Expr B, Expr C, Expr D);
     Func registeredInput();
+    Func calcThreshold(Func inHigh);
 
     Var v_i{"i"};
     Var v_x{"x"};
@@ -133,7 +134,47 @@ Expr DenoiseGenerator::median(Expr A, Expr B, Expr C, Expr D) {
     cmpSwap(B, D);
     cmpSwap(B, C);
 
-    return 0.5f * (B + C);
+    return (B + C) / 2;
+}
+
+Func DenoiseGenerator::calcThreshold(Func inHigh) {
+    Func T{"T"};
+
+    Expr T0 = median(
+        abs(inHigh(v_x-1,  v_y-1,  v_c, v_i)),
+        abs(inHigh(v_x,    v_y-1,  v_c, v_i)),
+        abs(inHigh(v_x,    v_y,    v_c, v_i)),
+        abs(inHigh(v_x-1,  v_y,    v_c, v_i ))
+    );
+
+    Expr T1 = median(
+        abs(inHigh(v_x,    v_y-1,  v_c, v_i)),
+        abs(inHigh(v_x+1,  v_y-1,  v_c, v_i)),
+        abs(inHigh(v_x+1,  v_y,    v_c, v_i)),
+        abs(inHigh(v_x,    v_y,    v_c, v_i))
+    );
+
+    Expr T2 = median(
+        abs(inHigh(v_x,    v_y,    v_c, v_i)),
+        abs(inHigh(v_x+1,  v_y,    v_c, v_i)),
+        abs(inHigh(v_x,    v_y+1,  v_c, v_i)),
+        abs(inHigh(v_x+1,  v_y+1,  v_c, v_i))
+    );
+
+    Expr T3 = median(
+        abs(inHigh(v_x-1,  v_y,    v_c, v_i)),
+        abs(inHigh(v_x,    v_y,    v_c, v_i)),
+        abs(inHigh(v_x,    v_y+1,  v_c, v_i)),
+        abs(inHigh(v_x-1,  v_y+1,  v_c, v_i))
+    );
+
+    T(v_x, v_y, v_c, v_i) =
+        select( v_i == 0, T0,
+                v_i == 1, T1,
+                v_i == 2, T2,
+                          T3 );
+
+    return T;
 }
 
 Func DenoiseGenerator::registeredInput() {
@@ -153,9 +194,11 @@ Func DenoiseGenerator::registeredInput() {
     Expr fx = v_x + flowMap(flowX, flowY, 0);
     Expr fy = v_y + flowMap(flowX, flowY, 1);
     
-    Expr x = cast<int16_t>(fx);
-    Expr y = cast<int16_t>(fy);
+    Expr x = cast<int16_t>(fx + 0.5f);
+    Expr y = cast<int16_t>(fy + 0.5f);
     
+    // result(v_x, v_y, v_c) = clamped(x, y, v_c);
+
     Expr a = fx - x;
     Expr b = fy - y;
     
@@ -172,8 +215,8 @@ void DenoiseGenerator::generate() {
 
     Func inSigned0{"inSigned0"}, inSigned1{"inSigned1"};
 
-    inSigned0(v_x, v_y, v_c) = cast<float>(input0(clamp(v_x, 0, width - 1), clamp(v_y, 0, height - 1), v_c));
-    inSigned1(v_x, v_y, v_c) = cast<float>(inRepeated1(v_x, v_y, v_c));
+    inSigned0(v_x, v_y, v_c) = cast<int16_t>(input0(clamp(v_x, 0, width - 1), clamp(v_y, 0, height - 1), v_c));
+    inSigned1(v_x, v_y, v_c) = cast<int16_t>(inRepeated1(v_x, v_y, v_c));
 
     Func inMean0{"inMean0"}, inMean1{"inMean1"};
     Func inHigh0{"inHigh0"}, inHigh1{"inHigh1"};
@@ -184,49 +227,23 @@ void DenoiseGenerator::generate() {
     inHigh0(v_x, v_y, v_c, v_i) = inSigned0(v_x, v_y, v_c) - inMean0(v_x, v_y, v_c, v_i);
     inHigh1(v_x, v_y, v_c, v_i) = inSigned1(v_x, v_y, v_c) - inMean1(v_x, v_y, v_c, v_i);
 
-    Func T{"T"};
+    Func T = calcThreshold(inHigh0);
 
-    Expr T0 = median(
-        abs(inHigh0(v_x-1,  v_y-1,  v_c, v_i)),
-        abs(inHigh0(v_x,    v_y-1,  v_c, v_i)),
-        abs(inHigh0(v_x,    v_y,    v_c, v_i)),
-        abs(inHigh0(v_x-1,  v_y,    v_c, v_i ))
-    );
-
-    Expr T1 = median(
-        abs(inHigh0(v_x,    v_y-1,  v_c, v_i)),
-        abs(inHigh0(v_x+1,  v_y-1,  v_c, v_i)),
-        abs(inHigh0(v_x+1,  v_y,    v_c, v_i)),
-        abs(inHigh0(v_x,    v_y,    v_c, v_i))
-    );
-
-    Expr T2 = median(
-        abs(inHigh0(v_x,    v_y,    v_c, v_i)),
-        abs(inHigh0(v_x+1,  v_y,    v_c, v_i)),
-        abs(inHigh0(v_x,    v_y+1,  v_c, v_i)),
-        abs(inHigh0(v_x+1,  v_y+1,  v_c, v_i))
-    );
-
-    Expr T3 = median(
-        abs(inHigh0(v_x-1,  v_y,    v_c, v_i)),
-        abs(inHigh0(v_x,    v_y,    v_c, v_i)),
-        abs(inHigh0(v_x,    v_y+1,  v_c, v_i)),
-        abs(inHigh0(v_x-1,  v_y+1,  v_c, v_i))
-    );
-
-    T(v_x, v_y, v_c, v_i) =
-        select( v_i == 0, T0,
-                v_i == 1, T1,
-                v_i == 2, T2,
-                          T3 );
-
-    Expr D = (abs(inMean0(v_x, v_y, v_c, v_i) - inMean1(v_x, v_y, v_c, v_i))) * (1.0f/cast<float>(whiteLevel));
-    Func w{"w"};
-
+    Expr D = abs(inMean0(v_x, v_y, v_c, v_i) - inMean1(v_x, v_y, v_c, v_i));
     Expr M = flowMap(v_x, v_y, 0)*flowMap(v_x, v_y, 0) + flowMap(v_x, v_y, 1)*flowMap(v_x, v_y, 1);
+    
+    Func w{"w"};
+    Func Mlut{"Mlut"};
+    Func Dlut{"Dlut"};
 
-    w(v_x, v_y, v_c, v_i) = 1.0f + fast_exp(-M/motionVectorsWeight) * differenceWeight*fast_exp(-256.0f * D);
+    Mlut(v_i) = cast<uint16_t>(clamp(exp(-v_i/motionVectorsWeight) * 32768, 0, 32768));
+    Dlut(v_i) = cast<uint16_t>(clamp(exp(-(256.0f*v_i)/whiteLevel) * 32768, 0, 32768));
 
+    Expr Mw = 1.0f/32768.0f*Mlut(saturating_cast<uint16_t>(M));
+    Expr Dw = differenceWeight/32768.0f*Dlut(saturating_cast<uint16_t>(D));
+
+    w(v_x, v_y, v_c, v_i) = 1.0f + Mw*Dw;
+    
     Func outMean{"outMean"}, outHigh{"outHigh"};
 
     Expr d0 = inHigh0(v_x, v_y, v_c, v_i) - inHigh1(v_x, v_y, v_c, v_i);
@@ -252,6 +269,7 @@ void DenoiseGenerator::generate() {
     height.set_estimate(1500);
     whiteLevel.set_estimate(1023);
     motionVectorsWeight.set_estimate(32);
+    differenceWeight.set_estimate(16);
     input1.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
     pendingOutput.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
     flowMap.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
@@ -259,6 +277,9 @@ void DenoiseGenerator::generate() {
     output.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
         
     if (!auto_schedule) {
+        Mlut.compute_root().vectorize(v_i, 8);
+        Dlut.compute_root().vectorize(v_i, 8);
+
         inSigned0
             .compute_at(output, v_yo)
             .vectorize(v_x, 8);
@@ -277,6 +298,7 @@ void DenoiseGenerator::generate() {
             .reorder(v_x, v_y, v_c)
             .bound(v_c, 0, 4)
             .split(v_y, v_yo, v_yi, 32)
+            .unroll(v_c)
             .vectorize(v_x, 8)
             .parallel(v_yo);
     }
@@ -407,10 +429,10 @@ void ForwardTransformGenerator::forward0(Func& forwardOutput, Func& intermediate
                                                       expr[3]);
     
     forwardOutput(v_x, v_y, v_c, v_i) = select(v_c == 0, forwardTmp(v_x, v_y, v_c, v_i),
-                                        select(v_i == 0, (forwardTmp(v_x, v_y, v_c, 0) + forwardTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f),
-                                               v_i == 1, (forwardTmp(v_x, v_y, v_c, 1) + forwardTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
-                                               v_i == 2, (forwardTmp(v_x, v_y, v_c, 1) - forwardTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
-                                                         (forwardTmp(v_x, v_y, v_c, 0) - forwardTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f)));
+                                        select(v_i == 0, (forwardTmp(v_x, v_y, v_c, 0) + forwardTmp(v_x, v_y, v_c, 3)) * sqrtf(0.5f),
+                                               v_i == 1, (forwardTmp(v_x, v_y, v_c, 1) + forwardTmp(v_x, v_y, v_c, 2)) * sqrtf(0.5f),
+                                               v_i == 2, (forwardTmp(v_x, v_y, v_c, 1) - forwardTmp(v_x, v_y, v_c, 2)) * sqrtf(0.5f),
+                                                         (forwardTmp(v_x, v_y, v_c, 0) - forwardTmp(v_x, v_y, v_c, 3)) * sqrtf(0.5f)));
 }
 
 void ForwardTransformGenerator::forward1(Func& forwardOutput, Func& intermediateOutput, Func image) {
@@ -461,10 +483,10 @@ void ForwardTransformGenerator::forward1(Func& forwardOutput, Func& intermediate
                                                       expr[3]);
     
     forwardOutput(v_x, v_y, v_c, v_i) = select(v_c == 0, forwardTmp(v_x, v_y, v_c, v_i),
-                                        select(v_i == 0, (forwardTmp(v_x, v_y, v_c, 0) + forwardTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f),
-                                               v_i == 1, (forwardTmp(v_x, v_y, v_c, 1) + forwardTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
-                                               v_i == 2, (forwardTmp(v_x, v_y, v_c, 1) - forwardTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
-                                                         (forwardTmp(v_x, v_y, v_c, 0) - forwardTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f)));
+                                        select(v_i == 0, (forwardTmp(v_x, v_y, v_c, 0) + forwardTmp(v_x, v_y, v_c, 3)) * sqrtf(0.5f),
+                                               v_i == 1, (forwardTmp(v_x, v_y, v_c, 1) + forwardTmp(v_x, v_y, v_c, 2)) * sqrtf(0.5f),
+                                               v_i == 2, (forwardTmp(v_x, v_y, v_c, 1) - forwardTmp(v_x, v_y, v_c, 2)) * sqrtf(0.5f),
+                                                         (forwardTmp(v_x, v_y, v_c, 0) - forwardTmp(v_x, v_y, v_c, 3)) * sqrtf(0.5f)));
 }
 
 void ForwardTransformGenerator::generate() {
@@ -843,10 +865,10 @@ void InverseTransformGenerator::generate() {
 
         // Oriented wavelets
         spatialDenoise(v_x, v_y, v_c, v_i) = select(v_c == 0,  denoiseTmp(v_x, v_y, v_c, v_i),
-                                             select(v_i == 0, (denoiseTmp(v_x, v_y, v_c, 0) + denoiseTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f),
-                                                    v_i == 1, (denoiseTmp(v_x, v_y, v_c, 1) + denoiseTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
-                                                    v_i == 2, (denoiseTmp(v_x, v_y, v_c, 1) - denoiseTmp(v_x, v_y, v_c, 2)) * sqrt(0.5f),
-                                                              (denoiseTmp(v_x, v_y, v_c, 0) - denoiseTmp(v_x, v_y, v_c, 3)) * sqrt(0.5f)));
+                                             select(v_i == 0, (denoiseTmp(v_x, v_y, v_c, 0) + denoiseTmp(v_x, v_y, v_c, 3)) * sqrtf(0.5f),
+                                                    v_i == 1, (denoiseTmp(v_x, v_y, v_c, 1) + denoiseTmp(v_x, v_y, v_c, 2)) * sqrtf(0.5f),
+                                                    v_i == 2, (denoiseTmp(v_x, v_y, v_c, 1) - denoiseTmp(v_x, v_y, v_c, 2)) * sqrtf(0.5f),
+                                                              (denoiseTmp(v_x, v_y, v_c, 0) - denoiseTmp(v_x, v_y, v_c, 3)) * sqrtf(0.5f)));
 
         denoisedOutput.push_back(spatialDenoise);
     }
