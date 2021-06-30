@@ -427,8 +427,7 @@ void CameraPreviewGenerator::generate() {
     Func blackLevelFunc{"blackLevelFunc"};
     Func linearFunc{"linearFunc"};
 
-    Func _input = BoundaryConditions::repeat_edge(input);
-    inputRepeated(v_i) = cast<uint16_t>(_input(v_i));
+    inputRepeated(v_i) = cast<uint16_t>(input(clamp(v_i, 0, input.width() - 1)));
 
     for(int c = 0; c < 4; c++) {
         linearScale16(scaledShadingMap[c], shadingMap[c], shadingMap[c].width(), shadingMap[c].height(), width, height);

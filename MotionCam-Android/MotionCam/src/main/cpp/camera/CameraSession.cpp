@@ -523,14 +523,18 @@ namespace motioncam {
         mSessionContext->hdrCaptureRequests[1] = std::make_shared<CaptureRequest>(createCaptureRequest(TEMPLATE_STILL_CAPTURE), false);
 
         // Set to keep state
-        uint8_t mode    = ACAMERA_CONTROL_MODE_OFF_KEEP_STATE;
-        uint8_t aeMode  = ACAMERA_CONTROL_AE_MODE_OFF;
+        uint8_t mode        = ACAMERA_CONTROL_MODE_OFF_KEEP_STATE;
+        uint8_t aeLockMode  = ACAMERA_CONTROL_AE_LOCK_ON;
+        uint8_t afMode      = ACAMERA_CONTROL_AF_MODE_AUTO;
 
         ACaptureRequest_setEntry_u8(mSessionContext->hdrCaptureRequests[0]->captureRequest, ACAMERA_CONTROL_MODE, 1, &mode);
         ACaptureRequest_setEntry_u8(mSessionContext->hdrCaptureRequests[1]->captureRequest, ACAMERA_CONTROL_MODE, 1, &mode);
 
-        ACaptureRequest_setEntry_u8(mSessionContext->hdrCaptureRequests[0]->captureRequest, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
-        ACaptureRequest_setEntry_u8(mSessionContext->hdrCaptureRequests[1]->captureRequest, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
+        ACaptureRequest_setEntry_u8(mSessionContext->hdrCaptureRequests[0]->captureRequest, ACAMERA_CONTROL_AE_LOCK, 1, &aeLockMode);
+        ACaptureRequest_setEntry_u8(mSessionContext->hdrCaptureRequests[1]->captureRequest, ACAMERA_CONTROL_AE_LOCK, 1, &aeLockMode);
+
+        ACaptureRequest_setEntry_u8(mSessionContext->hdrCaptureRequests[0]->captureRequest, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
+        ACaptureRequest_setEntry_u8(mSessionContext->hdrCaptureRequests[1]->captureRequest, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
 
         // Set up a JPEG output that we don't use. For some reason without it the camera auto
         // focus does not work properly

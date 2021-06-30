@@ -53,7 +53,6 @@ public class PostProcessFragment extends Fragment implements
     public static final String ARGUMENT_NATIVE_CAMERA_ID                = "nativeCameraId";
     public static final String ARGUMENT_NATIVE_CAMERA_IS_FRONT_FACING   = "isCameraFrontFacing";
 
-    private static final int LOW_QUALITY_PREVIEW_REFRESH_TIME_MS = 100;
     private static final int NUM_BUFFERS_TO_SELECT_SHARPEST_FROM = 4;
 
     private PostProcessViewModel mViewModel;
@@ -63,7 +62,6 @@ public class PostProcessFragment extends Fragment implements
     private NativeCameraSessionBridge mNativeCamera;
     private NativeCameraInfo mSelectedCamera;
     private ProcessorReceiver mProgressReceiver;
-    private long mPreviousPreviewUpdateTime;
 
     private ViewPager2.OnPageChangeCallback mPreviewPageChanged = new ViewPager2.OnPageChangeCallback() {
         @Override
@@ -186,8 +184,6 @@ public class PostProcessFragment extends Fragment implements
                 .putBoolean(SettingsViewModel.PREFS_KEY_SAVE_DNG, value)
                 .commit();
         });
-
-        mPreviousPreviewUpdateTime = 0;
     }
 
     private void onSettingsEstimated(PostProcessSettings postProcessSettings) {
@@ -330,18 +326,14 @@ public class PostProcessFragment extends Fragment implements
     }
 
     private void setPreviewDirty() {
-        long time = System.currentTimeMillis();
-
-        if(time - mPreviousPreviewUpdateTime > LOW_QUALITY_PREVIEW_REFRESH_TIME_MS) {
-            updatePreview(AsyncNativeCameraOps.PreviewSize.MEDIUM);
-            mPreviousPreviewUpdateTime = time;
-        }
+        updatePreview(AsyncNativeCameraOps.PreviewSize.MEDIUM);
     }
 
     private void updatePreview(AsyncNativeCameraOps.PreviewSize previewSize) {
         PostProcessPreviewAdapter adapter = (PostProcessPreviewAdapter) mPreviewPager.getAdapter();
         if(adapter != null) {
-            adapter.updatePreview(mPreviewPager.getCurrentItem(), mViewModel.getPostProcessSettings(), previewSize);
+            PostProcessSettings settings = mViewModel.getPostProcessSettings();
+            adapter.updatePreview(mPreviewPager.getCurrentItem(), settings, previewSize);
         }
     }
 

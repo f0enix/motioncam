@@ -105,7 +105,7 @@ public class PostProcessSmallPreviewAdapter extends RecyclerView.Adapter<PostPro
     public void onBindViewHolder(@NonNull PostProcessSmallPreviewAdapter.ViewHolder viewHolder, int index) {
         if(mItems.get(index).preview == null) {
             mAsyncNativeCameraOps.generatePreview(
-                    mItems.get(index).buffer, mPostProcessSettings, AsyncNativeCameraOps.PreviewSize.SMALL, null, this);
+                    mItems.get(index).buffer, mPostProcessSettings, AsyncNativeCameraOps.PreviewSize.SMALL, null, this, false);
 
             viewHolder.mImageView.setImageBitmap(null);
         }

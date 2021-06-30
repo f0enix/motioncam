@@ -52,10 +52,12 @@ public class DenoiseSettings {
 
         if(shadows > 3.99) {
             mergeImages             += 2;
+            spatialDenoiseWeight    = Math.max(0.5f, spatialDenoiseWeight);
         }
 
         if(shadows > 7.99) {
             mergeImages             += 2;
+            spatialDenoiseWeight    = Math.max(1.0f, spatialDenoiseWeight);
         }
 
         // Limit capture to 5 seconds

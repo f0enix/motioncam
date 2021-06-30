@@ -10,8 +10,10 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 public class AsyncNativeCameraOps implements Closeable {
@@ -27,7 +29,15 @@ public class AsyncNativeCameraOps implements Closeable {
         }
     }
 
-    private ExecutorService mBackgroundProcessor = Executors.newSingleThreadExecutor();
+    private ExecutorService mQueuedBackgroundProcessor = Executors.newSingleThreadExecutor();
+
+    private ExecutorService mBackgroundProcessor =
+            new ThreadPoolExecutor(
+                1, 1, 500, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(2),
+                Executors.defaultThreadFactory(),
+                new ThreadPoolExecutor.DiscardOldestPolicy());
+
     private final NativeCameraSessionBridge mCameraSessionBridge;
     private final Handler mMainHandler;
     private Size mUnscaledSize;
@@ -132,11 +142,13 @@ public class AsyncNativeCameraOps implements Closeable {
                                 PostProcessSettings settings,
                                 PreviewSize generateSize,
                                 Bitmap useBitmap,
-                                PreviewListener listener)
+                                PreviewListener listener,
+                                boolean canSkip)
     {
         PostProcessSettings postProcessSettings = settings.clone();
 
-        mBackgroundProcessor.submit(() -> {
+        ExecutorService p = canSkip ? mBackgroundProcessor : mQueuedBackgroundProcessor;
+        p.submit(() -> {
             Bitmap preview = useBitmap;
             Size size = getPreviewSize(generateSize, buffer);
 

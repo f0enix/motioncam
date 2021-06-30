@@ -277,12 +277,15 @@ namespace motioncam {
         ACaptureRequest_setEntry_u8(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_TRIGGER, 1, &afTrigger);
 
         // Set the focus region
-        int w = static_cast<int>(mCameraDescription.sensorSize.width);
-        int h = static_cast<int>(mCameraDescription.sensorSize.height);
+        int w = static_cast<int>(mCameraDescription.sensorSize.width * 0.33f);
+        int h = static_cast<int>(mCameraDescription.sensorSize.height * 0.33f);
 
-        int32_t afRegion[5] = { 0, 0,
-                                w, h,
-                                0 };
+        int px = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.left + mCameraDescription.sensorSize.width) * 0.5f);
+        int py = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.top + mCameraDescription.sensorSize.height) * 0.5f);
+
+        int32_t afRegion[5] = {px - w/2, py - h/2,
+                               px + w/2, py + h/2,
+                               500 };
 
         ACaptureRequest_setEntry_i32(mSessionContext.repeatCaptureRequest->captureRequest, ACAMERA_CONTROL_AF_REGIONS, 5, &afRegion[0]);
 
@@ -296,10 +299,7 @@ namespace motioncam {
                 w = static_cast<int>(mCameraDescription.sensorSize.width * 0.75f);
                 h = static_cast<int>(mCameraDescription.sensorSize.height * 0.75f);
 
-                int px = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.left + mCameraDescription.sensorSize.width) * 0.5f);
-                int py = static_cast<int>(static_cast<float>(mCameraDescription.sensorSize.top + mCameraDescription.sensorSize.height) * 0.5f);
-
-                int32_t aeRegion[10] = {px - w/2, py - h/2,
+                int32_t aeRegion[5] = {px - w/2, py - h/2,
                                         px + w/2, py + h/2,
                                         500 };
 

@@ -127,7 +127,10 @@ public class PostProcessViewModel extends ViewModel {
     }
 
     public float getSaturationSetting() {
-        return getSetting(saturation, CameraProfile.DEFAULT_SATURATION) / 100.0f * 2.0f;
+        int s = getSetting(saturation, CameraProfile.DEFAULT_SATURATION);
+
+        // Map [0:50] -> [0:0.5] and [51:100] -> [1:1.25]
+        return s > 50 ? 1.0f + ((s - 50) / 50.0f * 0.25f) : s / 100.0f * 2.0f;
     }
 
     public float getGreensSetting() {
@@ -239,9 +242,12 @@ public class PostProcessViewModel extends ViewModel {
         exposure.setValue(Math.round(settings.exposure * 4 + 16));
 
         // Saturation
+        saturation.setValue(
+            settings.saturation < 1.0f ?
+                Math.round(settings.saturation * 100) / 2 :
+                50 + Math.round(50 * ((settings.saturation / 1.25f) - 0.8f) / 0.2f)
+        );
 
-
-        saturation.setValue(Math.round(settings.saturation * 100) / 2);
         greens.setValue(Math.round(((-settings.greens/40) * 100) + 50));
         blues.setValue(Math.round(((-settings.blues/40) * 100) + 50));
 

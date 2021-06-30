@@ -42,7 +42,7 @@ public class CameraProfile {
     public static final int DEFAULT_WHITE_POINT = 50;
 
     // Saturation
-    public static final int DEFAULT_SATURATION = 50;
+    public static final int DEFAULT_SATURATION = 60;
     public static final int DEFAULT_GREENS = 50;
     public static final int DEFAULT_BLUES = 50;
 

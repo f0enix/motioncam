@@ -122,7 +122,6 @@ public class CameraActivity extends AppCompatActivity implements
         float saturation;
         float temperatureOffset;
         float tintOffset;
-        float hdrEv;
         int jpegQuality;
         long memoryUseBytes;
         CaptureMode captureMode;
@@ -132,13 +131,12 @@ public class CameraActivity extends AppCompatActivity implements
         void load(SharedPreferences prefs) {
             this.jpegQuality = prefs.getInt(SettingsViewModel.PREFS_KEY_JPEG_QUALITY, CameraProfile.DEFAULT_JPEG_QUALITY);
             this.contrast = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_CONTRAST, CameraProfile.DEFAULT_CONTRAST / 100.0f);
-            this.saturation = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, 1.0f);
+            this.saturation = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_COLOUR, 1.05f);
             this.temperatureOffset = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TEMPERATURE_OFFSET, 0);
             this.tintOffset = prefs.getFloat(SettingsViewModel.PREFS_KEY_UI_PREVIEW_TINT_OFFSET, 0);
             this.saveDng = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_SAVE_RAW, false);
             this.autoNightMode = prefs.getBoolean(SettingsViewModel.PREFS_KEY_AUTO_NIGHT_MODE, true);
             this.hdr = prefs.getBoolean(SettingsViewModel.PREFS_KEY_UI_HDR, true);
-            this.hdrEv = (float) Math.pow(2.0f, prefs.getInt(SettingsViewModel.PREFS_KEY_HDR_EV, 4) / 2.0f);
 
             long nativeCameraMemoryUseMb = prefs.getInt(SettingsViewModel.PREFS_KEY_MEMORY_USE_MBYTES, SettingsViewModel.MINIMUM_MEMORY_USE_MB);
             nativeCameraMemoryUseMb = Math.min(nativeCameraMemoryUseMb, SettingsViewModel.MAXIMUM_MEMORY_USE_MB);
@@ -189,7 +187,6 @@ public class CameraActivity extends AppCompatActivity implements
                     ", saturation=" + saturation +
                     ", temperatureOffset=" + temperatureOffset +
                     ", tintOffset=" + tintOffset +
-                    ", hdrEv=" + hdrEv +
                     ", jpegQuality=" + jpegQuality +
                     ", memoryUseBytes=" + memoryUseBytes +
                     ", captureMode=" + captureMode +
@@ -480,6 +477,7 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.blues = 6.0f;
         mPostProcessSettings.sharpen0 = 3.0f;
         mPostProcessSettings.sharpen1 = 2.5f;
+        mPostProcessSettings.pop = 1.15f;
         mPostProcessSettings.whitePoint = -1;
         mPostProcessSettings.blacks = -1;
         mPostProcessSettings.tonemapVariance = 0.25f;
@@ -647,8 +645,17 @@ public class CameraActivity extends AppCompatActivity implements
         mBinding.previewFrame.contrastValue.setText(
                 getString(R.string.value_percent, Math.round(mPostProcessSettings.contrast * 100)));
 
-        mBinding.previewFrame.colourValue.setText(
-                getString(R.string.value_percent, Math.round(mPostProcessSettings.saturation / 2.0f * 100)));
+        int saturationProgress;
+
+        //(0.1*20)/20*100
+        if(mPostProcessSettings.saturation <= 1.0f) {
+            saturationProgress = Math.round(mPostProcessSettings.saturation * 50);
+        }
+        else {
+            saturationProgress = Math.round(50 + (50 * ((mPostProcessSettings.saturation / 1.25f) - 0.8f) / 0.2f));
+        }
+
+        mBinding.previewFrame.colourValue.setText(getString(R.string.value_percent, saturationProgress));
 
         mBinding.previewFrame.warmthValue.setText(
                 getString(R.string.value_percent, Math.round((mTemperatureOffset + 1000.0f) / 2000.0f * 100.0f)));
@@ -773,15 +780,18 @@ public class CameraActivity extends AppCompatActivity implements
 
     private void updatePreviewControlsParam(int progress) {
         final float seekBarMax = mBinding.previewFrame.previewSeekBar.getMax();
+        final float halfPoint = seekBarMax / 2.0f;
 
         switch(mPreviewControlMode) {
             case CONTRAST:
                 mPostProcessSettings.contrast = progress / seekBarMax;
                 break;
 
-            case COLOUR:
-                mPostProcessSettings.saturation = (progress / seekBarMax) * 2.0f;
-                break;
+            case COLOUR: {
+                int s = progress;
+                mPostProcessSettings.saturation = s > halfPoint ? 1.0f + ((s - halfPoint) / halfPoint * 0.25f) : s / seekBarMax * 2.0f;
+            }
+            break;
 
             case TINT:
                 mTintOffset = (progress / seekBarMax - 0.5f) * 100.0f;
@@ -845,6 +855,13 @@ public class CameraActivity extends AppCompatActivity implements
 
             // Map camera exposure to our own
             long cameraExposure = mExposureTime;
+            float hdrEv = 1.0f;
+
+            // Use estimated underexposed image exposure
+            if(estimatedSettings.exposure < 0) {
+                hdrEv = (float) Math.pow(2.0f, -estimatedSettings.exposure);
+                estimatedSettings.exposure = 0;
+            }
 
             if(!mManualControlsSet) {
                 cameraExposure = Math.round(mExposureTime * Math.pow(2.0f, estimatedSettings.exposure));
@@ -859,7 +876,7 @@ public class CameraActivity extends AppCompatActivity implements
                     CameraManualControl.GetClosestIso(mIsoValues, mIso));
 
             CameraManualControl.Exposure hdrExposure = CameraManualControl.Exposure.Create(
-                    CameraManualControl.GetClosestShutterSpeed(Math.round(cameraExposure / mSettings.hdrEv)),
+                    CameraManualControl.GetClosestShutterSpeed(Math.round(cameraExposure / hdrEv)),
                     CameraManualControl.GetClosestIso(mIsoValues, mIso));
 
             // If the user has not override the shutter speed/iso, pick our own
@@ -880,7 +897,7 @@ public class CameraActivity extends AppCompatActivity implements
 
             // Don't bother with HDR if the scene is underexposed/few clipped pixels or the noise of the
             // underexposed image will be too high
-            boolean noHdr = !mSettings.hdr || estimatedSettings.exposure > 0.01f || hdrExposure.getEv(a) < 3.99f;
+            boolean noHdr = !mSettings.hdr || hdrEv <= 1.01f; // || estimatedSettings.exposure > 0.01f || hdrExposure.getEv(a) < 3.99f;
             if(noHdr) {
                 hdrExposure = baseExposure;
             }
@@ -1611,7 +1628,7 @@ public class CameraActivity extends AppCompatActivity implements
     }
 
     private void setAutoExposureState(NativeCameraSessionBridge.CameraExposureState state) {
-        boolean timePassed = System.currentTimeMillis() - mFocusRequestedTimestampMs > 5000;
+        boolean timePassed = System.currentTimeMillis() - mFocusRequestedTimestampMs > 3000;
 
         if(state == NativeCameraSessionBridge.CameraExposureState.SEARCHING && timePassed) {
             setFocusState(FocusState.AUTO, null);
