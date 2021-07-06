@@ -59,7 +59,7 @@ namespace motioncam {
             contrast(0.5f),
             sharpen0(4.0f),
             sharpen1(3.0f),
-            pop(1.15f),
+            pop(1.125f),
             blacks(0.0f),
             whitePoint(1.0f),
             saturation(1.05f),

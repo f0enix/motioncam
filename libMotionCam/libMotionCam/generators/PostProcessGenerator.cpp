@@ -1449,6 +1449,9 @@ public:
     Input<float> gamma {"gamma"};
     Input<float> gain {"gain"};
     
+    Input<float> sharpen1 {"sharpen1"};
+    Input<float> pop {"pop"};
+
     //
 
     Var v_i{"i"};
@@ -1769,13 +1772,22 @@ void TonemapGenerator::generate() {
     //
     // Combine pyramids
     //
+
+    Expr s;
     
     for(int level = 0; level <= tonemap_levels; level++) {
         Func result("resultLvl" + std::to_string(level));
 
-        result(v_x, v_y, v_c) = cast<int32_t>(
+        if(level == 1)
+            s = sharpen1;
+        else if(level < tonemap_levels / 2)
+            s = pop;
+        else
+            s = 1.0f;
+
+        result(v_x, v_y, v_c) = s*(
             (laplacianPyramid[level](v_x, v_y, 0) * weightsPyramid[level].second(v_x, v_y, 0)) +
-            (laplacianPyramid[level](v_x, v_y, 1) * weightsPyramid[level].second(v_x, v_y, 1)) + 0.5f
+            (laplacianPyramid[level](v_x, v_y, 1) * weightsPyramid[level].second(v_x, v_y, 1))
         );
         
         combinedPyramid.push_back(result);
@@ -1883,13 +1895,9 @@ public:
     Input<float> greens{"greens"};
     Input<float> saturation{"saturation"};
     Input<float> sharpen0{"sharpen0"};
-    Input<float> sharpen1{"sharpen1"};
-    Input<float> pop{"pop"};
-    Input<float> sharpenThreshold{"sharpenThreshold"};    
+    Input<float> sharpenThreshold{"sharpenThreshold"};
 
     Func sharpenInput{"sharpenInput"};
-    Func downsampleTemp{"downsampleTemp"}, downsampled{"downsampled"}, downsampled2{"downsampled2"};
-    Func upsampleTemp{"upsampleTemp"}, upsampled{"upsampled"}, popDetail{"popDetail"};
     Func enhanced{"enhanced"};
     Func tonemapOutputRgb{"tonemapOutputRgb"};
     Func gammaCorrected{"gammaCorrected"};
@@ -1905,14 +1913,12 @@ public:
     Func gammaLut{"gammaLut"};
     Func contrastLut{"contrastLut"};
     Func tonemappedXYZ{"tonemappedXYZ"};    
-    Func gaussianDiff0{"gaussianDiff0"}, gaussianDiff1{"gaussianDiff1"};
-    Func m{"m"}, n{"n"};
-    Func M{"M"}, N{"N"};
-    Func S{"S"}, T{"T"};    
+    Func gaussianDiff0{"gaussianDiff0"}, gaussianDiff1{"gaussianDiff1"}, gaussianDiff2{"gaussianDiff2"};
+    Func m{"m"};
+    Func M{"M"};
+    Func S{"S"};
     Func blurOutput{"blurOutput"};
     Func blurOutputTmp{"blurOutputTmp"};
-    Func blurOutput2{"blurOutput2"};
-    Func blurOutput2Tmp{"blurOutput2Tmp"};
 
     void generate();
     void schedule_for_cpu();
@@ -1925,51 +1931,28 @@ void EnhanceGenerator::sharpen() {
     sharpenInput(v_x, v_y) = input(v_x, v_y, 2);
 
     blur(blurOutput, blurOutputTmp, sharpenInput);
-    blur2(blurOutput2, blurOutput2Tmp, blurOutput);
     
     gaussianDiff0(v_x, v_y) = cast<int32_t>(sharpenInput(v_x, v_y)) - blurOutput(v_x, v_y);
-    gaussianDiff1(v_x, v_y) = cast<int32_t>(blurOutput(v_x, v_y))  - blurOutput2(v_x, v_y);
     
     m(v_x, v_y) = abs(cast<float>(gaussianDiff0(v_x, v_y)) / sharpenThreshold);
-    n(v_x, v_y) = abs(cast<float>(gaussianDiff1(v_x, v_y)) / sharpenThreshold);
 
     Expr Msum = 0.0f;
-    Expr Nsum = 0.0f;
 
     for(int y = -2; y <= 2; y++) {
         for(int x = -2; x <= 2; x++) {
             Msum += m(v_x + x, v_y + y);
-            Nsum += n(v_x + x, v_y + y);
         }
     }
 
-    M(v_x, v_y) = 1.0f/25.0f * Msum;
-    N(v_x, v_y) = 1.0f/25.0f * Nsum;
-
+    M(v_x, v_y) = 1.0f/25.0f * Msum;    
     S(v_x, v_y) = sharpen0 - (sharpen0 - 1.0f)*exp(-M(v_x, v_y));
-    T(v_x, v_y) = sharpen1 - (sharpen1 - 1.0f)*exp(-N(v_x, v_y));
 
     sharpened(v_x, v_y) =
-        cast<uint16_t>(clamp(
-            blurOutput2(v_x, v_y) +
-            S(v_x, v_y)*gaussianDiff0(v_x, v_y) +
-            T(v_x, v_y)*gaussianDiff1(v_x, v_y), 0, 65535.0f));
+        cast<uint16_t>(clamp(blurOutput(v_x, v_y) + S(v_x, v_y)*gaussianDiff0(v_x, v_y), 0, 65535.0f));
 }
 
 void EnhanceGenerator::generate() {
     sharpen();
-
-    downsampled = downsample(sharpened, downsampleTemp);
-
-    downsampled2(v_x, v_y, v_c) = downsampled(v_x, v_y);
-
-    auto gf = create<GuidedFilter>();
-    gf->radius.set(21);
-    gf->apply(downsampled2, 0.2f*65535.0f*65535.0f, cast<uint16_t>(width), cast<uint16_t>(height), cast<uint16_t>(0));
-
-    upsampled = upsample(gf->output, upsampleTemp);
-
-    popDetail(v_x, v_y) = saturating_cast<uint16_t>(upsampled(v_x, v_y) + pop*(cast<float>(sharpened(v_x, v_y)) - upsampled(v_x, v_y)));
 
     // Apply contrast curve while still in XYZ space to avoid exaggerating colours
     {
@@ -1989,7 +1972,7 @@ void EnhanceGenerator::generate() {
         if(!auto_schedule)
             contrastLut.compute_root().vectorize(v_i, 8);
 
-        contrastCurve(v_x, v_y) = contrastLut(cast<uint16_t>(popDetail(v_x, v_y)));
+        contrastCurve(v_x, v_y) = contrastLut(sharpened(v_x, v_y));
     }
 
     enhanced(v_x, v_y, v_c) = select(v_c == 0, input(v_x, v_y, 0) / 65535.0f,
@@ -2043,8 +2026,6 @@ void EnhanceGenerator::generate() {
     saturation.set_estimate(1.0f);
     greens.set_estimate(1.0f);
     sharpen0.set_estimate(2.0f);
-    sharpen1.set_estimate(2.0f);
-    pop.set_estimate(1.5f);
     sharpenThreshold.set_estimate(32.0f);
 
     pcsToSrgb.set_estimates({{0, 3}, {0, 3}});
@@ -2057,19 +2038,6 @@ void EnhanceGenerator::generate() {
 }
 
 void EnhanceGenerator::schedule_for_cpu() {    
-    downsampleTemp
-        .reorder(v_x, v_y)
-        .compute_at(downsampled2, v_yi)
-        .store_at(downsampled2, v_yo)
-        .vectorize(v_x, 8);
-
-    downsampled2
-        .compute_root()
-        .reorder(v_x, v_y)
-        .vectorize(v_x, 8)
-        .split(v_y, v_yo, v_yi, 64)
-        .parallel(v_yo);
-
     blurOutputTmp
         .compute_at(sharpened, subtile_idx)
         .store_at(sharpened, tile_idx)
@@ -2080,15 +2048,6 @@ void EnhanceGenerator::schedule_for_cpu() {
         .store_at(sharpened, tile_idx)
         .vectorize(v_x, 8);
 
-    blurOutput2Tmp
-        .compute_at(sharpened, subtile_idx)
-        .store_at(sharpened, tile_idx)
-        .vectorize(v_x, 8);
-
-    blurOutput2
-        .compute_at(sharpened, subtile_idx)
-        .store_at(sharpened, tile_idx)
-        .vectorize(v_x, 8);
 
     m
         .compute_at(sharpened, subtile_idx)
@@ -2100,32 +2059,12 @@ void EnhanceGenerator::schedule_for_cpu() {
         .store_at(sharpened, tile_idx)
         .vectorize(v_x, 8);
 
-    n
-        .compute_at(sharpened, subtile_idx)
-        .store_at(sharpened, tile_idx)
-        .vectorize(v_x, 8);
-
-    N
-        .compute_at(sharpened, subtile_idx)
-        .store_at(sharpened, tile_idx)
-        .vectorize(v_x, 8);
-
     S
         .compute_at(sharpened, subtile_idx)
         .store_at(sharpened, tile_idx)
         .vectorize(v_x, 8);
 
-    T
-        .compute_at(sharpened, subtile_idx)
-        .store_at(sharpened, tile_idx)
-        .vectorize(v_x, 8);
-
     gaussianDiff0
-        .compute_at(sharpened, subtile_idx)
-        .store_at(sharpened, tile_idx)
-        .vectorize(v_x, 8);
-
-    gaussianDiff1
         .compute_at(sharpened, subtile_idx)
         .store_at(sharpened, tile_idx)
         .vectorize(v_x, 8);
@@ -2144,21 +2083,6 @@ void EnhanceGenerator::schedule_for_cpu() {
     Var v_yii{"yii"};
 
     contrastCurve
-        .compute_at(output, v_yii)
-        .store_at(output, v_yio)
-        .vectorize(v_x, 8);
-
-    upsampleTemp
-        .compute_at(output, v_yii)
-        .store_at(output, v_yio)
-        .vectorize(v_x, 8);
-
-    upsampled
-        .compute_at(output, v_yii)
-        .store_at(output, v_yio)
-        .vectorize(v_x, 8);
-
-    popDetail
         .compute_at(output, v_yii)
         .store_at(output, v_yio)
         .vectorize(v_x, 8);
@@ -2296,10 +2220,15 @@ void PostProcessGenerator::generate()
     hdrMask32(v_x, v_y) = hdrMask(clamp(v_x, 0, hdrMask.width() - 1), clamp(v_y, 0, hdrMask.height() - 1)) / 255.0f;
     hdrInput32(v_x, v_y, v_c) = hdrInput(clamp(v_x, 0, hdrInput.width() - 1), clamp(v_y, 0, hdrInput.height() - 1), v_c) / 65535.0f;
 
+    Func P, S;
+
+    P(v_x, v_y) = (1.0f - hdrMask32(v_x, v_y))*(1 * colorCorrected(v_x, v_y, 2)) + (hdrMask32(v_x, v_y)*hdrScale*hdrInput32(v_x, v_y, 2));
+    S(v_x, v_y) = P(v_x, v_y) * (1.0f  + (P(v_x, v_y) / (hdrScale*hdrScale)));
+
     Expr M =
         select( v_c == 0, (1.0f - hdrMask32(v_x, v_y))*colorCorrected(v_x, v_y, v_c) + (hdrMask32(v_x, v_y)*hdrInput32(v_x, v_y, v_c)),
                 v_c == 1, (1.0f - hdrMask32(v_x, v_y))*colorCorrected(v_x, v_y, v_c) + (hdrMask32(v_x, v_y)*hdrInput32(v_x, v_y, v_c)),
-                          pow(2.0f, exposure) * (1.0f - hdrMask32(v_x, v_y))*(hdrScale * colorCorrected(v_x, v_y, v_c)) + (hdrMask32(v_x, v_y)*hdrInput32(v_x, v_y, v_c)));
+                          S(v_x, v_y) / (select(hdrScale > 1.99f, 2.0f, 1.0f) + P(v_x, v_y)));
 
     hdrMerged(v_x, v_y, v_c) = cast<uint16_t>(clamp(M * 65535.0f + 0.5f, 0, 65535.0f));
 
@@ -2318,7 +2247,7 @@ void PostProcessGenerator::generate()
 
     tonemap->output_type.set(UInt(16));
     tonemap->tonemap_levels.set(TONEMAP_LEVELS);
-    tonemap->apply(hdrMerged, in0.width() * 2, in0.height() * 2, 2, tonemapVariance, gamma, shadows);
+    tonemap->apply(hdrMerged, in0.width() * 2, in0.height() * 2, 2, tonemapVariance, gamma, shadows, sharpen1, pop);
     
     Func enhanceInput{"enhanceInput"};
 
@@ -2343,8 +2272,6 @@ void PostProcessGenerator::generate()
         greens,
         saturation,
         sharpen0,
-        sharpen1,
-        pop,
         sharpenThreshold);
     
     output(v_x, v_y, v_c) = cast<uint8_t>(clamp(cast<float>(enhance->output(v_x, v_y, v_c)) * 255.0f/65535.0f + 0.5f, 0, 255));
@@ -2578,7 +2505,7 @@ void PreviewGenerator::generate() {
 
     tonemap->output_type.set(UInt(16));
     tonemap->tonemap_levels.set(tonemap_levels);
-    tonemap->apply(colorCorrectedYuv, width, height, 2, tonemapVariance, gamma, shadows);
+    tonemap->apply(colorCorrectedYuv, width, height, 2, tonemapVariance, gamma, shadows, sharpen1, pop);
 
      // Finalize output
     Func enhanceInput{"enhanceInput"};
@@ -2589,6 +2516,7 @@ void PreviewGenerator::generate() {
                   tonemap->output(v_x, v_y));
 
     enhance = create<EnhanceGenerator>();
+
     enhance->apply(
         enhanceInput,
         width,
@@ -2602,8 +2530,6 @@ void PreviewGenerator::generate() {
         greens,
         saturation,
         sharpen0,
-        sharpen1,
-        pop,
         20.0f);
            
     //

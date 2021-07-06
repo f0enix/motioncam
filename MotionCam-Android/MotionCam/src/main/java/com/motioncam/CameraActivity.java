@@ -476,11 +476,11 @@ public class CameraActivity extends AppCompatActivity implements
         mPostProcessSettings.greens = 3.0f;
         mPostProcessSettings.blues = 6.0f;
         mPostProcessSettings.sharpen0 = 3.0f;
-        mPostProcessSettings.sharpen1 = 2.5f;
-        mPostProcessSettings.pop = 1.15f;
+        mPostProcessSettings.sharpen1 = 1.5f;
+        mPostProcessSettings.pop = 1.125f;
         mPostProcessSettings.whitePoint = -1;
         mPostProcessSettings.blacks = -1;
-        mPostProcessSettings.tonemapVariance = 0.25f;
+        mPostProcessSettings.tonemapVariance = 0.30f;
         mPostProcessSettings.jpegQuality = mSettings.jpegQuality;
 
         mTemperatureOffset = mSettings.temperatureOffset;

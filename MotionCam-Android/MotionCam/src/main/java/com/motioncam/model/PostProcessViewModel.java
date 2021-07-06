@@ -162,7 +162,7 @@ public class PostProcessViewModel extends ViewModel {
     }
 
     public float getDetailSetting() {
-        return 1.0f + getSetting(detail, CameraProfile.DEFAULT_DETAIL) / 20.0f;
+        return 1.0f + getSetting(detail, CameraProfile.DEFAULT_DETAIL) / 100.0f;
     }
 
     public SpatialDenoiseAggressiveness getSpatialDenoiseAggressivenessSetting() {
@@ -223,7 +223,7 @@ public class PostProcessViewModel extends ViewModel {
             postProcessSettings.greens = getGreensSetting();
 
             postProcessSettings.sharpen0 = getSharpnessSetting();
-            postProcessSettings.sharpen1 = getDetailSetting();
+            postProcessSettings.pop = getDetailSetting();
 
             mPostProcessSettings.setValue(postProcessSettings);
 
@@ -257,7 +257,7 @@ public class PostProcessViewModel extends ViewModel {
 
         // Detail
         sharpness.setValue(Math.round((settings.sharpen0 - 1.0f) * 20.0f));
-        detail.setValue(Math.round((settings.sharpen1 - 1.0f) * 20.0f));
+        detail.setValue(Math.round((settings.pop - 1.0f) * 100.0f));
 
         // Denoise settings
         CameraManualControl.Exposure exposure = CameraManualControl.Exposure.Create(
@@ -302,7 +302,7 @@ public class PostProcessViewModel extends ViewModel {
 
         // Detail
         settings.sharpen0 = getSharpnessSetting();
-        settings.sharpen1 = getDetailSetting();
+        settings.pop = getDetailSetting();
 
         // Noise reduction
         settings.spatialDenoiseAggressiveness = getSpatialDenoiseAggressivenessSetting().getWeight();

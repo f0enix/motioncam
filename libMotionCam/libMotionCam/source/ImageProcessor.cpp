@@ -153,7 +153,7 @@ namespace motioncam {
     const int DENOISE_LEVELS            = 6;
     const int EXPANDED_RANGE            = 16384;
     const float MAX_HDR_ERROR           = 0.03f;
-    const float WHITEPOINT_THRESHOLD    = 0.9995f;
+    const float WHITEPOINT_THRESHOLD    = 0.9999f;
     const float SHADOW_BIAS             = 16.0f;
 
     typedef Halide::Runtime::Buffer<float> WaveletBuffer;
@@ -362,7 +362,7 @@ namespace motioncam {
             hdrScale = hdrMetadata->exposureScale;
             
             // Boost shadows to rougly match what the user selected.
-            shadows = settings.shadows * (1.0/hdrScale);            
+            shadows = hdrScale > 1.99f ? 1.25f*settings.shadows : shadows;
         }
         else {
             // Don't apply underexposed image when error is too high
@@ -455,9 +455,9 @@ namespace motioncam {
                 total += histogram.at<float>(i);
             }
 
-            float p = std::log2(200*total);
+            float p = std::log2(150*total);
                         
-            return std::min(0.0f, std::max(-4.0f, -p));
+            return std::min(0.0f, std::max(-3.0f, -p));
         }
         
         double m = histogram.cols / static_cast<double>(bin + 1);
@@ -503,7 +503,7 @@ namespace motioncam {
         settings.contrast = 0.5f;
         settings.sharpen0 = 1;
         settings.sharpen1 = 1;
-        settings.pop = 1;
+        settings.pop      = 1;
         
         auto previewBuffer = createPreview(rawBuffer, 4, cameraMetadata, settings);
         
@@ -520,17 +520,18 @@ namespace motioncam {
         cv::calcHist(inputImages, channels, cv::Mat(), histogram, histBins, histRange);
         
         histogram = histogram / (preview.rows * preview.cols);
-        
+                
         // Cumulative histogram
         for(int i = 1; i < histogram.rows; i++) {
             histogram.at<float>(i) += histogram.at<float>(i - 1);
         }
                 
         // Estimate blacks
-        const float minDehazePercent = 0.0001f;
-        const float maxDehazePercent = 0.01f;
+        const float minDehazePercent = 0.0005f;
+        const float maxDehazePercent = 0.007f;
+        const float binPercent = 0.06f;
         
-        const int maxBin = 0.5f + (0.05f * histogram.rows);
+        const int maxBin = 0.5f + (binPercent * histogram.rows);
         int endBin = 0;
         
         while(true) {
@@ -542,7 +543,7 @@ namespace motioncam {
             ++endBin;
         }
 
-        outBlacks = std::max(0.01f, std::max(0, endBin - 1) / (float)(histogram.rows - 1));
+        outBlacks = std::max(0, endBin - 1) / (float)(histogram.rows - 1);
 
         return preview;
     }
@@ -596,10 +597,10 @@ namespace motioncam {
 
     float ImageProcessor::getShadowKeyValue(const RawImageBuffer& rawBuffer, const RawCameraMetadata& cameraMetadata, bool nightMode) {
         float ev = calcEv(cameraMetadata, rawBuffer.metadata);
-        float minKv = 1.03;
+        float minKv = 1.07;
         
         if(nightMode)
-            minKv = 1.18f;
+            minKv = 1.12f;
         
         return minKv - SHADOW_BIAS / (SHADOW_BIAS + std::log10(std::pow(10.0f, ev) + 1));
     }
@@ -887,9 +888,9 @@ namespace motioncam {
             settings.blues,
             settings.greens,
             settings.saturation,
-            1.25f,
+            settings.sharpen0,
             1.0f,
-            1.0f,
+            settings.pop,
             settings.flipped,
             outputBuffer);
 
@@ -1290,8 +1291,6 @@ namespace motioncam {
             cv::Mat histogram = calcHistogram(rawContainer.getCameraMetadata(), *referenceRawBuffer, false, 4);
             
             settings.shadows = estimateShadows(histogram, keyValue);
-            
-            logger::log("Estimated shadows " + std::to_string(settings.shadows));
         }
 
         // Estimate black point of not provided
@@ -1709,6 +1708,7 @@ namespace motioncam {
             
             opticalFlow->setPatchSize(16);
             opticalFlow->setPatchStride(8);
+            
             opticalFlow->calc(referenceFlowImage, currentFlowImage, flow);
                         
             Halide::Runtime::Buffer<float> flowBuffer =
@@ -1764,13 +1764,7 @@ namespace motioncam {
 
         if(rawContainer.getPostProcessSettings().spatialDenoiseAggressiveness > 0) {
             float spatialDenoiseWeight = rawContainer.getPostProcessSettings().spatialDenoiseAggressiveness;
-            bool softThreshold = false;
-            
-            if(spatialDenoiseWeight > 1) {
-                spatialDenoiseWeight = 1.0f;
-                softThreshold = true;
-            }
-            
+                        
             for(int c = 0; c < 4; c++) {
                 auto wavelet = createWaveletBuffers(denoiseInput.width(), denoiseInput.height());
 
@@ -1799,7 +1793,7 @@ namespace motioncam {
                                   wavelet[4],
                                   wavelet[5],
                                   spatialDenoiseWeight*noiseSigma,
-                                  softThreshold,
+                                  false,
                                   1,
                                   1,
                                   outputBuffer);
@@ -2205,7 +2199,7 @@ namespace motioncam {
 
         Halide::Runtime::Buffer<float> cameraToPcsBuffer = ToHalideBuffer<float>(cameraToPcs);
         Halide::Runtime::Buffer<uint16_t> outputBuffer(underexposedImage->rawBuffer.width()*2, underexposedImage->rawBuffer.height()*2, 3);
-
+        
         linear_image(inputBuffers[0],
                      inputBuffers[1],
                      inputBuffers[2],
@@ -2236,7 +2230,7 @@ namespace motioncam {
         
         auto hdrMetadata = std::make_shared<HdrMetadata>();
         
-        hdrMetadata->exposureScale  = 1.0f / (exposureScale / whitePoint);
+        hdrMetadata->exposureScale  = exposureScale / whitePoint;
         hdrMetadata->hdrInput       = outputBuffer;
         hdrMetadata->mask           = ToHalideBuffer<uint8_t>(mask).copy();
         hdrMetadata->error          = error;
