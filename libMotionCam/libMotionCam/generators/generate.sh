@@ -67,26 +67,26 @@ function build_postprocess() {
 	echo "[$ARCH] Building postprocess_generator"
 	./tmp/postprocess_generator -g postprocess_generator -f postprocess -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS}
 
-	# echo "[$ARCH] Building preview_generator2 rotation=0"
-	# ./tmp/postprocess_generator -g preview_generator -f preview_landscape2 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} rotation=0 tonemap_levels=8 downscale_factor=2
+	echo "[$ARCH] Building preview_generator2 rotation=0"
+	./tmp/postprocess_generator -g preview_generator -f preview_landscape2 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} rotation=0 tonemap_levels=8 downscale_factor=2
 
 	# echo "[$ARCH] Building preview_generator2 rotation=90"
 	# ./tmp/postprocess_generator -g preview_generator -f preview_reverse_portrait2 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} rotation=90 tonemap_levels=8 downscale_factor=2
 
-	echo "[$ARCH] Building preview_generator2 rotation=-90"
-	./tmp/postprocess_generator -g preview_generator -f preview_portrait2 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} rotation=-90 tonemap_levels=8 downscale_factor=2
+	# echo "[$ARCH] Building preview_generator2 rotation=-90"
+	# ./tmp/postprocess_generator -g preview_generator -f preview_portrait2 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} rotation=-90 tonemap_levels=8 downscale_factor=2
 
 	# echo "[$ARCH] Building preview_generator2 rotation=180"
 	# ./tmp/postprocess_generator -g preview_generator -f preview_reverse_landscape2 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} rotation=180 tonemap_levels=8 downscale_factor=2
 
-	# echo "[$ARCH] Building preview_generator4 rotation=0"
-	# ./tmp/postprocess_generator -g preview_generator -f preview_landscape4 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} rotation=0 tonemap_levels=7 downscale_factor=4
+	echo "[$ARCH] Building preview_generator4 rotation=0"
+	./tmp/postprocess_generator -g preview_generator -f preview_landscape4 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} rotation=0 tonemap_levels=7 downscale_factor=4
 
 	# echo "[$ARCH] Building preview_generator4 rotation=90"
 	# ./tmp/postprocess_generator -g preview_generator -f preview_reverse_portrait4 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} rotation=90 tonemap_levels=7 downscale_factor=4
 
-	echo "[$ARCH] Building preview_generator4 rotation=-90"
-	./tmp/postprocess_generator -g preview_generator -f preview_portrait4 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} rotation=-90 tonemap_levels=7 downscale_factor=4
+	# echo "[$ARCH] Building preview_generator4 rotation=-90"
+	# ./tmp/postprocess_generator -g preview_generator -f preview_portrait4 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} rotation=-90 tonemap_levels=7 downscale_factor=4
 
 	# echo "[$ARCH] Building preview_generator4 rotation=180"
 	# ./tmp/postprocess_generator -g preview_generator -f preview_reverse_landscape4 -e static_library,h -o ../halide/${ARCH} target=${TARGET}-${FLAGS} rotation=180 tonemap_levels=7 downscale_factor=4
