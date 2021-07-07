@@ -251,7 +251,7 @@
                 <ImageView
                     android:id="@+id/captureBtn"
                     android:layout_width="65dp"
-                    android:layout_height="65dp"
+                    android:layout_height="match_parent"
                     android:layout_gravity="center"
                     android:src="@drawable/capture_btn" />
 

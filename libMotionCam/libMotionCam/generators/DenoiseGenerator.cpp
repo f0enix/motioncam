@@ -282,22 +282,24 @@ void DenoiseGenerator::generate() {
 
         inSigned0
             .compute_at(output, v_yo)
+            .store_in(MemoryType::Stack)
+            .reorder(v_x, v_y, v_c)
+            .unroll(v_c)
             .vectorize(v_x, 8);
 
-        inRepeated1
-            .compute_root()
-            .reorder(v_c, v_x, v_y)
-            .bound(v_c, 0, 4)
-            .split(v_y, v_yo, v_yi, 32)
-            .vectorize(v_x, 8)
+        inSigned1
+            .compute_at(output, v_yo)
+            .store_in(MemoryType::Stack)
+            .reorder(v_x, v_y, v_c)
             .unroll(v_c)
-            .parallel(v_yo);
+            .vectorize(v_x, 8);
 
         output
             .compute_root()
             .reorder(v_x, v_y, v_c)
             .bound(v_c, 0, 4)
-            .split(v_y, v_yo, v_yi, 32)
+            .split(v_y, v_yo, v_yi, 64)
+            .unroll(v_yi, 2)
             .unroll(v_c)
             .vectorize(v_x, 8)
             .parallel(v_yo);
@@ -540,10 +542,24 @@ void ForwardTransformGenerator::generate() {
         funcsStage1.push_back(forwardOutput);
     }
 
-    if(get_target().has_gpu_feature())
-        schedule_for_gpu();
-    else
-        schedule_for_cpu();
+    if(!auto_schedule) {
+        if(get_target().has_gpu_feature())
+            schedule_for_gpu();
+        else
+            schedule_for_cpu();
+    }
+
+    input.set_estimates({{0, 2048}, {0, 1536}, {0, 4}});
+    width.set_estimate(2000);
+    height.set_estimate(1500);
+    channel.set_estimate(0);
+
+    output[0].set_estimates({{0, 1024}, {0, 768}, {0, 4}, {0, 4}});
+    output[1].set_estimates({{0, 512}, {0, 384}, {0, 4}, {0, 4}});
+    output[2].set_estimates({{0, 256}, {0, 192}, {0, 4}, {0, 4}});
+    output[3].set_estimates({{0, 128}, {0, 96}, {0, 4}, {0, 4}});
+    output[4].set_estimates({{0, 64}, {0, 48}, {0, 4}, {0, 4}});
+    output[5].set_estimates({{0, 32}, {0, 24}, {0, 4}, {0, 4}});
 }
 
 void ForwardTransformGenerator::schedule() {

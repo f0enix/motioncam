@@ -210,45 +210,6 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="5dp"
-                    android:text="@string/hdr"
-                    android:textAppearance="@style/MotionCam.TextAppearance.Small.Bold" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/hdr_settings_description"
-                    android:textAppearance="@style/MotionCam.TextAppearance.Small"
-                    android:textColor="@color/silver" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="5dp">
-
-                    <TextView
-                        android:id="@+id/hdrText"
-                        android:layout_width="@dimen/preview_settings_value_width"
-                        android:layout_height="match_parent"
-                        android:gravity="end|center_vertical"
-                        android:textAppearance="@style/MotionCam.TextAppearance.Small" />
-
-                    <SeekBar
-                        android:id="@+id/hdrSeekBar"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:max="8"
-                        android:paddingTop="@dimen/seekBarPadding"
-                        android:paddingBottom="@dimen/seekBarPadding"
-                        android:theme="@style/Widget.AppCompat.SeekBar.Discrete"
-                        android:progress="@={viewModel.hdrEv}" />
-                </LinearLayout>
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="5dp"
                     android:text="@string/capture_mode"
                     android:textAppearance="@style/MotionCam.TextAppearance.Small.Bold" />
 

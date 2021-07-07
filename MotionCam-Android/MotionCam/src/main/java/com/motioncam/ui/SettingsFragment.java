@@ -58,12 +58,6 @@ public class SettingsFragment extends Fragment {
             mViewModel.save(getContext());
         });
 
-        mViewModel.hdrEv.observe(getViewLifecycleOwner(), (value) -> {
-            dataBinding.hdrText.setText(String.format(Locale.US, "%.2f EV", value / 2.0f));
-
-            mViewModel.save(getContext());
-        });
-
         mViewModel.dualExposureControls.observe(getViewLifecycleOwner(), (value) -> {
             dataBinding.cameraQualitySeekBar.setEnabled(value);
 

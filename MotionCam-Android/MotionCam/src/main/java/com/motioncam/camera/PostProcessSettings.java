@@ -10,12 +10,12 @@ public class PostProcessSettings implements Cloneable {
     public float gamma                          = 2.2f;
     public float shadows                        = 1.0f;
     public float whitePoint                     = 1.0f;
-    public float contrast                       = 0.25f;
+    public float contrast                       = 0.5f;
     public float blacks                         = 0.0f;
     public float exposure                       = 0.0f;
     public float noiseSigma                     = 0.0f;
     public float sceneLuminance                 = 0.0f;
-    public float saturation                     = 1.0f;
+    public float saturation                     = 1.05f;
     public float blues                          = 10.0f;
     public float greens                         = 10.0f;
     public float temperature                    = -1.0f;
@@ -23,6 +23,7 @@ public class PostProcessSettings implements Cloneable {
 
     public float sharpen0                       = 2.5f;
     public float sharpen1                       = 1.3f;
+    public float pop                            = 1.25f;
 
     public int jpegQuality                      = 95;
     public boolean flipped                      = false;

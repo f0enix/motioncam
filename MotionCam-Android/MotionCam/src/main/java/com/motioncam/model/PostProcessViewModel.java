@@ -127,7 +127,10 @@ public class PostProcessViewModel extends ViewModel {
     }
 
     public float getSaturationSetting() {
-        return getSetting(saturation, CameraProfile.DEFAULT_SATURATION) / 100.0f * 2.0f;
+        int s = getSetting(saturation, CameraProfile.DEFAULT_SATURATION);
+
+        // Map [0:50] -> [0:0.5] and [51:100] -> [1:1.25]
+        return s > 50 ? 1.0f + ((s - 50) / 50.0f * 0.25f) : s / 100.0f * 2.0f;
     }
 
     public float getGreensSetting() {
@@ -159,7 +162,7 @@ public class PostProcessViewModel extends ViewModel {
     }
 
     public float getDetailSetting() {
-        return 1.0f + getSetting(detail, CameraProfile.DEFAULT_DETAIL) / 20.0f;
+        return 1.0f + getSetting(detail, CameraProfile.DEFAULT_DETAIL) / 100.0f;
     }
 
     public SpatialDenoiseAggressiveness getSpatialDenoiseAggressivenessSetting() {
@@ -220,7 +223,7 @@ public class PostProcessViewModel extends ViewModel {
             postProcessSettings.greens = getGreensSetting();
 
             postProcessSettings.sharpen0 = getSharpnessSetting();
-            postProcessSettings.sharpen1 = getDetailSetting();
+            postProcessSettings.pop = getDetailSetting();
 
             mPostProcessSettings.setValue(postProcessSettings);
 
@@ -239,9 +242,12 @@ public class PostProcessViewModel extends ViewModel {
         exposure.setValue(Math.round(settings.exposure * 4 + 16));
 
         // Saturation
+        saturation.setValue(
+            settings.saturation < 1.0f ?
+                Math.round(settings.saturation * 100) / 2 :
+                50 + Math.round(50 * ((settings.saturation / 1.25f) - 0.8f) / 0.2f)
+        );
 
-
-        saturation.setValue(Math.round(settings.saturation * 100) / 2);
         greens.setValue(Math.round(((-settings.greens/40) * 100) + 50));
         blues.setValue(Math.round(((-settings.blues/40) * 100) + 50));
 
@@ -251,7 +257,7 @@ public class PostProcessViewModel extends ViewModel {
 
         // Detail
         sharpness.setValue(Math.round((settings.sharpen0 - 1.0f) * 20.0f));
-        detail.setValue(Math.round((settings.sharpen1 - 1.0f) * 20.0f));
+        detail.setValue(Math.round((settings.pop - 1.0f) * 100.0f));
 
         // Denoise settings
         CameraManualControl.Exposure exposure = CameraManualControl.Exposure.Create(
@@ -296,7 +302,7 @@ public class PostProcessViewModel extends ViewModel {
 
         // Detail
         settings.sharpen0 = getSharpnessSetting();
-        settings.sharpen1 = getDetailSetting();
+        settings.pop = getDetailSetting();
 
         // Noise reduction
         settings.spatialDenoiseAggressiveness = getSpatialDenoiseAggressivenessSetting().getWeight();

@@ -24,6 +24,7 @@ namespace motioncam {
         float contrast;
         float sharpen0;
         float sharpen1;
+        float pop;
         float blacks;
         float exposure;
         
@@ -58,9 +59,10 @@ namespace motioncam {
             contrast(0.5f),
             sharpen0(4.0f),
             sharpen1(3.0f),
+            pop(1.125f),
             blacks(0.0f),
             whitePoint(1.0f),
-            saturation(1.0f),
+            saturation(1.05f),
             blues(8.0f),
             greens(8.0f),
             jpegQuality(95),
@@ -91,6 +93,7 @@ namespace motioncam {
 
             sharpen0                        = getSetting(json, "sharpen0",          sharpen0);
             sharpen1                        = getSetting(json, "sharpen1",          sharpen1);
+            pop                             = getSetting(json, "pop",               pop);
 
             saturation                      = getSetting(json, "saturation",        saturation);
             blues                           = getSetting(json, "blues",             blues);
@@ -119,6 +122,7 @@ namespace motioncam {
             json["contrast"]                        = contrast;
             json["sharpen0"]                        = sharpen0;
             json["sharpen1"]                        = sharpen1;
+            json["pop"]                             = pop;
             json["blacks"]                          = blacks;
             json["exposure"]                        = exposure;
             json["temperature"]                     = temperature;
