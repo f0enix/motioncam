@@ -23,7 +23,7 @@ public:
         int EXPANDED_RANGE = 16384;
         Expr p = (input(x, y, c) / numOfFrames) - blackLevel;
         Expr s = EXPANDED_RANGE / cast<float> (whiteLevel-blackLevel);
-        output(x, y, c) = cast<uint16_t>(max(0.0f, min(p * s, cast<float> (EXPANDED_RANGE)) ) );
+        output(x, y, c) = cast<uint16_t>(max(0.0f, min(p * s + 0.5f, cast<float> (EXPANDED_RANGE)) ) );
 
         input.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
         output.set_estimates({{0, 2000}, {0, 1500}, {0, 4}});
